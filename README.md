@@ -4,41 +4,49 @@
 
 Целевое устройство: **iPhone 15 Pro Max** (iOS 17+). Стек: **SwiftUI**.
 
-## Установка без Mac (GitHub Actions + Sideloadly)
+Репозиторий: https://github.com/AlexNormayn/AuthorToday
 
-Да — Swift оставляем. IPA собирается **бесплатно** на `macos-14` runner в GitHub Actions. На телефон ставите с Windows через Sideloadly.
+## Сборка IPA без Mac — Codemagic
 
-### 1. Залить репозиторий на GitHub
+GitHub Actions на этом аккаунте заблокированы (`Unable to enable Actions`). Сборка идёт через **Codemagic**.
 
-```powershell
-cd $env:USERPROFILE\Projects\AuthorToday
-git add .
-git commit -m "Initial AuthorToday iOS app"
-# создайте пустой репозиторий на github.com, затем:
-git remote add origin https://github.com/ВАШ_ЛОГИН/AuthorToday.git
-git branch -M main
-git push -u origin main
-```
+### 1. Зарегистрироваться
 
-Публичный репозиторий удобнее: больше бесплатных минут macOS. В приватном лимит жёстче (~200 мин macOS/мес на free-плане).
+1. Откройте https://codemagic.io/signup  
+2. Войдите через **GitHub** (аккаунт AlexNormayn)  
+3. Разрешите доступ к репозиторию **AuthorToday** (или ко всем public)
 
-### 2. Собрать IPA
+### 2. Добавить приложение
 
-1. GitHub → вкладка **Actions**
-2. Workflow **Build iOS IPA** → **Run workflow**
-3. Дождаться зелёной галочки (5–15 мин)
-4. В артефактах скачать **AuthorToday-ipa** → внутри `AuthorToday.ipa`
+1. Codemagic → **Applications** → **Add application**  
+2. Team: Personal  
+3. Repository: `AlexNormayn/AuthorToday`  
+4. Project type: **Swift / Objective-C** (или «detect from codemagic.yaml»)  
+5. Finish / Select repository
 
-### 3. Поставить на iPhone (Windows)
+Codemagic подхватит файл `codemagic.yaml` в корне.
 
-1. Установите [Sideloadly](https://sideloadly.io/)
-2. iPhone по USB, доверьте компьютеру
-3. В Sideloadly: IPA + ваш **бесплатный Apple ID** → Start
-4. На iPhone: **Настройки → Основные → VPN и управление устройством** → доверить разработчику
+### 3. Запустить сборку
 
-Подпись живёт **~7 дней**. Потом снова Sideloadly с тем же IPA (или новой сборкой).
+1. Откройте приложение AuthorToday в Codemagic  
+2. Workflow: **AuthorToday iOS IPA (unsigned)**  
+3. **Start new build** → ветка `main`  
+4. Дождитесь успеха (обычно 10–20 мин)
 
-> Платный Apple Developer ($99) не нужен для личного устройства. App Store / TestFlight / remote push — только с ним.
+### 4. Скачать IPA
+
+В завершённом билде → **Artifacts** → `AuthorToday.ipa`
+
+### 5. Установить на iPhone (Windows)
+
+1. [Sideloadly](https://sideloadly.io/)  
+2. iPhone по USB  
+3. IPA + бесплатный Apple ID → Start  
+4. На iPhone: **Настройки → Основные → VPN и управление устройством** → доверить
+
+Подпись ~7 дней, потом переподпись тем же IPA.
+
+> Платный Apple Developer не нужен для личного устройства.
 
 ## Что умеет
 
@@ -57,20 +65,14 @@ AuthorToday/
   Models/          — DTO + SwiftData
   Services/        — API, auth, offline, download, notifications
   Views/           — Login, Library, Search, Notifications, Reader
-.github/workflows/ — сборка IPA на GitHub Actions
+codemagic.yaml     — облачная сборка IPA
+.github/workflows/ — запасной workflow (если Actions разблокируют)
 ```
 
 API: `https://api.author.today`  
-Расшифровка глав: `ChapterDecryptor` (заголовок `Reader-Secret`).
+Расшифровка глав: `ChapterDecryptor` (`Reader-Secret`).
 
-## Если сборка в Actions упала
+## Если билд упал в Codemagic
 
-- Откройте лог job «Build (no code signing)»
-- Часто чинится правкой Swift под актуальный SDK runner’а
-- Перезапустите workflow после push
-
-## Дальше (по желанию)
-
-- Точная пагинация через TextKit
-- BGAppRefresh для оповещений
-- Remote push после платного Apple Developer
+- Откройте лог шага **Build without code signing**
+- Пришлите ошибку — поправим код и запушим снова

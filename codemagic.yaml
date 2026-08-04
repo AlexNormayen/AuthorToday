@@ -1,0 +1,58 @@
+workflows:
+  ios-unsigned-ipa:
+    name: AuthorToday iOS IPA (unsigned)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: AuthorToday.xcodeproj
+        XCODE_SCHEME: AuthorToday
+    scripts:
+      - name: Show Xcode
+        script: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -list -project "$XCODE_PROJECT"
+
+      - name: Build without code signing
+        script: |
+          set -euo pipefail
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$CM_BUILD_DIR/DerivedData" \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Package AuthorToday.ipa
+        script: |
+          set -euo pipefail
+          APP=$(find "$CM_BUILD_DIR/DerivedData/Build/Products" -name "AuthorToday.app" -type d | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "AuthorToday.app not found"
+            find "$CM_BUILD_DIR/DerivedData/Build/Products" -maxdepth 4 -type d || true
+            exit 1
+          fi
+          echo "Packaging: $APP"
+          STAGE="$CM_BUILD_DIR/ipa_stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP" "$STAGE/Payload/"
+          (
+            cd "$STAGE"
+            zip -qry "$CM_BUILD_DIR/AuthorToday.ipa" Payload
+          )
+          ls -lh "$CM_BUILD_DIR/AuthorToday.ipa"
+
+    artifacts:
+      - AuthorToday.ipa
+      - DerivedData/**/*.app
+      - /tmp/xcodebuild_logs/*.log
