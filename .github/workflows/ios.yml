@@ -1,0 +1,78 @@
+name: Build iOS IPA
+
+# Free path without a Mac:
+# 1. Push this repo to GitHub (public = more free macOS minutes)
+# 2. Actions → "Build iOS IPA" → Run workflow
+# 3. Download AuthorToday.ipa artifact
+# 4. Install on iPhone with Sideloadly (Windows) + free Apple ID
+#
+# Note: free Apple ID signature lasts ~7 days, then reinstall.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "AuthorToday/**"
+      - "AuthorToday.xcodeproj/**"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build (no code signing)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project AuthorToday.xcodeproj \
+            -scheme AuthorToday \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP=$(find "$RUNNER_TEMP/DerivedData/Build/Products" -name "AuthorToday.app" -type d | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "AuthorToday.app not found"
+            find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 3 -type d || true
+            exit 1
+          fi
+          echo "Packaging: $APP"
+          STAGE="$RUNNER_TEMP/ipa"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP" "$STAGE/Payload/"
+          (
+            cd "$STAGE"
+            zip -qry "$GITHUB_WORKSPACE/AuthorToday.ipa" Payload
+          )
+          ls -lh AuthorToday.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AuthorToday-ipa
+          path: AuthorToday.ipa
+          if-no-files-found: error
+          retention-days: 14

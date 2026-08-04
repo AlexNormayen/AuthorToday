@@ -1,0 +1,358 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* AuthorTodayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* AuthorTodayApp.swift */; };
+		100000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* Models.swift */; };
+		100000000000000000000003 /* ReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* ReaderSettings.swift */; };
+		100000000000000000000004 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* APIClient.swift */; };
+		100000000000000000000005 /* ChapterDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* ChapterDecryptor.swift */; };
+		100000000000000000000006 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* AuthService.swift */; };
+		100000000000000000000007 /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* OfflineStore.swift */; };
+		100000000000000000000008 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* DownloadManager.swift */; };
+		100000000000000000000009 /* NotificationPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* NotificationPoller.swift */; };
+		10000000000000000000000A /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* AppTheme.swift */; };
+		10000000000000000000000B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* RootView.swift */; };
+		10000000000000000000000C /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* LoginView.swift */; };
+		10000000000000000000000D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* LibraryView.swift */; };
+		10000000000000000000000E /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* SearchView.swift */; };
+		10000000000000000000000F /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* NotificationsView.swift */; };
+		100000000000000000000010 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* BookDetailView.swift */; };
+		100000000000000000000011 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* ReaderView.swift */; };
+		100000000000000000000012 /* ReaderSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* ReaderSettingsView.swift */; };
+		100000000000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		300000000000000000000001 /* AuthorToday.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AuthorToday.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000001 /* AuthorTodayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorTodayApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* ReaderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderSettings.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* ChapterDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterDecryptor.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* OfflineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* NotificationPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPoller.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		20000000000000000000000C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		20000000000000000000000D /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		20000000000000000000000E /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		20000000000000000000000F /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		200000000000000000000010 /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
+		200000000000000000000011 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
+		200000000000000000000012 /* ReaderSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderSettingsView.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		400000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		500000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				500000000000000000000002 /* AuthorToday */,
+				500000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		500000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000001 /* AuthorToday.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		500000000000000000000002 /* AuthorToday */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* AuthorTodayApp.swift */,
+				500000000000000000000004 /* Models */,
+				500000000000000000000005 /* Services */,
+				500000000000000000000006 /* Views */,
+				500000000000000000000007 /* Theme */,
+				200000000000000000000013 /* Assets.xcassets */,
+			);
+			path = AuthorToday;
+			sourceTree = "<group>";
+		};
+		500000000000000000000004 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000002 /* Models.swift */,
+				200000000000000000000003 /* ReaderSettings.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		500000000000000000000005 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000004 /* APIClient.swift */,
+				200000000000000000000005 /* ChapterDecryptor.swift */,
+				200000000000000000000006 /* AuthService.swift */,
+				200000000000000000000007 /* OfflineStore.swift */,
+				200000000000000000000008 /* DownloadManager.swift */,
+				200000000000000000000009 /* NotificationPoller.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		500000000000000000000006 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000B /* RootView.swift */,
+				20000000000000000000000C /* LoginView.swift */,
+				20000000000000000000000D /* LibraryView.swift */,
+				20000000000000000000000E /* SearchView.swift */,
+				20000000000000000000000F /* NotificationsView.swift */,
+				200000000000000000000010 /* BookDetailView.swift */,
+				500000000000000000000008 /* Reader */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		500000000000000000000008 /* Reader */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000011 /* ReaderView.swift */,
+				200000000000000000000012 /* ReaderSettingsView.swift */,
+			);
+			path = Reader;
+			sourceTree = "<group>";
+		};
+		500000000000000000000007 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000A /* AppTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		600000000000000000000001 /* AuthorToday */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 700000000000000000000002 /* Build configuration list for PBXNativeTarget "AuthorToday" */;
+			buildPhases = (
+				800000000000000000000001 /* Sources */,
+				400000000000000000000001 /* Frameworks */,
+				900000000000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AuthorToday;
+			productName = AuthorToday;
+			productReference = 300000000000000000000001 /* AuthorToday.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					600000000000000000000001 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = 700000000000000000000001 /* Build configuration list for PBXProject "AuthorToday" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = ru;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				ru,
+				Base,
+			);
+			mainGroup = 500000000000000000000001;
+			productRefGroup = 500000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				600000000000000000000001 /* AuthorToday */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		900000000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000013 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		800000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* AuthorTodayApp.swift in Sources */,
+				100000000000000000000002 /* Models.swift in Sources */,
+				100000000000000000000003 /* ReaderSettings.swift in Sources */,
+				100000000000000000000004 /* APIClient.swift in Sources */,
+				100000000000000000000005 /* ChapterDecryptor.swift in Sources */,
+				100000000000000000000006 /* AuthService.swift in Sources */,
+				100000000000000000000007 /* OfflineStore.swift in Sources */,
+				100000000000000000000008 /* DownloadManager.swift in Sources */,
+				100000000000000000000009 /* NotificationPoller.swift in Sources */,
+				10000000000000000000000A /* AppTheme.swift in Sources */,
+				10000000000000000000000B /* RootView.swift in Sources */,
+				10000000000000000000000C /* LoginView.swift in Sources */,
+				10000000000000000000000D /* LibraryView.swift in Sources */,
+				10000000000000000000000E /* SearchView.swift in Sources */,
+				10000000000000000000000F /* NotificationsView.swift in Sources */,
+				100000000000000000000010 /* BookDetailView.swift in Sources */,
+				100000000000000000000011 /* ReaderView.swift in Sources */,
+				100000000000000000000012 /* ReaderSettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Author.Today";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = today.author.reader;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Author.Today";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = today.author.reader;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		700000000000000000000001 /* Build configuration list for PBXProject "AuthorToday" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000001 /* Debug */,
+				B00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		700000000000000000000002 /* Build configuration list for PBXNativeTarget "AuthorToday" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000003 /* Debug */,
+				B00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}
