@@ -75,8 +75,16 @@ final class DownloadManager: ObservableObject {
             throw APIError.message("Нет доступных глав")
         }
 
+        var remoteChapterId: Int?
+        if isOnline, let meta = try? await APIClient.shared.workMeta(id: workId) {
+            store.upsertWork(from: meta)
+            remoteChapterId = meta.lastReadChapterId
+        }
+
         let startId = preferredChapterId
             ?? store.progress(for: workId)?.chapterId
+            ?? remoteChapterId
+            ?? store.library.first(where: { $0.workId == workId })?.lastReadChapterId
             ?? chapters.first?.id
             ?? chapters[0].id
 
@@ -95,6 +103,14 @@ final class DownloadManager: ObservableObject {
 
         if isOnline {
             try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
+            // Keep site library / progress in sync when reading in the app
+            try? await APIClient.shared.addToLibrary(workId: workId, state: "Reading")
+            try? await APIClient.shared.updateProgress(
+                workId: workId,
+                chapterId: chapterMeta.id,
+                progress: nil,
+                location: nil
+            )
         }
 
         return (details, chapterMeta.id, html, title)
@@ -110,10 +126,12 @@ final class DownloadManager: ObservableObject {
             if ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
                 return (cached.title, cached.htmlText)
             }
-            // Cached ciphertext from older builds — refetch
+            // Bad decrypt from older builds — drop and refetch
+            store.removeCachedChapter(workId: workId, chapterId: chapter.id)
         }
         guard isOnline else {
-            if let cached = store.chapter(workId: workId, chapterId: chapter.id) {
+            if let cached = store.chapter(workId: workId, chapterId: chapter.id),
+               ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
                 return (cached.title, cached.htmlText)
             }
             throw APIError.message("Глава не скачана, нет сети")
@@ -123,6 +141,9 @@ final class DownloadManager: ObservableObject {
             workId: workId,
             chapterId: chapter.id
         )
+        guard ChapterDecryptor.looksLikePlaintext(html) else {
+            throw APIError.message("Получен повреждённый текст главы")
+        }
         let title = remoteTitle ?? chapter.displayTitle
         store.saveChapter(
             workId: workId,

@@ -144,43 +144,40 @@ actor APIClient {
 
     func feedItems(limit: Int = 50) async throws -> [NotificationItem] {
         try? await establishWebSession()
-        var collected: [NotificationItem] = []
 
-        // Official notifications API
-        if let apiItems = try? await notifications(take: limit) {
-            collected.append(contentsOf: apiItems)
+        // Prefer official notifications — they already contain readable text.
+        if let apiItems = try? await notifications(take: limit), !apiItems.isEmpty {
+            return apiItems.map { item in
+                NotificationItem(
+                    id: item.id,
+                    text: HTMLText.plain(from: item.text ?? item.message ?? item.title ?? ""),
+                    title: item.title,
+                    message: item.message.map { HTMLText.plain(from: $0) },
+                    creationTime: item.creationTime,
+                    isRead: item.isRead,
+                    workId: item.workId,
+                    url: item.url,
+                    category: item.category
+                )
+            }
         }
 
-        // Site feed page (подписки / новости)
+        // Fallback: site feed HTML
         let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if let url = URL(string: "\(base)/feed") {
-            var request = URLRequest(url: url)
-            request.setValue("text/html", forHTTPHeaderField: "Accept")
-            request.setValue(
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AuthorTodayReader",
-                forHTTPHeaderField: "User-Agent"
-            )
-            if token != "guest" {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-            if let (data, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse,
-               (200..<300).contains(http.statusCode),
-               let html = String(data: data, encoding: .utf8) {
-                collected.append(contentsOf: parseFeedHTML(html, limit: limit))
-            }
+        guard let url = URL(string: "\(base)/feed") else { return [] }
+        var request = URLRequest(url: url)
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AuthorTodayReader",
+            forHTTPHeaderField: "User-Agent"
+        )
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-
-        // Dedupe by stableId, keep order
-        var seen = Set<String>()
-        var unique: [NotificationItem] = []
-        for item in collected {
-            let id = item.stableId
-            if seen.insert(id).inserted {
-                unique.append(item)
-            }
-        }
-        return Array(unique.prefix(limit))
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        guard let html = String(data: data, encoding: .utf8) else { return [] }
+        return parseFeedHTML(html, limit: limit)
     }
 
     private func extractWorkIDs(from html: String) -> [Int] {
@@ -200,20 +197,45 @@ actor APIClient {
     }
 
     private func parseFeedHTML(_ html: String, limit: Int) -> [NotificationItem] {
-        // Split roughly by work cards / rows containing /work/id
+        // Prefer structured feed rows if present
+        let rowPattern = #"(?is)<(?:div|li|article)[^>]*(?:feed|activity|notification)[^>]*>(.*?)</(?:div|li|article)>"#
+        if let regex = try? NSRegularExpression(pattern: rowPattern) {
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            var items: [NotificationItem] = []
+            for (idx, match) in regex.matches(in: html, range: range).prefix(limit).enumerated() {
+                guard let r = Range(match.range(at: 1), in: html) else { continue }
+                let chunk = String(html[r])
+                let text = HTMLText.plain(from: chunk)
+                guard text.count >= 8 else { continue }
+                let workId = extractWorkIDs(from: chunk).first
+                items.append(
+                    NotificationItem(
+                        id: (workId ?? idx) + idx * 1_000_000,
+                        text: text,
+                        title: "Лента",
+                        message: text,
+                        creationTime: nil,
+                        isRead: false,
+                        workId: workId,
+                        url: workId.map { "https://author.today/work/\($0)" },
+                        category: "feed"
+                    )
+                )
+            }
+            if !items.isEmpty { return items }
+        }
+
         let ids = extractWorkIDs(from: html)
         var items: [NotificationItem] = []
         for (idx, id) in ids.prefix(limit).enumerated() {
-            // Grab a nearby plain-text snippet
             let marker = "/work/\(id)"
             var snippet = "Обновление произведения"
             if let range = html.range(of: marker) {
-                let start = html.index(range.lowerBound, offsetBy: -120, limitedBy: html.startIndex) ?? html.startIndex
-                let end = html.index(range.upperBound, offsetBy: 180, limitedBy: html.endIndex) ?? html.endIndex
-                let raw = String(html[start..<end])
-                snippet = HTMLText.plain(from: raw)
-                if snippet.count > 160 {
-                    snippet = String(snippet.prefix(160)) + "…"
+                let start = html.index(range.lowerBound, offsetBy: -200, limitedBy: html.startIndex) ?? html.startIndex
+                let end = html.index(range.upperBound, offsetBy: 240, limitedBy: html.endIndex) ?? html.endIndex
+                snippet = HTMLText.plain(from: String(html[start..<end]))
+                if snippet.count > 180 {
+                    snippet = String(snippet.prefix(180)) + "…"
                 }
                 if snippet.count < 8 {
                     snippet = "Обновление в ленте"
@@ -226,7 +248,7 @@ actor APIClient {
                     title: "Лента",
                     message: snippet,
                     creationTime: nil,
-                    isRead: false,
+                    isRead: true,
                     workId: id,
                     url: "https://author.today/work/\(id)",
                     category: "feed"
@@ -290,7 +312,14 @@ actor APIClient {
             "sorting": "recent",
             "genre": "all"
         ])
-        return result.items.map { normalize($0) }
+        let items = result.items.map { normalize($0) }
+        let ids = items.map(\.id)
+        if ids.isEmpty { return items }
+        // meta-info has price / purchase / library state
+        if let enriched = try? await workMetas(ids: ids), !enriched.isEmpty {
+            return enriched
+        }
+        return items
     }
 
     private func searchWorkIDsFromSite(query: String) async throws -> [Int] {
@@ -370,18 +399,21 @@ actor APIClient {
             inLibraryState: work.inLibraryState,
             progress: work.resolvedProgress,
             lastReadChapterId: work.lastReadChapterId ?? work.lastChapterId,
-            lastChapterProgress: work.lastChapterProgress
+            lastChapterProgress: work.lastChapterProgress,
+            price: work.price,
+            discount: work.discount,
+            isPurchased: work.isPurchased
         )
     }
 
     // MARK: - Chapters
 
-    /// Fetches chapter text. Official API returns ciphertext + `key` in JSON (no Reader-Secret header).
-    /// Web reader returns ciphertext + `Reader-Secret` header. Try both.
+    /// Fetches chapter text via the web reader (Reader-Secret header).
+    /// The `/v1/.../text` JSON `key` does **not** decrypt with the public XOR scheme — do not use it.
     func chapterText(workId: Int, chapterId: Int) async throws -> (title: String?, html: String) {
         var errors: [String] = []
 
-        // 1) Web reader — proven scheme with Reader-Secret header
+        // 1) Web reader — only proven source of Reader-Secret
         do {
             let (data, headers) = try await rawGet(
                 absoluteURL: try {
@@ -393,23 +425,28 @@ actor APIClient {
                 }(),
                 query: ["id": "\(chapterId)"]
             )
-            if let result = try decryptChapterPayload(data: data, headers: headers) {
+            if let result = try decryptChapterPayload(data: data, headers: headers, preferHeaderSecret: true) {
                 return result
             }
-            errors.append("web: no plaintext")
+            errors.append("web: текст не расшифрован")
         } catch {
             errors.append("web: \(error.localizedDescription)")
         }
 
-        // 2) Official API — secret is JSON field `key`
+        // 2) Official API — only if response includes Reader-Secret header (rare)
         do {
             let (data, headers) = try await rawGet(
                 path: "/v1/work/\(workId)/chapter/\(chapterId)/text"
             )
-            if let result = try decryptChapterPayload(data: data, headers: headers) {
+            let headerSecret =
+                headers["Reader-Secret"]
+                ?? headers["reader-secret"]
+                ?? headers.first(where: { $0.key.lowercased() == "reader-secret" })?.value
+            if let headerSecret, !headerSecret.isEmpty,
+               let result = try decryptChapterPayload(data: data, headers: headers, preferHeaderSecret: true) {
                 return result
             }
-            errors.append("api: no plaintext")
+            errors.append("api: нет Reader-Secret / неверный ключ")
         } catch {
             errors.append("api: \(error.localizedDescription)")
         }
@@ -419,11 +456,16 @@ actor APIClient {
 
     private func decryptChapterPayload(
         data: Data,
-        headers: [String: String]
+        headers: [String: String],
+        preferHeaderSecret: Bool
     ) throws -> (title: String?, html: String)? {
         let payload = try decodeFlexible(ChapterTextPayload.self, from: data)
         guard let encrypted = payload.resolvedText, !encrypted.isEmpty else {
             throw APIError.emptyBody
+        }
+
+        if ChapterDecryptor.looksLikePlaintext(encrypted) {
+            return (payload.resolvedTitle, encrypted)
         }
 
         let headerSecret =
@@ -431,15 +473,17 @@ actor APIClient {
             ?? headers["reader-secret"]
             ?? headers.first(where: { $0.key.lowercased() == "reader-secret" })?.value
 
-        let candidates = [payload.resolvedKey, headerSecret].compactMap { $0 }.filter { !$0.isEmpty }
-
-        if candidates.isEmpty {
-            // Already plaintext?
-            if ChapterDecryptor.looksLikePlaintext(encrypted) {
-                return (payload.resolvedTitle, encrypted)
-            }
-            return nil
+        var candidates: [String] = []
+        if preferHeaderSecret {
+            if let headerSecret, !headerSecret.isEmpty { candidates.append(headerSecret) }
+            if let key = payload.resolvedKey, !key.isEmpty { candidates.append(key) }
+        } else {
+            if let key = payload.resolvedKey, !key.isEmpty { candidates.append(key) }
+            if let headerSecret, !headerSecret.isEmpty { candidates.append(headerSecret) }
         }
+        // unique preserve order
+        var seen = Set<String>()
+        candidates = candidates.filter { seen.insert($0).inserted }
 
         for secret in candidates {
             let html = ChapterDecryptor.decrypt(encrypted, readerSecret: secret)
@@ -447,66 +491,24 @@ actor APIClient {
                 return (payload.resolvedTitle, html)
             }
         }
-
-        // Last resort: return first decrypt attempt even if heuristic failed
-        if let secret = candidates.first {
-            let html = ChapterDecryptor.decrypt(encrypted, readerSecret: secret)
-            return (payload.resolvedTitle, html)
-        }
         return nil
     }
 
     func manyChapterTexts(workId: Int, chapterIds: [Int] = []) async throws -> [(id: Int, title: String?, html: String)] {
-        var query: [String: String] = [:]
+        // Prefer per-chapter web reader decrypt — batch API key is unreliable.
+        var result: [(id: Int, title: String?, html: String)] = []
+        let ids: [Int]
         if chapterIds.isEmpty {
-            // empty list means all chapters per API docs
+            let details = try await workDetails(id: workId)
+            ids = details.availableChapters.map(\.id)
         } else {
-            for (i, id) in chapterIds.enumerated() {
-                query["ids[\(i)]"] = "\(id)"
-            }
+            ids = chapterIds
         }
-
-        let (data, headers) = try await rawGet(
-            path: "/v1/work/\(workId)/chapter/many-texts",
-            query: query
-        )
-        let secret = headers["Reader-Secret"] ?? headers["reader-secret"]
-        // Response may be array or wrapped
-        if let batch = try? decodeFlexible(ChapterBatchResult.self, from: data) {
-            return batch.items.compactMap { item in
-                guard let text = item.resolvedText else { return nil }
-                let secret = item.resolvedKey
-                    ?? headers["Reader-Secret"]
-                    ?? headers["reader-secret"]
-                let html: String
-                if let secret, !secret.isEmpty {
-                    html = ChapterDecryptor.decrypt(text, readerSecret: secret)
-                } else if ChapterDecryptor.looksLikePlaintext(text) {
-                    html = text
-                } else {
-                    return nil
-                }
-                return (item.id ?? item.data?.id ?? 0, item.resolvedTitle, html)
-            }
+        for id in ids {
+            let (title, html) = try await chapterText(workId: workId, chapterId: id)
+            result.append((id, title, html))
         }
-        if let array = try? decoder.decode([ChapterTextPayload].self, from: data) {
-            return array.compactMap { item in
-                guard let text = item.resolvedText else { return nil }
-                let secret = item.resolvedKey
-                    ?? headers["Reader-Secret"]
-                    ?? headers["reader-secret"]
-                let html: String
-                if let secret, !secret.isEmpty {
-                    html = ChapterDecryptor.decrypt(text, readerSecret: secret)
-                } else if ChapterDecryptor.looksLikePlaintext(text) {
-                    html = text
-                } else {
-                    return nil
-                }
-                return (item.id ?? 0, item.resolvedTitle, html)
-            }
-        }
-        throw APIError.message("Не удалось разобрать главы")
+        return result
     }
 
     func readerStart(workId: Int, chapterId: Int) async throws {
@@ -521,6 +523,31 @@ actor APIClient {
             progress: progress
         )
         let _: EmptyJSON = try await post(path: "/v1/reader/update-progress", body: body)
+    }
+
+    /// Adds/updates a work in the site library (Reading / Read / Wish / None…).
+    func updateLibrary(workIds: [Int], state: String) async throws {
+        try? await establishWebSession()
+        let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(base)/work/updateLibrary") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(&request, authed: true)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        let body: [String: Any] = ["ids": workIds, "state": state]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let message = (try? decoder.decode(APIErrorBody.self, from: data))?.message
+            throw APIError.http(http.statusCode, message)
+        }
+    }
+
+    func addToLibrary(workId: Int, state: String = "Reading") async throws {
+        try await updateLibrary(workIds: [workId], state: state)
     }
 
     // MARK: - Notifications

@@ -35,11 +35,15 @@ final class OfflineStore: ObservableObject {
             reloadLibrary()
             return
         }
-        await syncLibrary()
+        await syncLibrary(force: force)
     }
 
-    func syncLibrary() async {
+    func syncLibrary(force: Bool = false) async {
         guard let modelContext else { return }
+        if !force, let last = lastLibrarySync, Date().timeIntervalSince(last) < 15 {
+            reloadLibrary()
+            return
+        }
         isSyncing = true
         lastSyncError = nil
         defer { isSyncing = false }
@@ -84,6 +88,29 @@ final class OfflineStore: ObservableObject {
         } catch {
             lastSyncError = error.localizedDescription
             reloadLibrary()
+        }
+    }
+
+    func addToSiteLibrary(workId: Int, state: String = "Reading") async throws {
+        try await APIClient.shared.addToLibrary(workId: workId, state: state)
+        if let meta = try? await APIClient.shared.workMeta(id: workId) {
+            upsertWork(from: meta)
+            try? modelContext?.save()
+            reloadLibrary()
+        }
+        // Refresh full library so site/app stay aligned
+        await syncLibrary(force: true)
+    }
+
+    func removeCachedChapter(workId: Int, chapterId: Int) {
+        guard let modelContext else { return }
+        let key = "\(workId)-\(chapterId)"
+        let descriptor = FetchDescriptor<CachedChapter>(
+            predicate: #Predicate { $0.compositeKey == key }
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            modelContext.delete(existing)
+            try? modelContext.save()
         }
     }
 

@@ -12,7 +12,7 @@ struct NotificationsView: View {
                         notifications.lastError == nil ? "Лента пуста" : "Не удалось загрузить",
                         systemImage: "bell.slash",
                         description: Text(notifications.lastError
-                            ?? "Новости с author.today/feed появятся здесь")
+                            ?? "Уведомления author.today появятся здесь")
                     )
                 } else {
                     List(notifications.items, id: \.stableId) { item in
@@ -54,6 +54,7 @@ struct NotificationsView: View {
             }
             .task {
                 await notifications.refresh(announceNew: false)
+                await notifications.markFeedSeen()
             }
         }
     }

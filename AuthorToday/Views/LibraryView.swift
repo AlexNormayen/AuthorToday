@@ -80,6 +80,15 @@ struct LibraryView: View {
                         .clipShape(Capsule())
                         .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if let err = offline.lastSyncError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                        .padding(.bottom, 8)
                 }
             }
             .task {
@@ -157,19 +166,5 @@ struct LibraryRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                // open details via notification — parent handles path; use openURL style workaround
-            } label: {
-                Label("О книге", systemImage: "info.circle")
-            }
-            .disabled(true)
-        }
-    }
-}
-
-extension OfflineStore {
-    func syncLibrary(force: Bool) async {
-        await syncLibraryIfNeeded(force: force)
     }
 }

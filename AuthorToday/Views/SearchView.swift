@@ -39,6 +39,18 @@ struct SearchView: View {
                                     Text(work.displayAuthor)
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
+                                    HStack(spacing: 8) {
+                                        if let price = work.displayPriceText {
+                                            Text(price)
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        if work.isInLibrary {
+                                            Text("В библиотеке")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
                                 }
                             }
                         }

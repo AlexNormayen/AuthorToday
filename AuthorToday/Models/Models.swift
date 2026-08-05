@@ -69,6 +69,9 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     let progress: Double?
     let lastReadChapterId: Int?
     let lastChapterProgress: Double?
+    let price: Double?
+    let discount: Double?
+    let isPurchased: Bool?
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -82,8 +85,25 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
         libraryState ?? workInLibraryState ?? inLibraryState
     }
 
+    var isInLibrary: Bool {
+        guard let state = resolvedLibraryState?.lowercased(), !state.isEmpty else { return false }
+        return state != "none"
+    }
+
     var resolvedProgress: Double {
         progress ?? lastChapterProgress ?? 0
+    }
+
+    var displayPriceText: String? {
+        if isPurchased == true { return "Куплено" }
+        let statusLower = (status ?? "").lowercased()
+        if statusLower == "free" { return "Бесплатно" }
+        guard let price, price > 0 else { return nil }
+        if let discount, discount > 0 {
+            let final = price * (1.0 - discount / 100.0)
+            return String(format: "%.0f ₽ (−%.0f%%)", final, discount)
+        }
+        return String(format: "%.0f ₽", price)
     }
 
     /// Catalog often returns relative paths like `2026/07/01/....jpg`.
@@ -253,7 +273,8 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
     }
 
     var displayText: String {
-        text ?? message ?? title ?? "Уведомление"
+        let raw = text ?? message ?? title ?? "Уведомление"
+        return HTMLText.plain(from: raw)
     }
 }
 

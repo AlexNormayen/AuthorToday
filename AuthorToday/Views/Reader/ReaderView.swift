@@ -302,8 +302,15 @@ struct ReaderView: View {
             plainText = HTMLText.plain(from: loaded.html)
             pageIndex = 0
             persistProgress()
+            syncProgressRemote()
             if downloads.online {
                 try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
+                try? await APIClient.shared.updateProgress(
+                    workId: workId,
+                    chapterId: chapter.id,
+                    progress: chapters.isEmpty ? nil : Double(index + 1) / Double(chapters.count),
+                    location: "page:0"
+                )
             }
         } catch {
             self.error = error.localizedDescription

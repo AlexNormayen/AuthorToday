@@ -50,19 +50,17 @@ final class NotificationPoller: ObservableObject {
 
     func refresh(announceNew: Bool) async {
         do {
-            var list = try await APIClient.shared.feedItems(limit: 50)
-            if list.isEmpty {
-                // Fallback to classic notifications only
-                list = (try? await APIClient.shared.notifications(take: 40)) ?? []
-            }
+            let list = try await APIClient.shared.feedItems(limit: 50)
             items = list
-            unreadCount = list.filter { !($0.isRead ?? false) }.count
+
             if let check = try? await APIClient.shared.checkNotifications() {
-                unreadCount = max(unreadCount, check.effectiveUnread)
+                unreadCount = check.effectiveUnread
+            } else {
+                unreadCount = list.filter { !($0.isRead ?? true) }.count
             }
 
             if announceNew {
-                for item in list where !(item.isRead ?? false) {
+                for item in list where !(item.isRead ?? true) {
                     let sid = item.stableId
                     if !knownIds.contains(sid) {
                         knownIds.insert(sid)
@@ -75,30 +73,44 @@ final class NotificationPoller: ObservableObject {
                 persistKnown()
             }
             lastError = nil
+            await applyAppBadge()
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    func markAllRead() async {
+    /// Call when the user opens the feed tab.
+    func markFeedSeen() async {
         do {
             try await APIClient.shared.markAllNotificationsRead()
-            unreadCount = 0
-            items = items.map { item in
-                NotificationItem(
-                    id: item.id,
-                    text: item.text,
-                    title: item.title,
-                    message: item.message,
-                    creationTime: item.creationTime,
-                    isRead: true,
-                    workId: item.workId,
-                    url: item.url,
-                    category: item.category
-                )
-            }
         } catch {
+            // Still clear local badge so UI matches "I've seen the feed"
             lastError = error.localizedDescription
+        }
+        unreadCount = 0
+        items = items.map { item in
+            NotificationItem(
+                id: item.id,
+                text: item.text,
+                title: item.title,
+                message: item.message,
+                creationTime: item.creationTime,
+                isRead: true,
+                workId: item.workId,
+                url: item.url,
+                category: item.category
+            )
+        }
+        await applyAppBadge()
+    }
+
+    func markAllRead() async {
+        await markFeedSeen()
+    }
+
+    private func applyAppBadge() async {
+        if isAuthorized {
+            try? await UNUserNotificationCenter.current().setBadgeCount(unreadCount)
         }
     }
 
@@ -120,7 +132,6 @@ final class NotificationPoller: ObservableObject {
     }
 
     private func persistKnown() {
-        // keep last 500
         let trimmed = Array(knownIds.suffix(500))
         knownIds = Set(trimmed)
         UserDefaults.standard.set(trimmed, forKey: knownKey)

@@ -73,14 +73,36 @@ struct BookDetailView: View {
 
                         Button {
                             startChapterId = offline.progress(for: workId)?.chapterId
+                                ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
                                 ?? details.availableChapters.first?.id
                             openReader = true
                         } label: {
-                            Text(offline.progress(for: workId) != nil ? "Продолжить чтение" : "Читать")
+                            Text(offline.progress(for: workId) != nil || offline.library.contains(where: { $0.workId == workId && $0.lastReadChapterId != nil })
+                                 ? "Продолжить чтение" : "Читать")
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .opacity(details.availableChapters.isEmpty && details.needsPurchase ? 0.45 : 1)
                         .disabled(details.availableChapters.isEmpty && details.needsPurchase)
+
+                        if offline.library.contains(where: { $0.workId == workId }) {
+                            Text("В вашей библиотеке")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button {
+                                Task {
+                                    do {
+                                        try await offline.addToSiteLibrary(workId: workId, state: "Reading")
+                                    } catch {
+                                        self.error = error.localizedDescription
+                                    }
+                                }
+                            } label: {
+                                Label("В библиотеку", systemImage: "plus.circle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
 
                         if let annotation = details.annotation, !annotation.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {

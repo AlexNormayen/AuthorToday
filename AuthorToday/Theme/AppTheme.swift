@@ -70,21 +70,24 @@ struct PrimaryButtonStyle: ButtonStyle {
 enum HTMLText {
     static func plain(from html: String) -> String {
         var s = html
+        // Drop script/style blocks first
+        for pattern in [#"(?is)<script[^>]*>.*?</script>"#, #"(?is)<style[^>]*>.*?</style>"#] {
+            s = s.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
         let replacements: [(String, String)] = [
             ("<br>", "\n"), ("<br/>", "\n"), ("<br />", "\n"),
-            ("</p>", "\n\n"), ("</div>", "\n"),
+            ("</p>", "\n\n"), ("</div>", "\n"), ("</li>", "\n"),
             ("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
-            ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'")
+            ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"),
+            ("&laquo;", "«"), ("&raquo;", "»"), ("&mdash;", "—"), ("&ndash;", "–")
         ]
         for (a, b) in replacements {
             s = s.replacingOccurrences(of: a, with: b, options: .caseInsensitive)
         }
         // remove remaining tags
-        while let start = s.range(of: "<"),
-              let end = s.range(of: ">", range: start.upperBound..<s.endIndex) {
-            s.removeSubrange(start.lowerBound..<end.upperBound)
-        }
+        s = s.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
         return s
+            .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

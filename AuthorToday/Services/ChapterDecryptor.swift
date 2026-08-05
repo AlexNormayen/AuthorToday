@@ -1,30 +1,27 @@
 import Foundation
 
 enum ChapterDecryptor {
-    /// Author.Today XOR scheme used by the official web reader / mobile API.
+    /// Author.Today XOR scheme used by the official web reader.
     /// Cipher = reverse(secret) + "@_@"
-    /// Operates on UTF-16 code units (same as popular open-source clients).
+    /// Operates on UTF-16 code units (same as the site JS / lightnovel-crawler).
     static func decrypt(_ encrypted: String, readerSecret: String) -> String {
         let secret = readerSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !secret.isEmpty, !encrypted.isEmpty else { return encrypted }
 
         let cipher = String(secret.reversed()) + "@_@"
-        let cipherScalars = Array(cipher.unicodeScalars)
-        guard !cipherScalars.isEmpty else { return encrypted }
+        let cipherUnits = Array(cipher.utf16)
+        guard !cipherUnits.isEmpty else { return encrypted }
 
-        // Mirror Python: encrypted.encode("utf-16")[2:] then LE code units.
         var encoded = Array(encrypted.utf16)
-        // If Swift string somehow carried BOM, drop it before XOR.
         if encoded.first == 0xFEFF {
             encoded.removeFirst()
         }
 
         var decrypted = [UInt16]()
-        decrypted.reserveCapacity(encoded.count + 1)
+        decrypted.reserveCapacity(encoded.count)
 
         for (i, unit) in encoded.enumerated() {
-            let key = UInt16(cipherScalars[i % cipherScalars.count].value)
-            decrypted.append(unit ^ key)
+            decrypted.append(unit ^ cipherUnits[i % cipherUnits.count])
         }
 
         if decrypted.first == 0xFEFF {
@@ -34,14 +31,38 @@ enum ChapterDecryptor {
         return String(utf16CodeUnits: decrypted, count: decrypted.count)
     }
 
-    /// Returns true when decrypted output looks like readable HTML/text rather than ciphertext.
+    /// Strict check: wrong API keys produce Cyrillic soup that fools a naive regex.
+    /// Real chapters are HTML with paragraph tags and a sane letter/space ratio.
     static func looksLikePlaintext(_ value: String) -> Bool {
-        let sample = String(value.prefix(400))
-        if sample.range(of: #"[А-Яа-яЁё]"#, options: .regularExpression) != nil { return true }
-        if sample.range(of: #"(?i)<p|<br|</p>|&nbsp;"#, options: .regularExpression) != nil { return true }
-        if sample.range(of: #"[A-Za-z]{3,}"#, options: .regularExpression) != nil,
-           sample.range(of: #"[+\/=]{3,}"#, options: .regularExpression) == nil {
+        let sample = String(value.prefix(800))
+        guard !sample.isEmpty else { return false }
+
+        let hasHTML = sample.range(
+            of: #"(?i)<p\b|</p>|<br\s*/?>|&nbsp;|<div\b"#,
+            options: .regularExpression
+        ) != nil
+
+        let letters = sample.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
+        let spaces = sample.unicodeScalars.filter { CharacterSet.whitespacesAndNewlines.contains($0) }.count
+        let weird = sample.unicodeScalars.filter { scalar in
+            let v = scalar.value
+            // Latin-1 / Latin Extended common in failed XOR soup
+            return (v >= 0x0080 && v <= 0x024F) || (v >= 0x1E00 && v <= 0x1EFF)
+        }.count
+
+        let ratioLetters = Double(letters) / Double(max(sample.count, 1))
+        let ratioSpaces = Double(spaces) / Double(max(sample.count, 1))
+        let ratioWeird = Double(weird) / Double(max(sample.count, 1))
+
+        if hasHTML && ratioWeird < 0.12 {
             return true
+        }
+
+        // Plain text chapters (rare): lots of letters/spaces, little soup
+        if ratioLetters > 0.45 && ratioSpaces > 0.08 && ratioWeird < 0.05 {
+            let cyr = sample.range(of: #"[А-Яа-яЁё]{4,}"#, options: .regularExpression) != nil
+            let lat = sample.range(of: #"[A-Za-z]{4,}"#, options: .regularExpression) != nil
+            return cyr || lat
         }
         return false
     }
