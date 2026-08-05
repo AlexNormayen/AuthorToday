@@ -58,7 +58,13 @@ final class DownloadManager: ObservableObject {
                 viewsCount: nil,
                 chapterCount: chapters.count,
                 downloadAllowed: nil,
-                isFinished: nil
+                isFinished: nil,
+                price: nil,
+                discount: nil,
+                isPurchased: nil,
+                orderStatus: nil,
+                orderStatusMessage: nil,
+                freeChapterCount: nil
             )
         } else {
             throw APIError.message("Нет сети и книга ещё не скачана")

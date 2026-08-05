@@ -43,7 +43,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(AppTheme.mist.ignoresSafeArea())
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Библиотека")
             .searchable(text: $query, prompt: "Название или автор")
             .toolbar {
@@ -108,6 +108,7 @@ struct LibraryRow: View {
     let work: CachedWork
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
+    @EnvironmentObject private var appearance: AppAppearanceStore
 
     var body: some View {
         HStack(spacing: 14) {
@@ -117,7 +118,7 @@ struct LibraryRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(work.title)
                     .font(.system(.body, design: .serif).weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
@@ -130,7 +131,7 @@ struct LibraryRow: View {
                     if work.isFullyDownloaded {
                         Label("Офлайн", systemImage: "arrow.down.circle.fill")
                             .font(.caption2)
-                            .foregroundStyle(AppTheme.moss)
+                            .foregroundStyle(appearance.accent)
                     } else if let p = offline.downloadProgress[work.workId], p > 0, p < 1 {
                         ProgressView(value: p)
                             .frame(width: 60)

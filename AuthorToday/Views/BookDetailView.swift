@@ -5,11 +5,13 @@ struct BookDetailView: View {
 
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var details: WorkDetails?
     @State private var error: String?
     @State private var isLoading = true
     @State private var openReader = false
     @State private var startChapterId: Int?
+    @State private var showPurchase = false
 
     var body: some View {
         Group {
@@ -28,21 +30,45 @@ struct BookDetailView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(details.displayTitle)
                                     .font(.system(.title2, design: .serif).weight(.semibold))
-                                    .foregroundStyle(AppTheme.ink)
                                 Text(details.displayAuthor)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                 if let genre = details.genreName {
                                     Text([genre, details.secondGenreName].compactMap { $0 }.joined(separator: " · "))
                                         .font(.caption)
-                                        .foregroundStyle(AppTheme.moss)
+                                        .foregroundStyle(appearance.accent)
+                                }
+                                if details.isPurchased == true {
+                                    Label("Куплено", systemImage: "checkmark.seal.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(appearance.accent)
+                                } else if let price = details.displayPriceText {
+                                    Text(price)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(appearance.accent)
                                 }
                                 if offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded }) {
-                                    Label("Скачано", systemImage: "checkmark.circle.fill")
+                                    Label("Скачано", systemImage: "arrow.down.circle.fill")
                                         .font(.caption)
-                                        .foregroundStyle(AppTheme.moss)
+                                        .foregroundStyle(appearance.accent)
                                 }
                             }
+                        }
+
+                        if details.needsPurchase {
+                            Button {
+                                Task {
+                                    try? await APIClient.shared.establishWebSession()
+                                    showPurchase = true
+                                }
+                            } label: {
+                                Text(details.displayPriceText.map { "Купить за \($0)" } ?? "Купить на author.today")
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+
+                            Text("Оплата проходит на сайте author.today в защищённом окне. После покупки нажмите «Обновить» и откройте книгу снова.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
 
                         Button {
@@ -53,6 +79,8 @@ struct BookDetailView: View {
                             Text(offline.progress(for: workId) != nil ? "Продолжить чтение" : "Читать")
                         }
                         .buttonStyle(PrimaryButtonStyle())
+                        .opacity(details.availableChapters.isEmpty && details.needsPurchase ? 0.45 : 1)
+                        .disabled(details.availableChapters.isEmpty && details.needsPurchase)
 
                         if let annotation = details.annotation, !annotation.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
@@ -68,20 +96,28 @@ struct BookDetailView: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Оглавление")
                                     .font(AppTheme.headlineFont)
-                                ForEach(chapters.filter(\.isAvailableEffective)) { chapter in
+                                ForEach(chapters) { chapter in
                                     Button {
-                                        startChapterId = chapter.id
-                                        openReader = true
+                                        if chapter.isAvailableEffective {
+                                            startChapterId = chapter.id
+                                            openReader = true
+                                        } else if details.needsPurchase {
+                                            showPurchase = true
+                                        }
                                     } label: {
                                         HStack {
                                             Text(chapter.displayTitle)
                                                 .font(.subheadline)
-                                                .foregroundStyle(AppTheme.ink)
+                                                .foregroundStyle(chapter.isAvailableEffective ? Color.primary : .secondary)
                                                 .multilineTextAlignment(.leading)
                                             Spacer()
-                                            if offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+                                            if !chapter.isAvailableEffective {
+                                                Image(systemName: "lock.fill")
+                                                    .foregroundStyle(.secondary)
+                                                    .font(.caption)
+                                            } else if offline.isChapterCached(workId: workId, chapterId: chapter.id) {
                                                 Image(systemName: "arrow.down.circle.fill")
-                                                    .foregroundStyle(AppTheme.moss)
+                                                    .foregroundStyle(appearance.accent)
                                                     .font(.caption)
                                             }
                                         }
@@ -94,13 +130,29 @@ struct BookDetailView: View {
                     }
                     .padding(20)
                 }
-                .background(AppTheme.mist.ignoresSafeArea())
+                .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
         }
         .navigationTitle("Книга")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+        }
         .navigationDestination(isPresented: $openReader) {
             ReaderView(workId: workId, initialChapterId: startChapterId)
+        }
+        .sheet(isPresented: $showPurchase, onDismiss: {
+            Task { await load() }
+        }) {
+            if let details {
+                PurchaseWebView(url: details.purchaseURL, title: "Покупка")
+            }
         }
         .task {
             await load()
@@ -135,7 +187,13 @@ struct BookDetailView: View {
                     viewsCount: nil,
                     chapterCount: chapters.count,
                     downloadAllowed: nil,
-                    isFinished: nil
+                    isFinished: nil,
+                    price: nil,
+                    discount: nil,
+                    isPurchased: nil,
+                    orderStatus: nil,
+                    orderStatusMessage: nil,
+                    freeChapterCount: nil
                 )
             } else {
                 error = "Нет сети и нет локальной копии"

@@ -24,7 +24,7 @@ struct NotificationsView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.displayText)
                                     .font(.body)
-                                    .foregroundStyle((item.isRead ?? false) ? .secondary : AppTheme.ink)
+                                    .foregroundStyle((item.isRead ?? false) ? .secondary : Color.primary)
                                     .multilineTextAlignment(.leading)
                                 if let time = item.creationTime {
                                     Text(time)

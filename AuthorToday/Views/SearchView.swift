@@ -34,7 +34,7 @@ struct SearchView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(work.displayTitle)
                                         .font(.system(.body, design: .serif).weight(.medium))
-                                        .foregroundStyle(AppTheme.ink)
+                                        .foregroundStyle(.primary)
                                         .multilineTextAlignment(.leading)
                                     Text(work.displayAuthor)
                                         .font(.subheadline)
@@ -46,7 +46,7 @@ struct SearchView: View {
                     .listStyle(.plain)
                 }
             }
-            .background(AppTheme.mist.ignoresSafeArea())
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Поиск")
             .searchable(text: $query, prompt: "Название или автор")
             .onSubmit(of: .search) {

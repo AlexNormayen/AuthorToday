@@ -61,7 +61,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(AppTheme.moss.opacity(configuration.isPressed ? 0.8 : 1))
+            .background(Color.accentColor.opacity(configuration.isPressed ? 0.8 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

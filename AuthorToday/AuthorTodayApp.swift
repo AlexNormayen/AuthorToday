@@ -5,6 +5,7 @@ import SwiftData
 struct AuthorTodayApp: App {
     @StateObject private var auth = AuthService.shared
     @StateObject private var readerSettings = ReaderSettingsStore()
+    @StateObject private var appearance = AppAppearanceStore()
     @StateObject private var offlineStore = OfflineStore.shared
     @StateObject private var notifications = NotificationPoller.shared
 
@@ -13,9 +14,11 @@ struct AuthorTodayApp: App {
             RootView()
                 .environmentObject(auth)
                 .environmentObject(readerSettings)
+                .environmentObject(appearance)
                 .environmentObject(offlineStore)
                 .environmentObject(notifications)
-                .preferredColorScheme(readerSettings.appColorScheme)
+                .preferredColorScheme(appearance.preferredColorScheme)
+                .tint(appearance.accent)
                 .task {
                     await notifications.configure()
                     if auth.isAuthenticated {

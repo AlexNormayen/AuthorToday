@@ -127,6 +127,12 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     let chapterCount: Int?
     let downloadAllowed: Bool?
     let isFinished: Bool?
+    let price: Double?
+    let discount: Double?
+    let isPurchased: Bool?
+    let orderStatus: String?
+    let orderStatusMessage: String?
+    let freeChapterCount: Int?
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -138,6 +144,28 @@ struct WorkDetails: Codable, Identifiable, Sendable {
 
     var availableChapters: [ChapterMeta] {
         (chapters ?? []).filter(\.isAvailableEffective)
+    }
+
+    var needsPurchase: Bool {
+        if isPurchased == true { return false }
+        let statusLower = (status ?? "").lowercased()
+        if statusLower == "free" { return false }
+        if let price, price > 0 { return true }
+        let locked = (chapters ?? []).contains { !$0.isAvailableEffective }
+        return locked && statusLower.contains("sale")
+    }
+
+    var displayPriceText: String? {
+        guard let price, price > 0 else { return nil }
+        if let discount, discount > 0 {
+            let final = price * (1.0 - discount / 100.0)
+            return String(format: "%.0f ₽ (−%.0f%%)", final, discount)
+        }
+        return String(format: "%.0f ₽", price)
+    }
+
+    var purchaseURL: URL {
+        URL(string: "https://author.today/work/\(id)")!
     }
 }
 

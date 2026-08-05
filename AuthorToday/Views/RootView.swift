@@ -33,6 +33,7 @@ struct RootView: View {
 
 struct MainTabView: View {
     @EnvironmentObject private var notifications: NotificationPoller
+    @EnvironmentObject private var appearance: AppAppearanceStore
 
     var body: some View {
         TabView {
@@ -57,13 +58,14 @@ struct MainTabView: View {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
         }
-        .tint(AppTheme.moss)
+        .tint(appearance.accent)
     }
 }
 
 struct SettingsHubView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var readerSettings: ReaderSettingsStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
 
     var body: some View {
         NavigationStack {
@@ -83,14 +85,12 @@ struct SettingsHubView: View {
                     }
                 }
 
-                Section("Читалка") {
-                    NavigationLink("Настройки чтения") {
-                        ReaderSettingsView()
+                Section("Оформление") {
+                    NavigationLink("Тема приложения и тёмный режим") {
+                        AppearanceSettingsView()
                     }
-                    Picker("Перелистывание", selection: $readerSettings.pageTurnMode) {
-                        ForEach(PageTurnMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
+                    NavigationLink("Настройки читалки") {
+                        ReaderSettingsView()
                     }
                 }
 
@@ -106,7 +106,7 @@ struct SettingsHubView: View {
                 Section("О приложении") {
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
-                    Text("Пуш через Apple Push недоступен без платного Apple Developer. Используются локальные оповещения по опросу API.")
+                    Text("Покупка книг открывает оплату на author.today. Пуш через Apple Push недоступен без платного Developer — используются локальные оповещения.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
