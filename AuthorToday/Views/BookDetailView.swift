@@ -104,7 +104,7 @@ struct BookDetailView: View {
                             .buttonStyle(.bordered)
                         }
 
-                        if downloads.online, let details, !(details.availableChapters.isEmpty) {
+                        if downloads.online, !details.availableChapters.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Загрузка")
                                     .font(AppTheme.headlineFont)

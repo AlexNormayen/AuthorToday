@@ -18,6 +18,7 @@ workflows:
       - name: Build without code signing
         script: |
           set -euo pipefail
+          set -x
           xcodebuild \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
@@ -30,7 +31,10 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=NO \
-            build
+            build | tee "$CM_BUILD_DIR/xcodebuild.log"
+          # Surface the real compiler / asset errors at the end of the Codemagic log
+          echo "==== xcodebuild errors (if any) ===="
+          grep -E "error:|fatal error:|❌|warning:.*AppIcon" "$CM_BUILD_DIR/xcodebuild.log" | tail -n 80 || true
 
       - name: Package AuthorToday.ipa
         script: |
