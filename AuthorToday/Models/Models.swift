@@ -164,12 +164,14 @@ struct ChapterTextPayload: Codable, Sendable {
     let id: Int?
     let text: String?
     let title: String?
+    let key: String?
     let data: Nested?
 
     struct Nested: Codable, Sendable {
         let text: String?
         let title: String?
         let id: Int?
+        let key: String?
     }
 
     var resolvedText: String? {
@@ -178,6 +180,10 @@ struct ChapterTextPayload: Codable, Sendable {
 
     var resolvedTitle: String? {
         title ?? data?.title
+    }
+
+    var resolvedKey: String? {
+        key ?? data?.key
     }
 }
 

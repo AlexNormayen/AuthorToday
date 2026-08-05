@@ -1,23 +1,28 @@
 import Foundation
 
 enum ChapterDecryptor {
-    /// Author.Today XOR obfuscation using `Reader-Secret` response header.
-    /// Ported from public crawler implementations of the same scheme.
+    /// Author.Today XOR scheme used by the official web reader / mobile API.
+    /// Cipher = reverse(secret) + "@_@"
+    /// Operates on UTF-16 code units (same as popular open-source clients).
     static func decrypt(_ encrypted: String, readerSecret: String) -> String {
-        let cipher = String(readerSecret.reversed()) + "@_@"
-        let cipherScalars = Array(cipher.unicodeScalars)
+        let secret = readerSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty, !encrypted.isEmpty else { return encrypted }
 
-        // Treat encrypted string as UTF-16 code units (as returned by JSON),
-        // then XOR each unit with the repeating cipher.
-        let units = Array(encrypted.utf16)
-        guard !units.isEmpty, !cipherScalars.isEmpty else { return encrypted }
+        let cipher = String(secret.reversed()) + "@_@"
+        let cipherScalars = Array(cipher.unicodeScalars)
+        guard !cipherScalars.isEmpty else { return encrypted }
+
+        // Mirror Python: encrypted.encode("utf-16")[2:] then LE code units.
+        var encoded = Array(encrypted.utf16)
+        // If Swift string somehow carried BOM, drop it before XOR.
+        if encoded.first == 0xFEFF {
+            encoded.removeFirst()
+        }
 
         var decrypted = [UInt16]()
-        decrypted.reserveCapacity(units.count)
+        decrypted.reserveCapacity(encoded.count + 1)
 
-        // Skip BOM if present in decrypted stream logic used by crawlers —
-        // they prepend BOM after XOR. We XOR in place and strip BOM at end.
-        for (i, unit) in units.enumerated() {
+        for (i, unit) in encoded.enumerated() {
             let key = UInt16(cipherScalars[i % cipherScalars.count].value)
             decrypted.append(unit ^ key)
         }
@@ -27,5 +32,17 @@ enum ChapterDecryptor {
         }
 
         return String(utf16CodeUnits: decrypted, count: decrypted.count)
+    }
+
+    /// Returns true when decrypted output looks like readable HTML/text rather than ciphertext.
+    static func looksLikePlaintext(_ value: String) -> Bool {
+        let sample = String(value.prefix(400))
+        if sample.range(of: #"[А-Яа-яЁё]"#, options: .regularExpression) != nil { return true }
+        if sample.range(of: #"(?i)<p|<br|</p>|&nbsp;"#, options: .regularExpression) != nil { return true }
+        if sample.range(of: #"[A-Za-z]{3,}"#, options: .regularExpression) != nil,
+           sample.range(of: #"[+\/=]{3,}"#, options: .regularExpression) == nil {
+            return true
+        }
+        return false
     }
 }

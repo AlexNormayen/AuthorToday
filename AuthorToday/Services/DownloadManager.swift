@@ -101,9 +101,15 @@ final class DownloadManager: ObservableObject {
         store: OfflineStore
     ) async throws -> (title: String, html: String) {
         if let cached = store.chapter(workId: workId, chapterId: chapter.id) {
-            return (cached.title, cached.htmlText)
+            if ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
+                return (cached.title, cached.htmlText)
+            }
+            // Cached ciphertext from older builds — refetch
         }
         guard isOnline else {
+            if let cached = store.chapter(workId: workId, chapterId: chapter.id) {
+                return (cached.title, cached.htmlText)
+            }
             throw APIError.message("Глава не скачана, нет сети")
         }
 

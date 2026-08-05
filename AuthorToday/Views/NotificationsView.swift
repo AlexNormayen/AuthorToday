@@ -9,9 +9,10 @@ struct NotificationsView: View {
             Group {
                 if notifications.items.isEmpty {
                     ContentUnavailableView(
-                        "Нет оповещений",
+                        notifications.lastError == nil ? "Лента пуста" : "Не удалось загрузить",
                         systemImage: "bell.slash",
-                        description: Text("Новые события с сайта появятся здесь")
+                        description: Text(notifications.lastError
+                            ?? "Новости с author.today/feed появятся здесь")
                     )
                 } else {
                     List(notifications.items, id: \.stableId) { item in
@@ -37,13 +38,12 @@ struct NotificationsView: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Оповещения")
+            .navigationTitle("Лента")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Прочитать всё") {
-                        Task { await notifications.markAllRead() }
+                    Button("Обновить") {
+                        Task { await notifications.refresh(announceNew: false) }
                     }
-                    .disabled(notifications.unreadCount == 0)
                 }
             }
             .refreshable {

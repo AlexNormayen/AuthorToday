@@ -45,14 +45,31 @@ final class OfflineStore: ObservableObject {
         defer { isSyncing = false }
 
         do {
+            try? await APIClient.shared.establishWebSession()
+
             var page = 1
             var collected: [WorkMeta] = []
-            while true {
-                let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                collected.append(contentsOf: items)
-                if items.isEmpty || items.count < 50 { break }
-                page += 1
-                if page > 40 { break }
+            var apiError: Error?
+            do {
+                while true {
+                    let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
+                    collected.append(contentsOf: items)
+                    if items.isEmpty || items.count < 50 { break }
+                    page += 1
+                    if page > 40 { break }
+                }
+            } catch {
+                apiError = error
+            }
+
+            // Fallback: public/profile library pages (works for dark_tarkhan-style URLs)
+            if collected.isEmpty {
+                let username = AuthService.shared.user?.userName
+                if let username, !username.isEmpty {
+                    collected = try await APIClient.shared.libraryFromProfile(username: username)
+                } else if let apiError {
+                    throw apiError
+                }
             }
 
             for meta in collected {
@@ -61,6 +78,9 @@ final class OfflineStore: ObservableObject {
             try modelContext.save()
             lastLibrarySync = .now
             reloadLibrary()
+            if collected.isEmpty {
+                lastSyncError = nil
+            }
         } catch {
             lastSyncError = error.localizedDescription
             reloadLibrary()

@@ -40,6 +40,7 @@ final class AuthService: ObservableObject {
             }
             isAuthenticated = true
             await refreshProfile()
+            try? await APIClient.shared.establishWebSession(token: response.token)
         } catch {
             lastError = error.localizedDescription
             isAuthenticated = false
@@ -48,6 +49,10 @@ final class AuthService: ObservableObject {
 
     func refreshProfile() async {
         do {
+            if let token = KeychainStore.get(tokenKey) {
+                await APIClient.shared.setToken(token)
+                try? await APIClient.shared.establishWebSession(token: token)
+            }
             user = try await APIClient.shared.currentUser()
         } catch {
             if case APIError.unauthorized = error {

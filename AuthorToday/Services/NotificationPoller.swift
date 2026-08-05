@@ -50,10 +50,16 @@ final class NotificationPoller: ObservableObject {
 
     func refresh(announceNew: Bool) async {
         do {
-            let check = try await APIClient.shared.checkNotifications()
-            unreadCount = check.effectiveUnread
-            let list = try await APIClient.shared.notifications(take: 40)
+            var list = try await APIClient.shared.feedItems(limit: 50)
+            if list.isEmpty {
+                // Fallback to classic notifications only
+                list = (try? await APIClient.shared.notifications(take: 40)) ?? []
+            }
             items = list
+            unreadCount = list.filter { !($0.isRead ?? false) }.count
+            if let check = try? await APIClient.shared.checkNotifications() {
+                unreadCount = max(unreadCount, check.effectiveUnread)
+            }
 
             if announceNew {
                 for item in list where !(item.isRead ?? false) {
@@ -68,6 +74,7 @@ final class NotificationPoller: ObservableObject {
                 knownIds.formUnion(list.map(\.stableId))
                 persistKnown()
             }
+            lastError = nil
         } catch {
             lastError = error.localizedDescription
         }

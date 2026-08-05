@@ -48,7 +48,7 @@ struct MainTabView: View {
 
             NotificationsView()
                 .tabItem {
-                    Label("Оповещения", systemImage: "bell")
+                    Label("Лента", systemImage: "bell")
                 }
                 .badge(notifications.unreadCount)
 
