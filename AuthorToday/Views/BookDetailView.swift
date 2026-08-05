@@ -104,6 +104,43 @@ struct BookDetailView: View {
                             .buttonStyle(.bordered)
                         }
 
+                        if downloads.online, let details, !(details.availableChapters.isEmpty) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Загрузка")
+                                    .font(AppTheme.headlineFont)
+                                Button {
+                                    Task {
+                                        await downloads.downloadEntireBook(details: details, store: offline)
+                                    }
+                                } label: {
+                                    if downloads.activeDownloads.contains(workId) {
+                                        HStack {
+                                            ProgressView()
+                                            Text("Скачивание…")
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                    } else {
+                                        Label(
+                                            offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
+                                            ? "Скачать заново" : "Скачать все главы",
+                                            systemImage: "arrow.down.circle"
+                                        )
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(downloads.activeDownloads.contains(workId))
+
+                                if let p = offline.downloadProgress[workId], p > 0, p < 1 {
+                                    ProgressView(value: p)
+                                }
+
+                                Text("Отдельные главы можно скачать, открыв их в читалке (кэшируются автоматически). Кнопка выше качает книгу целиком для офлайна.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
                         if let annotation = details.annotation, !annotation.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("О книге")
@@ -188,7 +225,7 @@ struct BookDetailView: View {
             if downloads.online {
                 details = try await APIClient.shared.workDetails(id: workId)
                 if let details {
-                    offline.upsertWork(from: details)
+                    offline.cacheWorkDetails(details)
                 }
             } else if let cached = offline.library.first(where: { $0.workId == workId }) {
                 let chapters = (cached.chaptersJSON).flatMap {

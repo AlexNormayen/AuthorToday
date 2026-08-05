@@ -20,12 +20,16 @@ struct RootView: View {
             offline.attach(context: modelContext)
             downloads.startMonitoring()
             if auth.isAuthenticated {
+                await auth.refreshProfile()
                 await offline.syncLibrary(force: true)
             }
         }
         .onChange(of: auth.isAuthenticated) { _, loggedIn in
             if loggedIn {
-                Task { await offline.syncLibrary(force: true) }
+                Task {
+                    await auth.refreshProfile()
+                    await offline.syncLibrary(force: true)
+                }
             }
         }
     }
@@ -66,6 +70,7 @@ struct SettingsHubView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var readerSettings: ReaderSettingsStore
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @EnvironmentObject private var offline: OfflineStore
 
     var body: some View {
         NavigationStack {
@@ -106,6 +111,12 @@ struct SettingsHubView: View {
                 Section("О приложении") {
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
+                    if let user = auth.user?.userName {
+                        LabeledContent("Профиль", value: "/u/\(user)/library")
+                    }
+                    if offline.lastSyncCount > 0 {
+                        LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)")
+                    }
                     Text("Покупка книг открывает оплату на author.today. Пуш через Apple Push недоступен без платного Developer — используются локальные оповещения.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

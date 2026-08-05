@@ -22,6 +22,8 @@ struct ReaderView: View {
     @State private var showTOC = false
     @State private var pageIndex = 0
     @State private var scrollOffset: Double = 0
+    @State private var didAddToLibrary = false
+    @State private var pageCountForChapter = 1
 
     private var currentChapter: ChapterMeta? {
         chapters.indices.contains(chapterIndex) ? chapters[chapterIndex] : nil
@@ -142,6 +144,21 @@ struct ReaderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, settings.marginHorizontal)
                 .padding(.vertical, settings.marginVertical + (showChrome ? 56 : 12))
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: ScrollOffsetKey.self,
+                            value: -geo.frame(in: .named("readerScroll")).minY
+                        )
+                    }
+                )
+        }
+        .coordinateSpace(name: "readerScroll")
+        .onPreferenceChange(ScrollOffsetKey.self) { value in
+            scrollOffset = value
+            // Approximate half-chapter by scroll depth vs content heuristic
+            let approx = min(max(value / 1200.0, 0), 1)
+            considerLibraryAdd(chapterProgress: approx)
         }
         .simultaneousGesture(
             TapGesture().onEnded { toggleChrome() }
@@ -192,9 +209,14 @@ struct ReaderView: View {
             }
             .onChange(of: pageIndex) { _, newValue in
                 if newValue >= pages.count - 1 {
-                    // near end — optional auto next chapter could go here
+                    // near end
                 }
+                pageCountForChapter = max(pages.count, 1)
                 persistProgress()
+                considerLibraryAdd(chapterProgress: chapterReadProgress(page: newValue, pages: pages.count))
+            }
+            .onAppear {
+                pageCountForChapter = max(pages.count, 1)
             }
         }
     }
@@ -275,10 +297,26 @@ struct ReaderView: View {
             html = result.html
             chapterTitle = result.title
             plainText = HTMLText.plain(from: result.html)
+            if Self.looksGarbled(plainText) {
+                // Drop bad cache from older builds and refetch once
+                offline.removeCachedChapter(workId: workId, chapterId: result.chapterId)
+                let chapter = chapters.first(where: { $0.id == result.chapterId }) ?? chapters[0]
+                let idx = chapters.firstIndex(where: { $0.id == chapter.id }) ?? 0
+                let reloaded = try await downloads.loadChapter(
+                    workId: workId,
+                    chapter: chapter,
+                    sortIndex: idx,
+                    store: offline
+                )
+                html = reloaded.html
+                chapterTitle = reloaded.title
+                plainText = HTMLText.plain(from: reloaded.html)
+            }
             if let progress = offline.progress(for: workId) {
                 pageIndex = progress.pageIndex
                 scrollOffset = progress.offsetY
             }
+            didAddToLibrary = offline.isInLibrary(workId)
         } catch {
             self.error = error.localizedDescription
         }
@@ -365,6 +403,34 @@ struct ReaderView: View {
         }
     }
 
+    private func chapterReadProgress(page: Int, pages: Int) -> Double {
+        guard pages > 0 else { return 0 }
+        if pages == 1 {
+            // Single-page chapter: count as fully readable once opened and chrome toggled / short delay
+            return plainText.count < 800 ? 1.0 : 0.55
+        }
+        return Double(page + 1) / Double(pages)
+    }
+
+    private func considerLibraryAdd(chapterProgress: Double) {
+        guard !didAddToLibrary, chapterProgress >= 0.5, downloads.online else { return }
+        didAddToLibrary = true
+        Task {
+            try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
+        }
+    }
+
+    static func looksGarbled(_ text: String) -> Bool {
+        guard text.count > 60 else { return false }
+        let start = text.index(text.startIndex, offsetBy: min(40, text.count - 1))
+        let sample = String(text[start...].prefix(500))
+        let weird = sample.unicodeScalars.filter { scalar in
+            let v = scalar.value
+            return (v >= 0x0080 && v <= 0x024F) || (v >= 0x0370 && v <= 0x03FF)
+        }.count
+        return Double(weird) / Double(max(sample.count, 1)) > 0.08
+    }
+
     /// Rough pagination by character budget based on viewport size.
     private func paginate(text: String, size: CGSize) -> [String] {
         let usableH = max(size.height - settings.marginVertical * 2 - 80, 120)
@@ -396,6 +462,13 @@ struct ReaderView: View {
             rest = rest[split...].drop(while: { $0 == "\n" || $0 == " " })
         }
         return pages.isEmpty ? [text] : pages
+    }
+}
+
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: Double = 0
+    static func reduce(value: inout Double, nextValue: () -> Double) {
+        value = nextValue()
     }
 }
 

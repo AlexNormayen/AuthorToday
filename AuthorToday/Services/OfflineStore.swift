@@ -10,6 +10,7 @@ final class OfflineStore: ObservableObject {
     @Published var isSyncing = false
     @Published var downloadProgress: [Int: Double] = [:] // workId -> 0...1
     @Published var lastSyncError: String?
+    @Published var lastSyncCount: Int = 0
 
     private var modelContext: ModelContext?
     private var lastLibrarySync: Date? {
@@ -27,7 +28,12 @@ final class OfflineStore: ObservableObject {
         let descriptor = FetchDescriptor<CachedWork>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        library = (try? modelContext.fetch(descriptor)) ?? []
+        // Only show works that belong to the site library (or were explicitly added)
+        let all = (try? modelContext.fetch(descriptor)) ?? []
+        library = all.filter { work in
+            guard let state = work.libraryState?.lowercased() else { return true }
+            return state != "localonly" && state != "none"
+        }
     }
 
     func syncLibraryIfNeeded(force: Bool = false) async {
@@ -51,40 +57,76 @@ final class OfflineStore: ObservableObject {
         do {
             try? await APIClient.shared.establishWebSession()
 
-            var page = 1
+            // Ensure we know the profile username (needed for /u/{user}/library)
+            if AuthService.shared.user?.userName == nil {
+                await AuthService.shared.refreshProfile()
+            }
+
             var collected: [WorkMeta] = []
-            var apiError: Error?
-            do {
-                while true {
-                    let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                    collected.append(contentsOf: items)
-                    if items.isEmpty || items.count < 50 { break }
-                    page += 1
-                    if page > 40 { break }
+            var errors: [String] = []
+
+            // Primary: full public profile library — this is what the site shows at
+            // https://author.today/u/{user}/library (e.g. dark_tarkhan)
+            if let username = AuthService.shared.user?.userName, !username.isEmpty {
+                do {
+                    collected = try await APIClient.shared.libraryFromProfile(username: username, maxPages: 60)
+                } catch {
+                    errors.append("profile: \(error.localizedDescription)")
                 }
-            } catch {
-                apiError = error
+            } else {
+                errors.append("profile: нет userName")
             }
 
-            // Fallback: public/profile library pages (works for dark_tarkhan-style URLs)
+            // Supplement / fallback: official API (often incomplete vs the site shelf)
             if collected.isEmpty {
-                let username = AuthService.shared.user?.userName
-                if let username, !username.isEmpty {
-                    collected = try await APIClient.shared.libraryFromProfile(username: username)
-                } else if let apiError {
-                    throw apiError
+                var page = 1
+                do {
+                    while true {
+                        let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
+                        collected.append(contentsOf: items)
+                        if items.isEmpty || items.count < 50 { break }
+                        page += 1
+                        if page > 40 { break }
+                    }
+                } catch {
+                    errors.append("api: \(error.localizedDescription)")
                 }
             }
 
-            for meta in collected {
-                upsertWork(from: meta, context: modelContext)
+            guard !collected.isEmpty else {
+                lastSyncError = errors.isEmpty
+                    ? "Библиотека на сайте пуста или недоступна"
+                    : errors.joined(separator: "; ")
+                reloadLibrary()
+                return
             }
+
+            let syncedIDs = Set(collected.map(\.id))
+            for meta in collected {
+                upsertWork(from: meta, context: modelContext, markFromSite: true)
+            }
+
+            // Drop local-only leftovers that are not on the site shelf anymore
+            let descriptor = FetchDescriptor<CachedWork>()
+            if let existing = try? modelContext.fetch(descriptor) {
+                for work in existing where !syncedIDs.contains(work.workId) {
+                    let state = (work.libraryState ?? "").lowercased()
+                    if state == "localonly" || work.isFullyDownloaded == false && work.chaptersJSON == nil {
+                        // keep offline downloads even if removed remotely
+                        if !work.isFullyDownloaded {
+                            modelContext.delete(work)
+                        } else {
+                            work.libraryState = "localonly"
+                        }
+                    }
+                }
+            }
+
             try modelContext.save()
             lastLibrarySync = .now
+            lastSyncCount = collected.count
+            lastSyncError = nil
             reloadLibrary()
-            if collected.isEmpty {
-                lastSyncError = nil
-            }
         } catch {
             lastSyncError = error.localizedDescription
             reloadLibrary()
@@ -94,12 +136,10 @@ final class OfflineStore: ObservableObject {
     func addToSiteLibrary(workId: Int, state: String = "Reading") async throws {
         try await APIClient.shared.addToLibrary(workId: workId, state: state)
         if let meta = try? await APIClient.shared.workMeta(id: workId) {
-            upsertWork(from: meta)
+            upsertWork(from: meta, markFromSite: true)
             try? modelContext?.save()
             reloadLibrary()
         }
-        // Refresh full library so site/app stay aligned
-        await syncLibrary(force: true)
     }
 
     func removeCachedChapter(workId: Int, chapterId: Int) {
@@ -114,7 +154,19 @@ final class OfflineStore: ObservableObject {
         }
     }
 
-    func upsertWork(from meta: WorkMeta, context: ModelContext? = nil) {
+    func clearCachedChapters(workId: Int) {
+        guard let modelContext else { return }
+        let descriptor = FetchDescriptor<CachedChapter>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        if let items = try? modelContext.fetch(descriptor) {
+            for item in items { modelContext.delete(item) }
+            try? modelContext.save()
+        }
+        markDownloaded(workId: workId, fully: false)
+    }
+
+    func upsertWork(from meta: WorkMeta, context: ModelContext? = nil, markFromSite: Bool = true) {
         let ctx = context ?? modelContext
         guard let ctx else { return }
         let id = meta.id
@@ -122,12 +174,15 @@ final class OfflineStore: ObservableObject {
             predicate: #Predicate { $0.workId == id }
         )
         let existing = try? ctx.fetch(descriptor).first
+        let state = markFromSite
+            ? (meta.resolvedLibraryState ?? "Reading")
+            : (meta.resolvedLibraryState ?? existing?.libraryState)
         if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
             existing.coverURL = meta.absoluteCoverURL
             existing.annotation = meta.annotation
-            existing.libraryState = meta.resolvedLibraryState
+            existing.libraryState = state
             existing.lastReadChapterId = meta.lastReadChapterId ?? meta.lastChapterId ?? existing.lastReadChapterId
             existing.progress = meta.resolvedProgress
             existing.updatedAt = .now
@@ -138,7 +193,7 @@ final class OfflineStore: ObservableObject {
                 author: meta.displayAuthor,
                 coverURL: meta.absoluteCoverURL,
                 annotation: meta.annotation,
-                libraryState: meta.resolvedLibraryState,
+                libraryState: state,
                 lastReadChapterId: meta.lastReadChapterId ?? meta.lastChapterId,
                 progress: meta.resolvedProgress
             )
@@ -146,7 +201,8 @@ final class OfflineStore: ObservableObject {
         }
     }
 
-    func upsertWork(from details: WorkDetails) {
+    /// Updates chapter list / cover for a book without adding it to the site library shelf.
+    func cacheWorkDetails(_ details: WorkDetails) {
         guard let modelContext else { return }
         let id = details.id
         let descriptor = FetchDescriptor<CachedWork>(
@@ -162,6 +218,7 @@ final class OfflineStore: ObservableObject {
             existing.chaptersJSON = chaptersData
             existing.updatedAt = .now
         } else {
+            // Keep offline metadata, but hide from library shelf via localonly
             modelContext.insert(
                 CachedWork(
                     workId: details.id,
@@ -169,12 +226,24 @@ final class OfflineStore: ObservableObject {
                     author: details.displayAuthor,
                     coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
+                    libraryState: "localonly",
                     chaptersJSON: chaptersData
                 )
             )
         }
         try? modelContext.save()
-        reloadLibrary()
+        if library.contains(where: { $0.workId == id }) {
+            reloadLibrary()
+        }
+    }
+
+    /// Lookup including local-only cached works (not shown in library shelf).
+    func cachedWork(workId: Int) -> CachedWork? {
+        guard let modelContext else { return nil }
+        let descriptor = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 
     func cachedChapters(workId: Int) -> [CachedChapter] {
@@ -275,5 +344,9 @@ final class OfflineStore: ObservableObject {
 
     func isChapterCached(workId: Int, chapterId: Int) -> Bool {
         chapter(workId: workId, chapterId: chapterId) != nil
+    }
+
+    func isInLibrary(_ workId: Int) -> Bool {
+        library.contains(where: { $0.workId == workId })
     }
 }

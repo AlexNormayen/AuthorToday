@@ -39,8 +39,8 @@ final class DownloadManager: ObservableObject {
         let details: WorkDetails
         if isOnline {
             details = try await APIClient.shared.workDetails(id: workId)
-            store.upsertWork(from: details)
-        } else if let cached = store.library.first(where: { $0.workId == workId }),
+            store.cacheWorkDetails(details)
+        } else if let cached = store.cachedWork(workId: workId),
                   let data = cached.chaptersJSON,
                   let chapters = try? JSONDecoder().decode([ChapterMeta].self, from: data) {
             details = WorkDetails(
@@ -77,7 +77,10 @@ final class DownloadManager: ObservableObject {
 
         var remoteChapterId: Int?
         if isOnline, let meta = try? await APIClient.shared.workMeta(id: workId) {
-            store.upsertWork(from: meta)
+            // Update progress markers only if already in library
+            if store.isInLibrary(workId) {
+                store.upsertWork(from: meta, markFromSite: true)
+            }
             remoteChapterId = meta.lastReadChapterId
         }
 
@@ -96,15 +99,9 @@ final class DownloadManager: ObservableObject {
             store: store
         )
 
-        // Fire-and-forget full book download once reading started
-        Task {
-            await downloadEntireBook(details: details, store: store)
-        }
-
         if isOnline {
             try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
-            // Keep site library / progress in sync when reading in the app
-            try? await APIClient.shared.addToLibrary(workId: workId, state: "Reading")
+            // Progress only — do NOT add to site library until half a chapter is read
             try? await APIClient.shared.updateProgress(
                 workId: workId,
                 chapterId: chapterMeta.id,

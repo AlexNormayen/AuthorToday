@@ -70,21 +70,32 @@ struct PrimaryButtonStyle: ButtonStyle {
 enum HTMLText {
     static func plain(from html: String) -> String {
         var s = html
-        // Drop script/style blocks first
         for pattern in [#"(?is)<script[^>]*>.*?</script>"#, #"(?is)<style[^>]*>.*?</style>"#] {
             s = s.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
         }
         let replacements: [(String, String)] = [
             ("<br>", "\n"), ("<br/>", "\n"), ("<br />", "\n"),
             ("</p>", "\n\n"), ("</div>", "\n"), ("</li>", "\n"),
-            ("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
-            ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"),
+            ("&nbsp;", " "), ("&#160;", " "), ("&#xa0;", " "), ("&#xA0;", " "),
+            ("&amp;", "&"), ("&lt;", "<"),
+            ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"),
             ("&laquo;", "«"), ("&raquo;", "»"), ("&mdash;", "—"), ("&ndash;", "–")
         ]
         for (a, b) in replacements {
             s = s.replacingOccurrences(of: a, with: b, options: .caseInsensitive)
         }
-        // remove remaining tags
+        // Numeric entities &#1234;
+        while let match = s.range(of: #"&#(\d+);"#, options: .regularExpression) {
+            let token = String(s[match])
+            let digits = token
+                .replacingOccurrences(of: "&#", with: "")
+                .replacingOccurrences(of: ";", with: "")
+            if let value = UInt32(digits), let scalar = UnicodeScalar(value) {
+                s.replaceSubrange(match, with: String(Character(scalar)))
+            } else {
+                break
+            }
+        }
         s = s.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
         return s
             .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)

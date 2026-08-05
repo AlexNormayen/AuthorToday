@@ -40,9 +40,11 @@ actor APIClient {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.waitsForConnectivity = true
+        config.httpCookieAcceptPolicy = .always
+        config.httpShouldSetCookies = true
+        config.httpCookieStorage = HTTPCookieStorage.shared
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
-        // API often uses camelCase already
     }
 
     func setToken(_ token: String) {

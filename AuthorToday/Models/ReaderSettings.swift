@@ -34,11 +34,17 @@ enum PageTurnMode: String, CaseIterable, Identifiable, Codable {
 
 enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable {
     case system
+    case roboto
+    case verdana
+    case georgia
+    case arial
+    case alegreya
+    case timesNewRoman
+    case comfortaa
+    case firaSans
+    case ptSans
     case serif
     case rounded
-    case monospaced
-    case georgia
-    case palatino
     case charter
 
     var id: String { rawValue }
@@ -46,11 +52,17 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .system: return "System"
+        case .roboto: return "Roboto"
+        case .verdana: return "Verdana"
+        case .georgia: return "Georgia"
+        case .arial: return "Arial"
+        case .alegreya: return "Alegreya"
+        case .timesNewRoman: return "Times New Roman"
+        case .comfortaa: return "Comfortaa"
+        case .firaSans: return "Fira Sans"
+        case .ptSans: return "PT Sans"
         case .serif: return "New York"
         case .rounded: return "Rounded"
-        case .monospaced: return "Mono"
-        case .georgia: return "Georgia"
-        case .palatino: return "Palatino"
         case .charter: return "Charter"
         }
     }
@@ -58,11 +70,17 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable {
     func font(size: CGFloat) -> Font {
         switch self {
         case .system: return .system(size: size)
+        case .roboto: return .custom("Roboto", size: size)
+        case .verdana: return .custom("Verdana", size: size)
+        case .georgia: return .custom("Georgia", size: size)
+        case .arial: return .custom("Arial", size: size)
+        case .alegreya: return .custom("Alegreya", size: size)
+        case .timesNewRoman: return .custom("Times New Roman", size: size)
+        case .comfortaa: return .custom("Comfortaa", size: size)
+        case .firaSans: return .custom("FiraSans-Regular", size: size)
+        case .ptSans: return .custom("PTSans-Regular", size: size)
         case .serif: return .system(size: size, design: .serif)
         case .rounded: return .system(size: size, design: .rounded)
-        case .monospaced: return .system(size: size, design: .monospaced)
-        case .georgia: return .custom("Georgia", size: size)
-        case .palatino: return .custom("Palatino", size: size)
         case .charter: return .custom("Charter", size: size)
         }
     }
@@ -156,6 +174,15 @@ final class ReaderSettingsStore: ObservableObject {
     @Published var brightnessOverride: Double? {
         didSet { persist() }
     }
+    @Published var textWrap: Bool {
+        didSet { persist() }
+    }
+    @Published var useCustomColors: Bool {
+        didSet {
+            if useCustomColors { theme = .customColor }
+            persist()
+        }
+    }
 
     private let defaults = UserDefaults.standard
     private let imageURL: URL
@@ -164,18 +191,20 @@ final class ReaderSettingsStore: ObservableObject {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         imageURL = docs.appendingPathComponent("reader_custom_background.jpg")
 
-        fontFamily = ReaderFontFamily(rawValue: defaults.string(forKey: "rs.fontFamily") ?? "") ?? .serif
+        fontFamily = ReaderFontFamily(rawValue: defaults.string(forKey: "rs.fontFamily") ?? "") ?? .georgia
         fontSize = defaults.object(forKey: "rs.fontSize") as? Double ?? 19
         lineSpacing = defaults.object(forKey: "rs.lineSpacing") as? Double ?? 8
         paragraphSpacing = defaults.object(forKey: "rs.paragraphSpacing") as? Double ?? 12
         marginHorizontal = defaults.object(forKey: "rs.marginH") as? Double ?? 20
         marginVertical = defaults.object(forKey: "rs.marginV") as? Double ?? 16
-        pageTurnMode = PageTurnMode(rawValue: defaults.string(forKey: "rs.pageMode") ?? "") ?? .tapAndSwipe
+        pageTurnMode = PageTurnMode(rawValue: defaults.string(forKey: "rs.pageMode") ?? "") ?? .verticalScroll
         theme = ReaderThemePreset(rawValue: defaults.string(forKey: "rs.theme") ?? "") ?? .paper
-        customBackgroundHex = defaults.string(forKey: "rs.bgHex") ?? "#F5F3EB"
-        customTextHex = defaults.string(forKey: "rs.textHex") ?? "#1F1F22"
+        customBackgroundHex = defaults.string(forKey: "rs.bgHex") ?? "#FFFFFF"
+        customTextHex = defaults.string(forKey: "rs.textHex") ?? "#333333"
         backgroundImageOpacity = defaults.object(forKey: "rs.bgOpacity") as? Double ?? 0.35
         keepScreenOn = defaults.object(forKey: "rs.keepOn") as? Bool ?? true
+        textWrap = defaults.object(forKey: "rs.textWrap") as? Bool ?? false
+        useCustomColors = defaults.object(forKey: "rs.customColors") as? Bool ?? false
         if defaults.object(forKey: "rs.brightness") != nil {
             brightnessOverride = defaults.double(forKey: "rs.brightness")
         } else {
@@ -185,14 +214,14 @@ final class ReaderSettingsStore: ObservableObject {
     }
 
     var textColor: Color {
-        if theme == .customColor || theme == .customImage {
+        if useCustomColors || theme == .customColor || theme == .customImage {
             return Color(hex: customTextHex) ?? theme.defaultText
         }
         return theme.defaultText
     }
 
     var solidBackground: Color {
-        if theme == .customColor {
+        if useCustomColors || theme == .customColor {
             return Color(hex: customBackgroundHex) ?? theme.defaultBackground
         }
         if theme == .customImage {
@@ -245,6 +274,8 @@ final class ReaderSettingsStore: ObservableObject {
         defaults.set(customTextHex, forKey: "rs.textHex")
         defaults.set(backgroundImageOpacity, forKey: "rs.bgOpacity")
         defaults.set(keepScreenOn, forKey: "rs.keepOn")
+        defaults.set(textWrap, forKey: "rs.textWrap")
+        defaults.set(useCustomColors, forKey: "rs.customColors")
         if let brightnessOverride {
             defaults.set(brightnessOverride, forKey: "rs.brightness")
         } else {
