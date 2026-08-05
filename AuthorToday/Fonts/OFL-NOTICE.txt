@@ -1,0 +1,6 @@
+﻿Fonts bundled under SIL Open Font License / Apache 2.0:
+- Roboto (Apache 2.0) — Google
+- Comfortaa (OFL) — Johan Kalliomaki / Google Fonts
+- Fira Sans (OFL) — Mozilla / Carrois
+- PT Sans (OFL) — ParaType / Google Fonts
+- Alegreya (OFL) — Juan Pablo del Peral / Google Fonts

@@ -67,21 +67,41 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// PostScript / UIFont names. Bundled fonts use exact PostScript names from the TTF.
+    private var candidates: [String] {
+        switch self {
+        case .system: return []
+        case .roboto: return ["Roboto-Regular", "Roboto"]
+        case .verdana: return ["Verdana"]
+        case .georgia: return ["Georgia"]
+        case .arial: return ["ArialMT", "Arial"]
+        case .alegreya: return ["Alegreya-Regular", "Alegreya"]
+        case .timesNewRoman: return ["TimesNewRomanPSMT", "Times New Roman"]
+        case .comfortaa: return ["Comfortaa-Regular", "Comfortaa"]
+        case .firaSans: return ["FiraSans-Regular", "Fira Sans"]
+        case .ptSans: return ["PTSans-Regular", "PT Sans"]
+        case .serif: return []
+        case .rounded: return []
+        case .charter: return ["Charter"]
+        }
+    }
+
     func font(size: CGFloat) -> Font {
         switch self {
-        case .system: return .system(size: size)
-        case .roboto: return .custom("Roboto", size: size)
-        case .verdana: return .custom("Verdana", size: size)
-        case .georgia: return .custom("Georgia", size: size)
-        case .arial: return .custom("Arial", size: size)
-        case .alegreya: return .custom("Alegreya", size: size)
-        case .timesNewRoman: return .custom("Times New Roman", size: size)
-        case .comfortaa: return .custom("Comfortaa", size: size)
-        case .firaSans: return .custom("FiraSans-Regular", size: size)
-        case .ptSans: return .custom("PTSans-Regular", size: size)
-        case .serif: return .system(size: size, design: .serif)
-        case .rounded: return .system(size: size, design: .rounded)
-        case .charter: return .custom("Charter", size: size)
+        case .system:
+            return .system(size: size)
+        case .serif:
+            return .system(size: size, design: .serif)
+        case .rounded:
+            return .system(size: size, design: .rounded)
+        default:
+            for name in candidates {
+                if UIFont(name: name, size: size) != nil {
+                    return .custom(name, size: size)
+                }
+            }
+            // Fallback if a bundled font failed to register
+            return .system(size: size)
         }
     }
 }

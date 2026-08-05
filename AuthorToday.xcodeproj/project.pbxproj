@@ -29,6 +29,11 @@
 		100000000000000000000014 /* AppAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* AppAppearance.swift */; };
 		100000000000000000000015 /* PurchaseWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* PurchaseWebView.swift */; };
 		100000000000000000000016 /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* AppearanceSettingsView.swift */; };
+		100000000000000000000020 /* Roboto-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000020 /* Roboto-Regular.ttf */; };
+		100000000000000000000021 /* Alegreya-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000021 /* Alegreya-Regular.ttf */; };
+		100000000000000000000022 /* Comfortaa-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000022 /* Comfortaa-Regular.ttf */; };
+		100000000000000000000023 /* FiraSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000023 /* FiraSans-Regular.ttf */; };
+		100000000000000000000024 /* PTSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* PTSans-Regular.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,6 +60,12 @@
 		200000000000000000000014 /* AppAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAppearance.swift; sourceTree = "<group>"; };
 		200000000000000000000015 /* PurchaseWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseWebView.swift; sourceTree = "<group>"; };
 		200000000000000000000016 /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
+		200000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000020 /* Roboto-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Roboto-Regular.ttf"; sourceTree = "<group>"; };
+		200000000000000000000021 /* Alegreya-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Alegreya-Regular.ttf"; sourceTree = "<group>"; };
+		200000000000000000000022 /* Comfortaa-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Comfortaa-Regular.ttf"; sourceTree = "<group>"; };
+		200000000000000000000023 /* FiraSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Regular.ttf"; sourceTree = "<group>"; };
+		200000000000000000000024 /* PTSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PTSans-Regular.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,13 +99,27 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* AuthorTodayApp.swift */,
+				200000000000000000000017 /* Info.plist */,
 				500000000000000000000004 /* Models */,
 				500000000000000000000005 /* Services */,
 				500000000000000000000006 /* Views */,
 				500000000000000000000007 /* Theme */,
+				500000000000000000000009 /* Fonts */,
 				200000000000000000000013 /* Assets.xcassets */,
 			);
 			path = AuthorToday;
+			sourceTree = "<group>";
+		};
+		500000000000000000000009 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000020 /* Roboto-Regular.ttf */,
+				200000000000000000000021 /* Alegreya-Regular.ttf */,
+				200000000000000000000022 /* Comfortaa-Regular.ttf */,
+				200000000000000000000023 /* FiraSans-Regular.ttf */,
+				200000000000000000000024 /* PTSans-Regular.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		500000000000000000000004 /* Models */ = {
@@ -213,6 +238,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000013 /* Assets.xcassets in Resources */,
+				100000000000000000000020 /* Roboto-Regular.ttf in Resources */,
+				100000000000000000000021 /* Alegreya-Regular.ttf in Resources */,
+				100000000000000000000022 /* Comfortaa-Regular.ttf in Resources */,
+				100000000000000000000023 /* FiraSans-Regular.ttf in Resources */,
+				100000000000000000000024 /* PTSans-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,6 +321,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AuthorToday/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Author.Today";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -322,6 +353,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AuthorToday/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Author.Today";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
