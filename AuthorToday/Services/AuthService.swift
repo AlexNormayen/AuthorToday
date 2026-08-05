@@ -49,10 +49,6 @@ final class AuthService: ObservableObject {
     func refreshProfile() async {
         do {
             user = try await APIClient.shared.currentUser()
-            // Refresh token opportunistically
-            if let refreshed = try? await APIClient.shared.refreshToken() {
-                KeychainStore.set(refreshed.token, for: tokenKey)
-            }
         } catch {
             if case APIError.unauthorized = error {
                 logout()

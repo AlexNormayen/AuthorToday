@@ -29,12 +29,21 @@ struct CurrentUser: Codable, Identifiable, Sendable {
 struct LibraryPage: Codable, Sendable {
     let works: [WorkMeta]?
     let data: [WorkMeta]?
+    let searchResults: [WorkMeta]?
     let totalCount: Int?
     let hasMore: Bool?
+    let realTotalCount: Int?
+    let isLastPage: Bool?
 
     var items: [WorkMeta] {
-        works ?? data ?? []
+        works ?? data ?? searchResults ?? []
     }
+}
+
+struct WorkMetaEnvelope: Codable, Sendable {
+    let id: Int?
+    let data: WorkMeta?
+    let isSuccessful: Bool?
 }
 
 struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
@@ -52,10 +61,14 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     let secondGenreName: String?
     let likeCount: Int?
     let viewsCount: Int?
+    let viewCount: Int?
     let chapterCount: Int?
     let libraryState: String?
+    let workInLibraryState: String?
+    let inLibraryState: String?
     let progress: Double?
     let lastReadChapterId: Int?
+    let lastChapterProgress: Double?
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -63,6 +76,38 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
 
     var displayTitle: String {
         title ?? "Без названия"
+    }
+
+    var resolvedLibraryState: String? {
+        libraryState ?? workInLibraryState ?? inLibraryState
+    }
+
+    var resolvedProgress: Double {
+        progress ?? lastChapterProgress ?? 0
+    }
+
+    /// Catalog often returns relative paths like `2026/07/01/....jpg`.
+    var absoluteCoverURL: String? {
+        Self.normalizeCover(coverUrl)
+    }
+
+    static func normalizeCover(_ raw: String?) -> String? {
+        guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        if value.hasPrefix("//") {
+            value = "https:" + value
+        }
+        if value.hasPrefix("http://") || value.hasPrefix("https://") {
+            return value
+        }
+        if value.hasPrefix("/content/") {
+            return "https://author.today" + value
+        }
+        if value.hasPrefix("content/") {
+            return "https://author.today/" + value
+        }
+        return "https://author.today/content/" + value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 }
 
@@ -193,10 +238,14 @@ struct NotificationList: Codable, Sendable {
 struct CatalogSearchResult: Codable, Sendable {
     let works: [WorkMeta]?
     let searchWorks: [WorkMeta]?
+    let searchResults: [WorkMeta]?
     let data: [WorkMeta]?
+    let realTotalCount: Int?
+    let isLastPage: Bool?
+    let errorMessage: String?
 
     var items: [WorkMeta] {
-        works ?? searchWorks ?? data ?? []
+        searchResults ?? works ?? searchWorks ?? data ?? []
     }
 }
 

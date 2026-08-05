@@ -23,9 +23,7 @@ struct LibraryView: View {
                     ContentUnavailableView(
                         "Библиотека пуста",
                         systemImage: "books.vertical",
-                        description: Text(downloads.online
-                            ? "Добавьте книги на author.today или найдите их во вкладке Поиск"
-                            : "Нет сети. Когда появится интернет — обновите библиотеку.")
+                        description: Text(emptyLibraryMessage)
                     )
                 } else {
                     ScrollView {
@@ -85,9 +83,19 @@ struct LibraryView: View {
                 }
             }
             .task {
-                await offline.syncLibraryIfNeeded()
+                await offline.syncLibrary(force: true)
             }
         }
+    }
+
+    private var emptyLibraryMessage: String {
+        if let err = offline.lastSyncError {
+            return "Ошибка синхронизации: \(err)\nПотяните вниз или нажмите обновить."
+        }
+        if downloads.online {
+            return "Добавьте книги на author.today или найдите их во вкладке Поиск, затем нажмите обновить."
+        }
+        return "Нет сети. Когда появится интернет — обновите библиотеку."
     }
 }
 

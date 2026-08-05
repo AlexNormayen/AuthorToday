@@ -48,8 +48,7 @@ final class OfflineStore: ObservableObject {
             var page = 1
             var collected: [WorkMeta] = []
             while true {
-                let result = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                let items = result.items
+                let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
                 collected.append(contentsOf: items)
                 if items.isEmpty || items.count < 50 { break }
                 page += 1
@@ -79,22 +78,22 @@ final class OfflineStore: ObservableObject {
         if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
-            existing.coverURL = meta.coverUrl
+            existing.coverURL = meta.absoluteCoverURL
             existing.annotation = meta.annotation
-            existing.libraryState = meta.libraryState
-            existing.lastReadChapterId = meta.lastReadChapterId ?? existing.lastReadChapterId
-            existing.progress = meta.progress ?? existing.progress
+            existing.libraryState = meta.resolvedLibraryState
+            existing.lastReadChapterId = meta.lastReadChapterId ?? meta.lastChapterId ?? existing.lastReadChapterId
+            existing.progress = meta.resolvedProgress
             existing.updatedAt = .now
         } else {
             let work = CachedWork(
                 workId: meta.id,
                 title: meta.displayTitle,
                 author: meta.displayAuthor,
-                coverURL: meta.coverUrl,
+                coverURL: meta.absoluteCoverURL,
                 annotation: meta.annotation,
-                libraryState: meta.libraryState,
-                lastReadChapterId: meta.lastReadChapterId,
-                progress: meta.progress ?? 0
+                libraryState: meta.resolvedLibraryState,
+                lastReadChapterId: meta.lastReadChapterId ?? meta.lastChapterId,
+                progress: meta.resolvedProgress
             )
             ctx.insert(work)
         }
@@ -111,7 +110,7 @@ final class OfflineStore: ObservableObject {
         if let existing {
             existing.title = details.displayTitle
             existing.author = details.displayAuthor
-            existing.coverURL = details.coverUrl
+            existing.coverURL = WorkMeta.normalizeCover(details.coverUrl)
             existing.annotation = details.annotation
             existing.chaptersJSON = chaptersData
             existing.updatedAt = .now
@@ -121,7 +120,7 @@ final class OfflineStore: ObservableObject {
                     workId: details.id,
                     title: details.displayTitle,
                     author: details.displayAuthor,
-                    coverURL: details.coverUrl,
+                    coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
                     chaptersJSON: chaptersData
                 )

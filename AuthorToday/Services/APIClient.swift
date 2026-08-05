@@ -76,11 +76,12 @@ actor APIClient {
 
     // MARK: - Library / works
 
-    func userLibrary(page: Int = 1, pageSize: Int = 50) async throws -> LibraryPage {
-        try await get(path: "/v1/account/user-library", query: [
+    func userLibrary(page: Int = 1, pageSize: Int = 50) async throws -> [WorkMeta] {
+        let (data, _) = try await rawGet(path: "/v1/account/user-library", query: [
             "page": "\(page)",
             "pageSize": "\(pageSize)"
         ])
+        return try decodeWorkList(from: data)
     }
 
     func workDetails(id: Int) async throws -> WorkDetails {
@@ -90,26 +91,135 @@ actor APIClient {
     }
 
     func workMeta(id: Int) async throws -> WorkMeta {
-        try await get(path: "/v1/work/\(id)/meta-info")
+        let list = try await workMetas(ids: [id])
+        guard let first = list.first else {
+            throw APIError.message("Произведение не найдено")
+        }
+        return first
     }
 
-    func search(query: String, page: Int = 1) async throws -> CatalogSearchResult {
-        try await get(path: "/v1/catalog/search", query: [
+    func workMetas(ids: [Int]) async throws -> [WorkMeta] {
+        guard !ids.isEmpty else { return [] }
+        var query: [String: String] = [:]
+        for (i, id) in ids.enumerated() {
+            query["ids[\(i)]"] = "\(id)"
+        }
+        let (data, _) = try await rawGet(path: "/v1/work/meta-info", query: query)
+        if let envelopes = try? decoder.decode([WorkMetaEnvelope].self, from: data) {
+            return envelopes.compactMap(\.data)
+        }
+        return try decodeWorkList(from: data)
+    }
+
+    /// Platform search: HTML search page → work ids → meta-info (catalog has no title query).
+    func search(query: String, page: Int = 1) async throws -> [WorkMeta] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        // 1) Prefer site search (titles + authors)
+        if let ids = try? await searchWorkIDsFromSite(query: trimmed), !ids.isEmpty {
+            return try await workMetas(ids: Array(ids.prefix(40)))
+        }
+
+        // 2) Fallback: catalog by tag
+        let tagged: CatalogSearchResult = try await get(path: "/v1/catalog/search", query: [
             "page": "\(page)",
             "ps": "40",
             "sorting": "popular",
-            "q": query,
-            "tag": query
+            "tag": trimmed
         ])
+        return tagged.items.map { normalize($0) }
     }
 
-    func catalogRecent(page: Int = 1) async throws -> CatalogSearchResult {
-        try await get(path: "/v1/catalog/search", query: [
+    func catalogRecent(page: Int = 1) async throws -> [WorkMeta] {
+        let result: CatalogSearchResult = try await get(path: "/v1/catalog/search", query: [
             "page": "\(page)",
             "ps": "40",
             "sorting": "recent",
             "genre": "all"
         ])
+        return result.items.map { normalize($0) }
+    }
+
+    private func searchWorkIDsFromSite(query: String) async throws -> [Int] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        guard let url = URL(string: "https://author.today/search?q=\(encoded)") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 AuthorTodayReader",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        guard let html = String(data: data, encoding: .utf8) else { return [] }
+
+        let pattern = #"/work/(\d+)"#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        var ordered: [Int] = []
+        var seen = Set<Int>()
+        for match in regex.matches(in: html, range: range) {
+            guard match.numberOfRanges > 1,
+                  let idRange = Range(match.range(at: 1), in: html),
+                  let id = Int(html[idRange]),
+                  !seen.contains(id) else { continue }
+            seen.insert(id)
+            ordered.append(id)
+        }
+        return ordered
+    }
+
+    private func decodeWorkList(from data: Data) throws -> [WorkMeta] {
+        if let page = try? decoder.decode(LibraryPage.self, from: data), !page.items.isEmpty {
+            return page.items.map { normalize($0) }
+        }
+        if let arr = try? decoder.decode([WorkMeta].self, from: data) {
+            return arr.map { normalize($0) }
+        }
+        if let envelopes = try? decoder.decode([WorkMetaEnvelope].self, from: data) {
+            return envelopes.compactMap(\.data).map { normalize($0) }
+        }
+        if let catalog = try? decoder.decode(CatalogSearchResult.self, from: data) {
+            return catalog.items.map { normalize($0) }
+        }
+        // Empty library is a valid empty array
+        if let page = try? decoder.decode(LibraryPage.self, from: data) {
+            return page.items
+        }
+        throw APIError.message("Не удалось разобрать список книг")
+    }
+
+    private func normalize(_ work: WorkMeta) -> WorkMeta {
+        WorkMeta(
+            id: work.id,
+            title: work.title,
+            authorFIO: work.authorFIO,
+            authorUserName: work.authorUserName,
+            coverUrl: WorkMeta.normalizeCover(work.coverUrl),
+            annotation: work.annotation,
+            lastChapterId: work.lastChapterId,
+            lastChapterTitle: work.lastChapterTitle,
+            lastUpdateTime: work.lastUpdateTime,
+            status: work.status,
+            genreName: work.genreName,
+            secondGenreName: work.secondGenreName,
+            likeCount: work.likeCount,
+            viewsCount: work.viewsCount ?? work.viewCount,
+            viewCount: work.viewCount ?? work.viewsCount,
+            chapterCount: work.chapterCount,
+            libraryState: work.resolvedLibraryState,
+            workInLibraryState: work.workInLibraryState,
+            inLibraryState: work.inLibraryState,
+            progress: work.resolvedProgress,
+            lastReadChapterId: work.lastReadChapterId ?? work.lastChapterId,
+            lastChapterProgress: work.lastChapterProgress
+        )
     }
 
     // MARK: - Chapters

@@ -18,9 +18,14 @@ struct CoverImage: View {
     let urlString: String?
     var corner: CGFloat = 8
 
+    private var resolvedURL: URL? {
+        guard let normalized = WorkMeta.normalizeCover(urlString) else { return nil }
+        return URL(string: normalized)
+    }
+
     var body: some View {
         Group {
-            if let urlString, let url = URL(string: urlString) {
+            if let url = resolvedURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

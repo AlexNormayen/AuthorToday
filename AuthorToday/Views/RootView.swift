@@ -16,9 +16,17 @@ struct RootView: View {
             }
         }
         .environmentObject(downloads)
-        .onAppear {
+        .task {
             offline.attach(context: modelContext)
             downloads.startMonitoring()
+            if auth.isAuthenticated {
+                await offline.syncLibrary(force: true)
+            }
+        }
+        .onChange(of: auth.isAuthenticated) { _, loggedIn in
+            if loggedIn {
+                Task { await offline.syncLibrary(force: true) }
+            }
         }
     }
 }

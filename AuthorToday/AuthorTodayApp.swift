@@ -20,13 +20,11 @@ struct AuthorTodayApp: App {
                     await notifications.configure()
                     if auth.isAuthenticated {
                         notifications.startPolling()
-                        await offlineStore.syncLibraryIfNeeded()
                     }
                 }
                 .onChange(of: auth.isAuthenticated) { _, loggedIn in
                     if loggedIn {
                         notifications.startPolling()
-                        Task { await offlineStore.syncLibraryIfNeeded() }
                     } else {
                         notifications.stopPolling()
                     }

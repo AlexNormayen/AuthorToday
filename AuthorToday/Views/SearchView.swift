@@ -20,7 +20,7 @@ struct SearchView: View {
                         "Найдите книгу",
                         systemImage: "magnifyingglass",
                         description: Text(downloads.online
-                            ? "Введите название или откройте свежие обновления"
+                            ? "Введите название или автора и нажмите поиск на клавиатуре.\nИли откройте «Свежее»."
                             : "Поиск недоступен офлайн")
                     )
                 } else {
@@ -29,7 +29,7 @@ struct SearchView: View {
                             path.append(work.id)
                         } label: {
                             HStack(spacing: 12) {
-                                CoverImage(urlString: work.coverUrl)
+                                CoverImage(urlString: work.absoluteCoverURL)
                                     .frame(width: 48, height: 68)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(work.displayTitle)
@@ -48,7 +48,7 @@ struct SearchView: View {
             }
             .background(AppTheme.mist.ignoresSafeArea())
             .navigationTitle("Поиск")
-            .searchable(text: $query, prompt: "Название книги")
+            .searchable(text: $query, prompt: "Название или автор")
             .onSubmit(of: .search) {
                 Task { await runSearch() }
             }
@@ -57,7 +57,7 @@ struct SearchView: View {
                     Button("Свежее") {
                         Task { await loadRecent() }
                     }
-                    .disabled(!downloads.online)
+                    .disabled(!downloads.online || isLoading)
                 }
             }
             .navigationDestination(for: Int.self) { workId in
@@ -78,8 +78,7 @@ struct SearchView: View {
         error = nil
         defer { isLoading = false }
         do {
-            let page = try await APIClient.shared.search(query: q)
-            results = page.items
+            results = try await APIClient.shared.search(query: q)
             if results.isEmpty {
                 error = "Ничего не найдено"
             }
@@ -93,8 +92,10 @@ struct SearchView: View {
         error = nil
         defer { isLoading = false }
         do {
-            let page = try await APIClient.shared.catalogRecent()
-            results = page.items
+            results = try await APIClient.shared.catalogRecent()
+            if results.isEmpty {
+                error = "Каталог пуст или недоступен"
+            }
         } catch {
             self.error = error.localizedDescription
         }
