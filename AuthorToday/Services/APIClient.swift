@@ -493,24 +493,29 @@ actor APIClient {
         return try decodeWorkList(from: data)
     }
 
-    /// Platform search: HTML search page → work ids → meta-info (catalog has no title query).
-    func search(query: String, page: Int = 1) async throws -> [WorkMeta] {
+    /// Platform search: authors first, then works.
+    func search(query: String, page: Int = 1) async throws -> CatalogSearchBundle {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
+        guard !trimmed.isEmpty else { return CatalogSearchBundle(authors: [], works: []) }
 
-        // 1) Prefer site search (titles + authors)
-        if let ids = try? await searchWorkIDsFromSite(query: trimmed), !ids.isEmpty {
-            return try await workMetas(ids: Array(ids.prefix(40)))
+        if let site = try? await searchSiteBundle(query: trimmed), !site.works.isEmpty || !site.authors.isEmpty {
+            let works: [WorkMeta]
+            if site.workIDs.isEmpty {
+                works = []
+            } else {
+                works = try await workMetas(ids: Array(site.workIDs.prefix(40)))
+            }
+            return CatalogSearchBundle(authors: site.authors, works: works)
         }
 
-        // 2) Fallback: catalog by tag
+        // Fallback: catalog by tag (works only)
         let tagged: CatalogSearchResult = try await get(path: "/v1/catalog/search", query: [
             "page": "\(page)",
             "ps": "40",
             "sorting": "popular",
             "tag": trimmed
         ])
-        return tagged.items.map { normalize($0) }
+        return CatalogSearchBundle(authors: [], works: tagged.items.map { normalize($0) })
     }
 
     func catalogRecent(page: Int = 1) async throws -> [WorkMeta] {
@@ -523,14 +528,18 @@ actor APIClient {
         let items = result.items.map { normalize($0) }
         let ids = items.map(\.id)
         if ids.isEmpty { return items }
-        // meta-info has price / purchase / library state
         if let enriched = try? await workMetas(ids: ids), !enriched.isEmpty {
             return enriched
         }
         return items
     }
 
-    private func searchWorkIDsFromSite(query: String) async throws -> [Int] {
+    private struct SiteSearchParse {
+        var authors: [AuthorSearchHit]
+        var workIDs: [Int]
+    }
+
+    private func searchSiteBundle(query: String) async throws -> SiteSearchParse {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
         guard let url = URL(string: "https://author.today/search?q=\(encoded)") else {
             throw APIError.invalidURL
@@ -546,10 +555,56 @@ actor APIClient {
         }
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
-        guard let html = String(data: data, encoding: .utf8) else { return [] }
+        guard let html = String(data: data, encoding: .utf8) else {
+            return SiteSearchParse(authors: [], workIDs: [])
+        }
+        return SiteSearchParse(
+            authors: Self.parseSearchAuthors(from: html),
+            workIDs: Self.parseSearchWorkIDs(from: html)
+        )
+    }
 
-        let pattern = #"/work/(\d+)"#
-        let regex = try NSRegularExpression(pattern: pattern)
+    private static func parseSearchAuthors(from html: String) -> [AuthorSearchHit] {
+        // Prefer the «Авторы» block when present; otherwise collect /u/ links that appear before works.
+        let authorsSection: String
+        if let range = html.range(of: #"Авторы"#, options: [.caseInsensitive]) {
+            let after = html[range.lowerBound...]
+            if let works = after.range(of: #"Произведения"#, options: [.caseInsensitive]) {
+                authorsSection = String(after[..<works.lowerBound])
+            } else {
+                authorsSection = String(after.prefix(12_000))
+            }
+        } else {
+            authorsSection = String(html.prefix(20_000))
+        }
+
+        guard let regex = try? NSRegularExpression(
+            pattern: #"(?is)<a[^>]+href=["']/u/([^"'/]+)["'][^>]*>(.*?)</a>"#
+        ) else { return [] }
+
+        let ns = authorsSection as NSString
+        var ordered: [AuthorSearchHit] = []
+        var seen = Set<String>()
+        for match in regex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
+            guard match.numberOfRanges >= 3,
+                  let uRange = Range(match.range(at: 1), in: authorsSection),
+                  let nRange = Range(match.range(at: 2), in: authorsSection) else { continue }
+            let user = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !user.isEmpty, seen.insert(user).inserted else { continue }
+            var name = HTMLText.plain(from: String(authorsSection[nRange]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty { name = user }
+            if name.count > 80 { continue }
+            // Skip pure icon/empty chrome links
+            if name == user, user.count < 2 { continue }
+            ordered.append(AuthorSearchHit(userName: user, displayName: name))
+            if ordered.count >= 20 { break }
+        }
+        return ordered
+    }
+
+    private static func parseSearchWorkIDs(from html: String) -> [Int] {
+        guard let regex = try? NSRegularExpression(pattern: #"/work/(\d+)"#) else { return [] }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
         var ordered: [Int] = []
         var seen = Set<Int>()
@@ -557,8 +612,7 @@ actor APIClient {
             guard match.numberOfRanges > 1,
                   let idRange = Range(match.range(at: 1), in: html),
                   let id = Int(html[idRange]),
-                  !seen.contains(id) else { continue }
-            seen.insert(id)
+                  seen.insert(id).inserted else { continue }
             ordered.append(id)
         }
         return ordered

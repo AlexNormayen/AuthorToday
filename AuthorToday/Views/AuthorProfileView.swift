@@ -9,6 +9,7 @@ struct AuthorProfileView: View {
     @State private var profile: AuthorProfile?
     @State private var error: String?
     @State private var isLoading = true
+    @State private var addingIds: Set<Int> = []
 
     var body: some View {
         Group {
@@ -48,29 +49,7 @@ struct AuthorProfileView: View {
                     ForEach(profile.series) { group in
                         Section(group.title) {
                             ForEach(group.works, id: \.id) { work in
-                                NavigationLink {
-                                    BookDetailView(workId: work.id)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        CoverImage(urlString: work.absoluteCoverURL, corner: 6)
-                                            .frame(width: 40, height: 56)
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(work.displayTitle)
-                                                .font(.subheadline.weight(.medium))
-                                                .lineLimit(2)
-                                            if let order = work.seriesOrder, group.title != "Без серии" {
-                                                Text("Том \(order)")
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            if offline.library.contains(where: { $0.workId == work.id }) {
-                                                Text("В библиотеке")
-                                                    .font(.caption2)
-                                                    .foregroundStyle(appearance.accent)
-                                            }
-                                        }
-                                    }
-                                }
+                                workRow(work)
                             }
                         }
                     }
@@ -93,6 +72,57 @@ struct AuthorProfileView: View {
             }
         }
         .task { await load() }
+    }
+
+    @ViewBuilder
+    private func workRow(_ work: WorkMeta) -> some View {
+        let inLibrary = offline.library.contains(where: { $0.workId == work.id })
+        HStack(alignment: .center, spacing: 10) {
+            NavigationLink {
+                BookDetailView(workId: work.id)
+            } label: {
+                HStack(spacing: 12) {
+                    CoverImage(urlString: work.absoluteCoverURL, corner: 6)
+                        .frame(width: 40, height: 56)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(work.displayTitle)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                        if let order = work.seriesOrder {
+                            Text("Том \(order)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if inLibrary {
+                            Text("В библиотеке")
+                                .font(.caption2)
+                                .foregroundStyle(appearance.accent)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            if !inLibrary {
+                Button {
+                    Task { await addToLibrary(work.id) }
+                } label: {
+                    if addingIds.contains(work.id) {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(appearance.accent)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(addingIds.contains(work.id))
+                .accessibilityLabel("В библиотеку")
+            }
+        }
+        .listRowBackground(Color.clear)
     }
 
     private func worksAndCyclesText(_ profile: AuthorProfile) -> String {
@@ -124,13 +154,23 @@ struct AuthorProfileView: View {
     }
 
     private static func preferLargeAvatar(_ url: String) -> String {
-        // Profile pages often ship 70x70 crop; request a larger crop when possible.
         if url.contains("width=") {
             return url
                 .replacingOccurrences(of: "width=70", with: "width=200")
                 .replacingOccurrences(of: "height=70", with: "height=200")
         }
         return url
+    }
+
+    private func addToLibrary(_ workId: Int) async {
+        addingIds.insert(workId)
+        defer { addingIds.remove(workId) }
+        do {
+            try await offline.addToSiteLibrary(workId: workId, state: "Reading")
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func load() async {

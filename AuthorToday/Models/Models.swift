@@ -293,7 +293,8 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     }
 
     var purchaseURL: URL {
-        URL(string: "https://author.today/work/\(id)")!
+        // Dedicated work page checkout / buy flow on site (not a blank SPA shell).
+        URL(string: "https://author.today/work/\(id)?buy=1")!
     }
 }
 
@@ -354,6 +355,17 @@ struct AuthorSeriesGroup: Identifiable, Hashable, Sendable {
     let title: String
     let seriesId: Int?
     let works: [WorkMeta]
+}
+
+struct AuthorSearchHit: Identifiable, Hashable, Sendable {
+    var id: String { userName }
+    let userName: String
+    let displayName: String
+}
+
+struct CatalogSearchBundle: Sendable {
+    var authors: [AuthorSearchHit]
+    var works: [WorkMeta]
 }
 
 struct ChapterTextPayload: Codable, Sendable {

@@ -26,6 +26,11 @@ struct ReaderView: View {
     @State private var scrollOffset: Double = 0
     @State private var didAddToLibrary = false
     @State private var pageCountForChapter = 1
+    @State private var pendingRestore = false
+    @State private var restorePageIndex = 0
+    @State private var restoreOffsetY: Double = 0
+    @State private var persistScrollTask: Task<Void, Never>?
+    @State private var scrollViewRef: UIScrollView?
 
     private var currentChapter: ChapterMeta? {
         chapters.indices.contains(chapterIndex) ? chapters[chapterIndex] : nil
@@ -167,11 +172,18 @@ struct ReaderView: View {
                 )
         }
         .coordinateSpace(name: "readerScroll")
+        .background(ScrollViewFinder(scrollView: $scrollViewRef))
         .onPreferenceChange(ScrollOffsetKey.self) { value in
             scrollOffset = value
-            // Approximate half-chapter by scroll depth vs content heuristic
             let approx = min(max(value / 1200.0, 0), 1)
             considerLibraryAdd(chapterProgress: approx)
+            schedulePersistScroll()
+        }
+        .onChange(of: scrollViewRef) { _, _ in
+            applyPendingScrollRestoreIfNeeded()
+        }
+        .onAppear {
+            applyPendingScrollRestoreIfNeeded()
         }
         .simultaneousGesture(
             TapGesture().onEnded { toggleChrome() }
@@ -223,7 +235,11 @@ struct ReaderView: View {
             }
         }
         .onChange(of: plainText) { _, _ in
-            pageIndex = 0
+            if pendingRestore {
+                // Keep restored page until layout applies it.
+            } else {
+                pageIndex = 0
+            }
         }
         .onChange(of: pageIndex) { _, newValue in
             pageCountForChapter = max(pages.count, 1)
@@ -232,6 +248,11 @@ struct ReaderView: View {
         }
         .onAppear {
             pageCountForChapter = max(pages.count, 1)
+            if pendingRestore, settings.pageTurnMode != .verticalScroll {
+                pageIndex = min(max(restorePageIndex, 0), max(pages.count - 1, 0))
+                pendingRestore = false
+            }
+            considerLibraryAdd(chapterProgress: chapterReadProgress(page: pageIndex, pages: pages.count))
         }
     }
 
@@ -374,13 +395,28 @@ struct ReaderView: View {
                 chapterTitle = reloaded.title
                 plainText = HTMLText.readerPlain(from: reloaded.html)
             }
-            if let progress = offline.progress(for: workId) {
-                pageIndex = progress.pageIndex
+            if let progress = offline.progress(for: workId),
+               progress.chapterId == result.chapterId {
+                restorePageIndex = progress.pageIndex
+                restoreOffsetY = progress.offsetY
                 scrollOffset = progress.offsetY
+                pageIndex = progress.pageIndex
+                pendingRestore = progress.pageIndex > 0 || progress.offsetY > 8
+            } else {
+                pendingRestore = false
+                restorePageIndex = 0
+                restoreOffsetY = 0
             }
             didAddToLibrary = offline.isInLibrary(workId)
+            // Opening a book to read → ensure it appears in the library.
+            if !didAddToLibrary, downloads.online {
+                considerLibraryAdd(chapterProgress: 1)
+            }
             persistProgress()
             prefetchNeighborChapters()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                applyPendingScrollRestoreIfNeeded()
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -411,8 +447,11 @@ struct ReaderView: View {
             html = loaded.html
             plainText = HTMLText.readerPlain(from: loaded.html)
             pageIndex = 0
+            scrollOffset = 0
+            pendingRestore = false
             persistProgress()
             syncProgressRemote()
+            considerLibraryAdd(chapterProgress: 0.55)
             prefetchNeighborChapters()
             if downloads.online {
                 try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
@@ -493,6 +532,29 @@ struct ReaderView: View {
         }
     }
 
+    private func schedulePersistScroll() {
+        persistScrollTask?.cancel()
+        persistScrollTask = Task {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            persistProgress()
+        }
+    }
+
+    private func applyPendingScrollRestoreIfNeeded() {
+        guard pendingRestore, settings.pageTurnMode == .verticalScroll else { return }
+        guard restoreOffsetY > 8 else {
+            pendingRestore = false
+            return
+        }
+        guard let scroll = scrollViewRef else { return }
+        let maxY = max(scroll.contentSize.height - scroll.bounds.height, 0)
+        let y = min(max(restoreOffsetY, 0), Double(maxY))
+        scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+        scrollOffset = y
+        pendingRestore = false
+    }
+
     private func persistProgress() {
         guard let chapter = currentChapter else { return }
         offline.saveProgress(
@@ -511,7 +573,7 @@ struct ReaderView: View {
                 workId: workId,
                 chapterId: chapter.id,
                 progress: progress,
-                location: "page:\(pageIndex)"
+                location: "offset:\(Int(scrollOffset));page:\(pageIndex)"
             )
         }
     }
@@ -519,17 +581,39 @@ struct ReaderView: View {
     private func chapterReadProgress(page: Int, pages: Int) -> Double {
         guard pages > 0 else { return 0 }
         if pages == 1 {
-            // Single-page chapter: count as fully readable once opened and chrome toggled / short delay
             return plainText.count < 800 ? 1.0 : 0.55
         }
         return Double(page + 1) / Double(pages)
     }
 
     private func considerLibraryAdd(chapterProgress: Double) {
-        guard !didAddToLibrary, chapterProgress >= 0.5, downloads.online else { return }
+        guard !didAddToLibrary, chapterProgress >= 0.45 else { return }
         didAddToLibrary = true
         Task {
-            try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
+            do {
+                if downloads.online {
+                    try await offline.addToSiteLibrary(workId: workId, state: "Reading")
+                } else if let details {
+                    let meta = WorkMeta.stub(
+                        id: details.id,
+                        title: details.title,
+                        author: details.displayAuthor,
+                        coverUrl: details.coverUrl,
+                        libraryState: "Reading"
+                    )
+                    offline.upsertWork(from: meta, markFromSite: true)
+                    if let chapter = currentChapter {
+                        offline.saveProgress(
+                            workId: workId,
+                            chapterId: chapter.id,
+                            offsetY: scrollOffset,
+                            pageIndex: pageIndex
+                        )
+                    }
+                }
+            } catch {
+                didAddToLibrary = offline.isInLibrary(workId)
+            }
         }
     }
 
@@ -582,6 +666,35 @@ private struct ScrollOffsetKey: PreferenceKey {
     static var defaultValue: Double = 0
     static func reduce(value: inout Double, nextValue: () -> Double) {
         value = nextValue()
+    }
+}
+
+/// Finds the enclosing UIScrollView so we can restore contentOffset after relaunch.
+private struct ScrollViewFinder: UIViewRepresentable {
+    @Binding var scrollView: UIScrollView?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            if let found = Self.findScrollView(from: uiView), scrollView !== found {
+                scrollView = found
+            }
+        }
+    }
+
+    private static func findScrollView(from view: UIView) -> UIScrollView? {
+        var current: UIView? = view
+        while let c = current {
+            if let scroll = c as? UIScrollView { return scroll }
+            current = c.superview
+        }
+        return nil
     }
 }
 

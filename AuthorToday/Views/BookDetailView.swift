@@ -205,10 +205,15 @@ struct BookDetailView: View {
             }
 
             Button {
-                startChapterId = offline.progress(for: workId)?.chapterId
-                    ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
-                    ?? details.availableChapters.first?.id
-                openReader = true
+                Task {
+                    if !offline.isInLibrary(workId) {
+                        try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
+                    }
+                    startChapterId = offline.progress(for: workId)?.chapterId
+                        ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
+                        ?? details.availableChapters.first?.id
+                    openReader = true
+                }
             } label: {
                 Text(readButtonTitle)
             }
@@ -227,9 +232,9 @@ struct BookDetailView: View {
             }
 
             if offline.library.contains(where: { $0.workId == workId }) {
-                Text("В вашей библиотеке")
+                Label("В вашей библиотеке", systemImage: "checkmark.circle.fill")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(appearance.accent)
             } else {
                 Button {
                     Task {
