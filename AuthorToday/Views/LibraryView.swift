@@ -124,13 +124,14 @@ struct LibraryView: View {
                     path.append(LibraryRoute.author(group.author))
                 } label: {
                     HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(AppTheme.mist)
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.crop.rectangle.stack")
-                                .foregroundStyle(AppTheme.moss)
-                        }
+                        AuthorCoverCollage(
+                            coverURLs: group.works
+                                .sorted { ($0.coverURL?.isEmpty == false ? 0 : 1) < ($1.coverURL?.isEmpty == false ? 0 : 1) }
+                                .prefix(8)
+                                .map(\.coverURL),
+                            size: 56,
+                            corner: 10
+                        )
                         VStack(alignment: .leading, spacing: 4) {
                             Text(group.author)
                                 .font(.body.weight(.semibold))
@@ -145,7 +146,7 @@ struct LibraryView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.tertiary)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 }
             }
         }

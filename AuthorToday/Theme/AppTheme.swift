@@ -74,6 +74,85 @@ struct CoverImage: View {
     }
 }
 
+/// Folder icon for an author: collage of up to 4 book covers.
+struct AuthorCoverCollage: View {
+    let coverURLs: [String?]
+    var size: CGFloat = 56
+    var corner: CGFloat = 10
+
+    private var urls: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for raw in coverURLs {
+            guard let normalized = WorkMeta.normalizeCover(raw), !normalized.isEmpty else { continue }
+            if seen.insert(normalized).inserted {
+                result.append(normalized)
+            }
+            if result.count == 4 { break }
+        }
+        return result
+    }
+
+    var body: some View {
+        Group {
+            switch urls.count {
+            case 0:
+                placeholder
+            case 1:
+                tile(urls[0])
+            case 2:
+                HStack(spacing: gap) {
+                    tile(urls[0])
+                    tile(urls[1])
+                }
+            case 3:
+                HStack(spacing: gap) {
+                    tile(urls[0])
+                    VStack(spacing: gap) {
+                        tile(urls[1])
+                        tile(urls[2])
+                    }
+                }
+            default:
+                VStack(spacing: gap) {
+                    HStack(spacing: gap) {
+                        tile(urls[0])
+                        tile(urls[1])
+                    }
+                    HStack(spacing: gap) {
+                        tile(urls[2])
+                        tile(urls[3])
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .background(AppTheme.mist)
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+        )
+    }
+
+    private var gap: CGFloat { 1.5 }
+
+    private func tile(_ url: String) -> some View {
+        CoverImage(urlString: url, corner: 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            AppTheme.mist
+            Image(systemName: "person.crop.rectangle.stack")
+                .font(.system(size: size * 0.36))
+                .foregroundStyle(AppTheme.moss.opacity(0.7))
+        }
+    }
+}
+
 /// Disk + memory cache for cover art so the library does not re-download on every launch.
 final class CoverCache: @unchecked Sendable {
     static let shared = CoverCache()
