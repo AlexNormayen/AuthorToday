@@ -373,10 +373,13 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
     let url: String?
     let link: String?
     let category: String?
+    /// Stable server id (UUID string from feed).
+    let notificationId: String?
 
     var resolvedWorkId: Int? { workId ?? workID }
 
     var stableId: String {
+        if let notificationId, !notificationId.isEmpty { return notificationId }
         if let id { return String(id) }
         return "\(creationTime ?? "")-\(displayText)"
     }
@@ -397,6 +400,83 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
         if t.contains("framework7") { return true }
         if t == "лента" || t == "уведомление" { return true }
         return false
+    }
+}
+
+/// Real `/v1/notification/get` payload (blog posts + work updates).
+struct FeedPage: Codable, Sendable {
+    let items: [FeedEntry]?
+    let more: Bool?
+    let lastItemCreationTime: String?
+    let showUnread: Bool?
+}
+
+struct FeedEntry: Codable, Sendable {
+    let notificationId: String?
+    let itemId: Int?
+    let id: Int?
+    let title: String?
+    let previewText: String?
+    let text: String?
+    let creationTime: String?
+    let publishTime: String?
+    let isRead: Bool?
+    let type: String?
+    let actionType: String?
+    let chapterTitle: String?
+    let chapterId: Int?
+    let authorFIO: String?
+    let category: FeedCategory?
+
+    struct FeedCategory: Codable, Sendable {
+        let title: String?
+        let code: String?
+    }
+
+    func asNotificationItem() -> NotificationItem {
+        let workRelated = ["WorkUpdate", "NewChapter", "DiscountStart", "DiscountEnd", "PriceChange"]
+        let typeName = type ?? actionType ?? ""
+        let resolvedWork: Int? = {
+            if workRelated.contains(typeName) || workRelated.contains(actionType ?? "") {
+                return id
+            }
+            // Work updates often use numeric work id in `id`
+            if chapterId != nil || chapterTitle != nil { return id }
+            return nil
+        }()
+
+        var lines: [String] = []
+        if let title, !title.isEmpty { lines.append(title) }
+        if let chapterTitle, !chapterTitle.isEmpty {
+            lines.append(chapterTitle)
+        }
+        if let previewText, !previewText.isEmpty {
+            lines.append(previewText)
+        } else if let text, !text.isEmpty {
+            lines.append(text)
+        }
+        if let authorFIO, !authorFIO.isEmpty, typeName == "NewPost" {
+            lines.insert(authorFIO, at: min(1, lines.count))
+        }
+        let combined = lines.joined(separator: "\n")
+
+        return NotificationItem(
+            id: itemId ?? id,
+            text: combined,
+            title: title,
+            message: previewText ?? text,
+            content: previewText,
+            body: nil,
+            html: nil,
+            creationTime: creationTime ?? publishTime,
+            isRead: isRead,
+            workId: resolvedWork,
+            workID: nil,
+            url: resolvedWork.map { "https://author.today/work/\($0)" },
+            link: nil,
+            category: category?.title ?? typeName,
+            notificationId: notificationId
+        )
     }
 }
 

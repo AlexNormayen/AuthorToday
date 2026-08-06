@@ -7,32 +7,62 @@ struct NotificationsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if notifications.items.isEmpty {
+                if notifications.items.isEmpty && notifications.isLoading {
+                    ProgressView("Загрузка ленты…")
+                } else if notifications.items.isEmpty {
                     ContentUnavailableView(
                         notifications.lastError == nil ? "Лента пуста" : "Не удалось загрузить",
                         systemImage: "bell.slash",
                         description: Text(notifications.lastError
-                            ?? "Уведомления author.today появятся здесь")
+                            ?? "Обновления книг и посты авторов появятся здесь")
                     )
                 } else {
-                    List(notifications.items, id: \.stableId) { item in
-                        Button {
-                            if let workId = item.resolvedWorkId {
-                                path.append(workId)
+                    List {
+                        ForEach(notifications.items, id: \.stableId) { item in
+                            Button {
+                                if let workId = item.resolvedWorkId {
+                                    path.append(workId)
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    if let category = item.category, !category.isEmpty {
+                                        Text(category)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(item.displayText)
+                                        .font(.body)
+                                        .foregroundStyle((item.isRead ?? false) ? .secondary : Color.primary)
+                                        .multilineTextAlignment(.leading)
+                                        .lineLimit(8)
+                                    if let time = item.creationTime {
+                                        Text(Self.formatTime(time))
+                                            .font(.caption)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .padding(.vertical, 4)
                             }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.displayText)
-                                    .font(.body)
-                                    .foregroundStyle((item.isRead ?? false) ? .secondary : Color.primary)
-                                    .multilineTextAlignment(.leading)
-                                if let time = item.creationTime {
-                                    Text(time)
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                            .onAppear {
+                                if item.stableId == notifications.items.last?.stableId {
+                                    Task { await notifications.loadMore() }
                                 }
                             }
-                            .padding(.vertical, 4)
+                        }
+
+                        if notifications.isLoadingMore {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .listRowSeparator(.hidden)
+                        } else if notifications.hasMore {
+                            Color.clear
+                                .frame(height: 1)
+                                .onAppear {
+                                    Task { await notifications.loadMore() }
+                                }
                         }
                     }
                     .listStyle(.plain)
@@ -57,5 +87,19 @@ struct NotificationsView: View {
                 await notifications.markFeedSeen()
             }
         }
+    }
+
+    private static func formatTime(_ raw: String) -> String {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = iso.date(from: raw) ?? {
+            iso.formatOptions = [.withInternetDateTime]
+            return iso.date(from: raw)
+        }()
+        guard let date else { return raw }
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.unitsStyle = .short
+        return f.localizedString(for: date, relativeTo: Date())
     }
 }

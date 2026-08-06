@@ -147,16 +147,37 @@ final class OfflineStore: ObservableObject {
             }
 
             // Primary: official API (Reading + Read + Wish…, up to totalCount)
+            // Rate limit is aggressive (~3 pages) — retry same page with backoff and persist as we go.
             do {
                 var page = 1
-                while true {
-                    let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                    merge(items)
-                    if items.isEmpty || items.count < 50 { break }
-                    page += 1
-                    if page > 80 { break }
-                    // Avoid 429 rate limits
-                    try? await Task.sleep(nanoseconds: 250_000_000)
+                var consecutiveFailures = 0
+                while page <= 120 {
+                    do {
+                        let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
+                        consecutiveFailures = 0
+                        merge(items)
+                        for meta in items {
+                            upsertWork(from: meta, context: modelContext, markFromSite: true)
+                        }
+                        try? modelContext.save()
+                        reloadLibrary()
+                        if items.isEmpty || items.count < 50 { break }
+                        page += 1
+                        // Stay under API rate limit (~547 books ≈ 11 pages)
+                        try? await Task.sleep(nanoseconds: 900_000_000)
+                    } catch let error as APIError {
+                        if case .http(let code, _) = error, code == 429 || code == 503 {
+                            consecutiveFailures += 1
+                            if consecutiveFailures > 10 {
+                                errors.append("api: лимит запросов, загружено \(byID.count) книг — нажмите обновить ещё раз")
+                                break
+                            }
+                            let wait = UInt64(min(consecutiveFailures, 8)) * 2_500_000_000
+                            try? await Task.sleep(nanoseconds: wait)
+                            continue // retry same page
+                        }
+                        throw error
+                    }
                 }
             } catch {
                 errors.append("api: \(error.localizedDescription)")
@@ -213,7 +234,11 @@ final class OfflineStore: ObservableObject {
             try modelContext.save()
             lastLibrarySync = .now
             lastSyncCount = collected.count
-            lastSyncError = nil
+            if let incomplete = errors.first(where: { $0.contains("лимит") }) {
+                lastSyncError = "\(incomplete). Авторов: \(authorsGrouped.count)."
+            } else {
+                lastSyncError = errors.isEmpty ? nil : errors.joined(separator: "; ")
+            }
             reloadLibrary()
         } catch {
             lastSyncError = error.localizedDescription

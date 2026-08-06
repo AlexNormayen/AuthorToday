@@ -284,35 +284,31 @@ actor APIClient {
         return String(text[r])
     }
 
-    func feedItems(limit: Int = 50) async throws -> [NotificationItem] {
+    func feedPage(take: Int = 20, lastItemCreationTime: String? = nil) async throws -> (items: [NotificationItem], more: Bool, cursor: String?) {
         try? await establishWebSession()
+        var q: [String: String] = ["take": "\(take)"]
+        if let lastItemCreationTime, !lastItemCreationTime.isEmpty {
+            q["lastItemCreationTime"] = lastItemCreationTime
+        }
+        let (data, _) = try await rawGet(path: "/v1/notification/get", query: q)
 
-        // Prefer official notifications — they contain readable text when authenticated.
-        if let apiItems = try? await notifications(take: limit) {
-            let cleaned = apiItems
-                .map { item in
-                    NotificationItem(
-                        id: item.id,
-                        text: item.displayText,
-                        title: item.title,
-                        message: item.message.map { HTMLText.plain(from: $0) },
-                        content: item.content,
-                        body: item.body,
-                        html: item.html,
-                        creationTime: item.creationTime,
-                        isRead: item.isRead,
-                        workId: item.resolvedWorkId,
-                        workID: nil,
-                        url: item.url ?? item.link,
-                        link: item.link,
-                        category: item.category
-                    )
-                }
-                .filter { !$0.isJunk }
-            if !cleaned.isEmpty { return Array(cleaned.prefix(limit)) }
+        if let page = try? decodeFlexible(FeedPage.self, from: data) {
+            let mapped = (page.items ?? []).map { $0.asNotificationItem() }.filter { !$0.isJunk }
+            return (mapped, page.more ?? false, page.lastItemCreationTime)
         }
 
-        // Fallback: desktop feed HTML (mobile returns Framework7 filter chrome).
+        // Legacy shapes
+        if let list = try? decodeFlexible(NotificationList.self, from: data), !list.all.isEmpty {
+            return (list.all.filter { !$0.isJunk }, false, nil)
+        }
+        return ([], false, nil)
+    }
+
+    func feedItems(limit: Int = 20) async throws -> [NotificationItem] {
+        let page = try await feedPage(take: limit, lastItemCreationTime: nil)
+        if !page.items.isEmpty { return page.items }
+
+        // Fallback: desktop feed HTML
         let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: "\(base)/feed") else { return [] }
         var request = URLRequest(url: url)
@@ -327,7 +323,6 @@ actor APIClient {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         guard let html = String(data: data, encoding: .utf8) else { return [] }
-        // Unauthenticated feed is a login page — don't scrape junk.
         if html.localizedCaseInsensitiveContains("id=\"loginForm\"")
             || html.localizedCaseInsensitiveContains("Размер, тыс. зн") {
             return []
@@ -377,7 +372,8 @@ actor APIClient {
                     workID: nil,
                     url: workId.map { "https://author.today/work/\($0)" },
                     link: nil,
-                    category: "feed"
+                    category: "feed",
+                    notificationId: nil
                 )
                 if !item.isJunk { items.append(item) }
             }
@@ -417,7 +413,8 @@ actor APIClient {
                 workID: nil,
                 url: "https://author.today/work/\(id)",
                 link: nil,
-                category: "feed"
+                category: "feed",
+                notificationId: nil
             )
             if !item.isJunk { items.append(item) }
         }
@@ -732,19 +729,9 @@ actor APIClient {
     }
 
     func notifications(take: Int = 30, category: String? = nil) async throws -> [NotificationItem] {
-        var q: [String: String] = ["take": "\(take)"]
-        if let category { q["category"] = category }
-        let (data, _) = try await rawGet(path: "/v1/notification/get", query: q)
-        if let list = try? decodeFlexible(NotificationList.self, from: data), !list.all.isEmpty {
-            return list.all
-        }
-        if let arr = try? decoder.decode([NotificationItem].self, from: data), !arr.isEmpty {
-            return arr
-        }
-        if let wrapped = try? decoder.decode(Wrapper<[NotificationItem]>.self, from: data), !wrapped.data.isEmpty {
-            return wrapped.data
-        }
-        return []
+        _ = category
+        let page = try await feedPage(take: take, lastItemCreationTime: nil)
+        return page.items
     }
 
     func markAllNotificationsRead() async throws {

@@ -12,11 +12,17 @@ final class NotificationPoller: ObservableObject {
     @Published var unreadCount = 0
     @Published var isAuthorized = false
     @Published var lastError: String?
+    @Published var isLoading = false
+    @Published var isLoadingMore = false
+    @Published var hasMore = false
 
     private var timer: Timer?
     private var knownIds: Set<String> = []
     private let knownKey = "at.knownNotificationIds"
     private let pollInterval: TimeInterval = 120
+    private let pageSize = 20
+    private var cursor: String?
+    private var seenStableIds = Set<String>()
 
     private init() {
         if let saved = UserDefaults.standard.array(forKey: knownKey) as? [String] {
@@ -48,19 +54,25 @@ final class NotificationPoller: ObservableObject {
         timer = nil
     }
 
+    /// First page (or pull-to-refresh).
     func refresh(announceNew: Bool) async {
+        isLoading = true
+        defer { isLoading = false }
         do {
-            let list = try await APIClient.shared.feedItems(limit: 50)
-            items = list
+            let page = try await APIClient.shared.feedPage(take: pageSize, lastItemCreationTime: nil)
+            seenStableIds = Set(page.items.map(\.stableId))
+            items = page.items
+            cursor = page.cursor
+            hasMore = page.more && page.cursor != nil
 
             if let check = try? await APIClient.shared.checkNotifications() {
                 unreadCount = check.effectiveUnread
             } else {
-                unreadCount = list.filter { !($0.isRead ?? true) }.count
+                unreadCount = page.items.filter { !($0.isRead ?? true) }.count
             }
 
             if announceNew {
-                for item in list where !(item.isRead ?? true) {
+                for item in page.items where !(item.isRead ?? true) {
                     let sid = item.stableId
                     if !knownIds.contains(sid) {
                         knownIds.insert(sid)
@@ -69,11 +81,30 @@ final class NotificationPoller: ObservableObject {
                 }
                 persistKnown()
             } else {
-                knownIds.formUnion(list.map(\.stableId))
+                knownIds.formUnion(page.items.map(\.stableId))
                 persistKnown()
             }
             lastError = nil
             await applyAppBadge()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Next 20 rows when user scrolls to the bottom.
+    func loadMore() async {
+        guard hasMore, !isLoadingMore, !isLoading, let cursor else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await APIClient.shared.feedPage(take: pageSize, lastItemCreationTime: cursor)
+            let fresh = page.items.filter { seenStableIds.insert($0.stableId).inserted }
+            items.append(contentsOf: fresh)
+            self.cursor = page.cursor
+            hasMore = page.more && page.cursor != nil && !fresh.isEmpty
+            knownIds.formUnion(fresh.map(\.stableId))
+            persistKnown()
+            lastError = nil
         } catch {
             lastError = error.localizedDescription
         }
@@ -84,7 +115,6 @@ final class NotificationPoller: ObservableObject {
         do {
             try await APIClient.shared.markAllNotificationsRead()
         } catch {
-            // Still clear local badge so UI matches "I've seen the feed"
             lastError = error.localizedDescription
         }
         unreadCount = 0
@@ -103,7 +133,8 @@ final class NotificationPoller: ObservableObject {
                 workID: nil,
                 url: item.url,
                 link: item.link,
-                category: item.category
+                category: item.category,
+                notificationId: item.notificationId
             )
         }
         await applyAppBadge()
@@ -125,7 +156,7 @@ final class NotificationPoller: ObservableObject {
         content.title = "Author.Today"
         content.body = item.displayText
         content.sound = .default
-        if let workId = item.workId {
+        if let workId = item.resolvedWorkId {
             content.userInfo = ["workId": workId]
         }
         let request = UNNotificationRequest(

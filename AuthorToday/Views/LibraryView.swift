@@ -60,6 +60,7 @@ struct LibraryView: View {
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Библиотека")
+            .navigationBarTitleDisplayMode(.large)
             .searchable(text: $query, prompt: "Название или автор")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -72,6 +73,24 @@ struct LibraryView: View {
                             Image(systemName: "arrow.clockwise")
                         }
                     }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                if offline.lastSyncCount > 0 || !offline.library.isEmpty {
+                    HStack {
+                        Text("\(offline.library.count) книг · \(offline.authorsGrouped.count) авторов")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if offline.isSyncing {
+                            Text("синхронизация…")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color(.systemGroupedBackground))
                 }
             }
             .refreshable {
