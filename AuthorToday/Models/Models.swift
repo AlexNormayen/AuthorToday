@@ -173,7 +173,10 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     }
 
     var resolvedProgress: Double {
-        progress ?? lastChapterProgress ?? 0
+        let raw = progress ?? lastChapterProgress ?? 0
+        // API often sends 0…100 (percent); app stores/displays 0…1
+        let normalized = raw > 1.0 ? raw / 100.0 : raw
+        return min(max(normalized, 0), 1)
     }
 
     var displayPriceText: String? {
@@ -459,6 +462,13 @@ final class CachedWork {
         self.updatedAt = updatedAt
         self.isFullyDownloaded = isFullyDownloaded
         self.chaptersJSON = chaptersJSON
+    }
+
+    /// Safe 0…100 for UI (handles legacy rows that stored API percent as-is).
+    var displayProgressPercent: Int {
+        let raw = progress
+        let fraction = raw > 1.0 ? raw / 100.0 : raw
+        return Int((min(max(fraction, 0), 1) * 100).rounded())
     }
 }
 

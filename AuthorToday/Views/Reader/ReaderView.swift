@@ -17,7 +17,7 @@ struct ReaderView: View {
     @State private var plainText = ""
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showChrome = true
+    @State private var showChrome = false
     @State private var showSettings = false
     @State private var showTOC = false
     @State private var pageIndex = 0
@@ -46,7 +46,6 @@ struct ReaderView: View {
                 .padding()
             } else {
                 readerContent
-                    .opacity(showChrome ? 1 : 1)
             }
 
             if showChrome {
@@ -60,6 +59,9 @@ struct ReaderView: View {
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showChrome)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .ignoresSafeArea(edges: showChrome ? [] : .all)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 ReaderSettingsView()

@@ -350,8 +350,8 @@ struct LibraryRow: View {
                             .scaleEffect(0.7)
                     }
 
-                    if work.progress > 0 {
-                        Text("\(Int(work.progress * 100))%")
+                    if work.displayProgressPercent > 0 {
+                        Text("\(work.displayProgressPercent)%")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

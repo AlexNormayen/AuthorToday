@@ -22,6 +22,7 @@ final class OfflineStore: ObservableObject {
         modelContext = context
         purgeBadChapterCacheIfNeeded()
         backfillLastReadAtIfNeeded()
+        normalizeStoredProgressIfNeeded()
         reloadLibrary()
     }
 
@@ -37,6 +38,18 @@ final class OfflineStore: ObservableObject {
                 work.lastReadAt = p.updatedAt
                 work.lastReadChapterId = work.lastReadChapterId ?? p.chapterId
             }
+        }
+        try? modelContext.save()
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
+    /// Fix rows where API percent (e.g. 96) was stored instead of 0…1 fraction.
+    private func normalizeStoredProgressIfNeeded() {
+        let key = "at.progressNormalized.v1"
+        guard !UserDefaults.standard.bool(forKey: key), let modelContext else { return }
+        let works = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
+        for work in works where work.progress > 1 {
+            work.progress = min(work.progress / 100.0, 1)
         }
         try? modelContext.save()
         UserDefaults.standard.set(true, forKey: key)
@@ -270,8 +283,9 @@ final class OfflineStore: ObservableObject {
             existing.libraryState = state
             existing.lastReadChapterId = meta.lastReadChapterId ?? meta.lastChapterId ?? existing.lastReadChapterId
             // Keep local reading % / lastReadAt — sync must not wipe reading history
-            if meta.resolvedProgress > 0 {
-                existing.progress = max(existing.progress, meta.resolvedProgress)
+            let remoteProgress = meta.resolvedProgress
+            if remoteProgress > 0 {
+                existing.progress = min(max(existing.progress, remoteProgress), 1)
             }
             existing.updatedAt = .now
         } else {
@@ -283,7 +297,7 @@ final class OfflineStore: ObservableObject {
                 annotation: meta.annotation,
                 libraryState: state,
                 lastReadChapterId: meta.lastReadChapterId ?? meta.lastChapterId,
-                progress: meta.resolvedProgress
+                progress: min(max(meta.resolvedProgress, 0), 1)
             )
             ctx.insert(work)
         }
