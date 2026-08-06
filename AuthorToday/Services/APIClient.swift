@@ -979,25 +979,25 @@ actor APIClient {
             let startIdx = html.index(html.startIndex, offsetBy: start)
             let endIdx = html.index(html.startIndex, offsetBy: min(end, html.count))
             let chunk = String(html[startIdx..<endIdx])
-            let level = Int(firstMatch(#"data-level=\"(\d+)\""#, in: chunk) ?? "0") ?? 0
-            let thread = Int(firstMatch(#"data-thread=\"(\d+)\""#, in: chunk) ?? "\(item.0)") ?? item.0
+            let level = Int(Self.firstMatch(#"data-level=\"(\d+)\""#, in: chunk) ?? "0") ?? 0
+            let thread = Int(Self.firstMatch(#"data-thread=\"(\d+)\""#, in: chunk) ?? "\(item.0)") ?? item.0
             result.append(commentFromChunk(id: item.0, level: level, threadId: thread, chunk: chunk))
         }
         return result
     }
 
     private static func commentFromChunk(id: Int, level: Int, threadId: Int, chunk: String) -> WorkComment {
-        let author = firstMatch(#"comment-user-name\">([^<]+)<"#, in: chunk)
-            ?? firstMatch(#"/u/([^\"/]+)\"[^>]*>\s*<span"#, in: chunk)
+        let author = Self.firstMatch(#"comment-user-name\">([^<]+)<"#, in: chunk)
+            ?? Self.firstMatch(#"/u/([^\"/]+)\"[^>]*>\s*<span"#, in: chunk)
             ?? "Пользователь"
-        let userName = firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
-        let textHTML = firstMatch(#"(?s)class=\"rich-content[^\"]*\">([\s\S]*?)</div>"#, in: chunk)
-            ?? firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk)
+        let userName = Self.firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
+        let textHTML = Self.firstMatch(#"(?s)class=\"rich-content[^\"]*\">([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk)
             ?? ""
-        let created = firstMatch(#"data-time=\"([^\"]+)\""#, in: chunk)
+        let created = Self.firstMatch(#"data-time=\"([^\"]+)\""#, in: chunk)
         let pinned = chunk.contains("data-is-pinned=\"true\"") || chunk.contains("is-pinned")
         let isAuthor = chunk.contains(">автор<") || chunk.contains("label-primary")
-        let ratingStr = firstMatch(#"comment-rating-count[^>]*>\s*([+\-]?\d+)"#, in: chunk)
+        let ratingStr = Self.firstMatch(#"comment-rating-count[^>]*>\s*([+\-]?\d+)"#, in: chunk)
         return WorkComment(
             id: id,
             parentId: level > 0 ? threadId : nil,

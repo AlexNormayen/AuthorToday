@@ -174,57 +174,58 @@ struct ReaderView: View {
 
     private var pagedReader: some View {
         GeometryReader { geo in
-            let pages = paginate(text: plainText, size: geo.size)
-            let mode = settings.pageTurnMode
+            pagedReaderContent(size: geo.size)
+        }
+    }
 
-            ZStack {
-                TabView(selection: $pageIndex) {
-                    ForEach(Array(pages.enumerated()), id: \.offset) { idx, page in
-                        Text(page)
-                            .font(settings.fontFamily.font(size: settings.fontSize))
-                            .foregroundStyle(settings.textColor)
-                            .lineSpacing(settings.lineSpacing)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .padding(.horizontal, settings.marginHorizontal)
-                            .padding(.vertical, settings.marginVertical + (showChrome ? 48 : 8))
-                            .tag(idx)
-                    }
+    private func pagedReaderContent(size: CGSize) -> some View {
+        let pages = paginate(text: plainText, size: size)
+        let mode = settings.pageTurnMode
+
+        return ZStack {
+            TabView(selection: $pageIndex) {
+                ForEach(Array(pages.enumerated()), id: \.offset) { idx, page in
+                    Text(page)
+                        .font(settings.fontFamily.font(size: settings.fontSize))
+                        .foregroundStyle(settings.textColor)
+                        .lineSpacing(settings.lineSpacing)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(.horizontal, settings.marginHorizontal)
+                        .padding(.vertical, settings.marginVertical + (showChrome ? 48 : 8))
+                        .tag(idx)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(mode == .curlStyle ? .easeInOut(duration: 0.28) : .default, value: pageIndex)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(mode == .curlStyle ? .easeInOut(duration: 0.28) : .default, value: pageIndex)
 
-                if mode == .tapZones || mode == .tapAndSwipe {
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { turnPage(by: -1, pageCount: pages.count) }
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { toggleChrome() }
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { turnPage(by: 1, pageCount: pages.count) }
-                    }
-                } else {
+            if mode == .tapZones || mode == .tapAndSwipe {
+                HStack(spacing: 0) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { turnPage(by: -1, pageCount: pages.count) }
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture { toggleChrome() }
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { turnPage(by: 1, pageCount: pages.count) }
                 }
+            } else {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggleChrome() }
             }
-            .onChange(of: plainText) { _, _ in
-                pageIndex = 0
-            }
-            .onChange(of: pageIndex) { _, newValue in
-                if newValue >= pages.count - 1 {
-                    // near end
-                }
-                pageCountForChapter = max(pages.count, 1)
-                persistProgress()
-                considerLibraryAdd(chapterProgress: chapterReadProgress(page: newValue, pages: pages.count))
-            }
-            .onAppear {
-                pageCountForChapter = max(pages.count, 1)
-            }
+        }
+        .onChange(of: plainText) { _, _ in
+            pageIndex = 0
+        }
+        .onChange(of: pageIndex) { _, newValue in
+            pageCountForChapter = max(pages.count, 1)
+            persistProgress()
+            considerLibraryAdd(chapterProgress: chapterReadProgress(page: newValue, pages: pages.count))
+        }
+        .onAppear {
+            pageCountForChapter = max(pages.count, 1)
         }
     }
 

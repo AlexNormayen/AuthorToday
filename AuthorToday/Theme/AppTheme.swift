@@ -168,15 +168,10 @@ final class CoverCache: @unchecked Sendable {
 
     func image(for url: URL) -> UIImage? {
         let key = cacheKey(for: url)
-        lock.lock()
-        let mem = memory[key]
-        lock.unlock()
-        if let mem { return mem }
+        if let mem = memoryImage(forKey: key) { return mem }
         let file = folder.appendingPathComponent(key)
         guard let data = try? Data(contentsOf: file), let img = UIImage(data: data) else { return nil }
-        lock.lock()
-        memory[key] = img
-        lock.unlock()
+        storeMemoryImage(img, forKey: key)
         return img
     }
 
@@ -189,13 +184,23 @@ final class CoverCache: @unchecked Sendable {
             let key = cacheKey(for: url)
             let file = folder.appendingPathComponent(key)
             try? data.write(to: file, options: .atomic)
-            lock.lock()
-            memory[key] = img
-            lock.unlock()
+            storeMemoryImage(img, forKey: key)
             return img
         } catch {
             return nil
         }
+    }
+
+    private func memoryImage(forKey key: String) -> UIImage? {
+        lock.lock()
+        defer { lock.unlock() }
+        return memory[key]
+    }
+
+    private func storeMemoryImage(_ image: UIImage, forKey key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        memory[key] = image
     }
 
     private func cacheKey(for url: URL) -> String {
