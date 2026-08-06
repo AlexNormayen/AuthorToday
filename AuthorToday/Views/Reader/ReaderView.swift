@@ -21,6 +21,7 @@ struct ReaderView: View {
     @State private var showChrome = false
     @State private var showSettings = false
     @State private var showTOC = false
+    @State private var showPurchase = false
     @State private var pageIndex = 0
     @State private var scrollOffset: Double = 0
     @State private var didAddToLibrary = false
@@ -81,21 +82,50 @@ struct ReaderView: View {
                     }
             }
         }
+        .sheet(isPresented: $showPurchase) {
+            if let details {
+                PurchaseWebView(url: details.purchaseURL, title: "Покупка")
+            }
+        }
         .sheet(isPresented: $showTOC) {
             NavigationStack {
-                List(Array(chapters.enumerated()), id: \.element.id) { idx, chapter in
-                    Button {
-                        showTOC = false
-                        Task { await openChapter(at: idx) }
-                    } label: {
-                        HStack {
-                            Text(chapter.displayTitle)
-                            Spacer()
-                            if idx == chapterIndex {
-                                Image(systemName: "book.fill")
-                                    .foregroundStyle(AppTheme.moss)
+                List {
+                    ForEach(Array(chapters.enumerated()), id: \.element.id) { idx, chapter in
+                        let locked = !chapter.isAvailableEffective
+                        Button {
+                            guard !locked else {
+                                if details?.needsPurchase == true {
+                                    showTOC = false
+                                    showPurchase = true
+                                }
+                                return
+                            }
+                            showTOC = false
+                            Task { await openChapter(at: idx) }
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(chapter.displayTitle)
+                                        .foregroundStyle(locked ? Color.secondary : Color.primary)
+                                        .multilineTextAlignment(.leading)
+                                    if locked {
+                                        Text("Недоступна · нужна покупка")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if locked {
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else if idx == chapterIndex {
+                                    Image(systemName: "book.fill")
+                                        .foregroundStyle(AppTheme.moss)
+                                }
                             }
                         }
+                        .disabled(locked && details?.needsPurchase != true)
                     }
                 }
                 .navigationTitle("Оглавление")
@@ -261,12 +291,14 @@ struct ReaderView: View {
     private var bottomBar: some View {
         HStack {
             Button {
-                Task { await openChapter(at: chapterIndex - 1) }
+                if let prev = nearestReadableIndex(from: chapterIndex, direction: -1) {
+                    Task { await openChapter(at: prev) }
+                }
             } label: {
                 Image(systemName: "chevron.left")
                     .frame(width: 44, height: 44)
             }
-            .disabled(chapterIndex <= 0)
+            .disabled(nearestReadableIndex(from: chapterIndex, direction: -1) == nil)
 
             Spacer()
 
@@ -276,12 +308,14 @@ struct ReaderView: View {
             Spacer()
 
             Button {
-                Task { await openChapter(at: chapterIndex + 1) }
+                if let next = nearestReadableIndex(from: chapterIndex, direction: 1) {
+                    Task { await openChapter(at: next) }
+                }
             } label: {
                 Image(systemName: "chevron.right")
                     .frame(width: 44, height: 44)
             }
-            .disabled(chapterIndex >= chapters.count - 1)
+            .disabled(nearestReadableIndex(from: chapterIndex, direction: 1) == nil)
         }
         .foregroundStyle(settings.textColor)
         .padding(.horizontal, 12)
@@ -301,9 +335,15 @@ struct ReaderView: View {
                 store: offline
             )
             details = result.details
-            chapters = result.details.availableChapters
+            // Full TOC including paid/locked chapters (drafts still hidden)
+            chapters = (result.details.chapters ?? []).filter { !($0.isDraft ?? false) }
+            if chapters.isEmpty {
+                chapters = result.details.availableChapters
+            }
             if let idx = chapters.firstIndex(where: { $0.id == result.chapterId }) {
                 chapterIndex = idx
+            } else if let firstReadable = chapters.firstIndex(where: \.isAvailableEffective) {
+                chapterIndex = firstReadable
             }
             html = result.html
             chapterTitle = result.title
@@ -337,10 +377,18 @@ struct ReaderView: View {
 
     private func openChapter(at index: Int) async {
         guard chapters.indices.contains(index) else { return }
+        let chapter = chapters[index]
+        guard chapter.isAvailableEffective else {
+            if details?.needsPurchase == true {
+                showPurchase = true
+            } else {
+                error = "Эта глава недоступна"
+            }
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
-            let chapter = chapters[index]
             let loaded = try await downloads.loadChapter(
                 workId: workId,
                 chapter: chapter,
@@ -357,10 +405,12 @@ struct ReaderView: View {
             prefetchNeighborChapters()
             if downloads.online {
                 try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
+                let readableCount = max(chapters.filter(\.isAvailableEffective).count, 1)
+                let readableIdx = chapters.prefix(index + 1).filter(\.isAvailableEffective).count
                 try? await APIClient.shared.updateProgress(
                     workId: workId,
                     chapterId: chapter.id,
-                    progress: chapters.isEmpty ? nil : Double(index + 1) / Double(chapters.count),
+                    progress: Double(readableIdx) / Double(readableCount),
                     location: "page:0"
                 )
             }
@@ -369,10 +419,16 @@ struct ReaderView: View {
         }
     }
 
-    /// Keep current (+ next) chapter on disk so offline reopen works.
+    /// Keep current (+ next available) chapter on disk so offline reopen works.
     private func prefetchNeighborChapters() {
         guard downloads.online else { return }
-        let indices = [chapterIndex, chapterIndex + 1].filter { chapters.indices.contains($0) }
+        var indices: [Int] = []
+        if chapters.indices.contains(chapterIndex), chapters[chapterIndex].isAvailableEffective {
+            indices.append(chapterIndex)
+        }
+        if let next = chapters[(chapterIndex + 1)...].firstIndex(where: \.isAvailableEffective) {
+            indices.append(next)
+        }
         Task {
             for idx in indices {
                 let chapter = chapters[idx]
@@ -387,14 +443,28 @@ struct ReaderView: View {
         }
     }
 
+    private func nearestReadableIndex(from index: Int, direction: Int) -> Int? {
+        guard direction != 0 else { return nil }
+        var i = index + direction
+        while chapters.indices.contains(i) {
+            if chapters[i].isAvailableEffective { return i }
+            i += direction
+        }
+        return nil
+    }
+
     private func turnPage(by delta: Int, pageCount: Int) {
         let next = pageIndex + delta
         if next < 0 {
-            Task { await openChapter(at: chapterIndex - 1) }
+            if let prev = nearestReadableIndex(from: chapterIndex, direction: -1) {
+                Task { await openChapter(at: prev) }
+            }
             return
         }
         if next >= pageCount {
-            Task { await openChapter(at: chapterIndex + 1) }
+            if let nxt = nearestReadableIndex(from: chapterIndex, direction: 1) {
+                Task { await openChapter(at: nxt) }
+            }
             return
         }
         withAnimation(.easeInOut(duration: 0.2)) {

@@ -738,6 +738,298 @@ actor APIClient {
         try await updateLibrary(workIds: [workId], state: state)
     }
 
+    // MARK: - Comments (site web API)
+
+    func loadWorkComments(workId: Int, page: Int = 1, sorting: String = "reverse") async throws -> CommentLoadPage {
+        try? await establishWebSession()
+        _ = try? await fetchWebHTML(path: "/work/\(workId)")
+        let (data, _) = try await webJSONGet(path: "/comment/load", query: [
+            "rootId": "\(workId)",
+            "rootType": "1",
+            "c": "",
+            "th": "",
+            "page": page <= 1 ? "" : "\(page)",
+            "sorting": sorting,
+            "_": "\(Int(Date().timeIntervalSince1970 * 1000))"
+        ])
+        struct Envelope: Decodable {
+            let isSuccessful: Bool?
+            let messages: [String]?
+            let data: Payload?
+            struct Payload: Decodable { let html: String? }
+        }
+        let env = try decoder.decode(Envelope.self, from: data)
+        guard env.isSuccessful != false, let html = env.data?.html else {
+            throw APIError.message(env.messages?.first ?? "Не удалось загрузить комментарии")
+        }
+        let comments = Self.parseCommentsHTML(html)
+        let hasMore = html.contains("rel=\"next\"") && !html.contains("next disabled")
+        let nextPage = hasMore ? page + 1 : nil
+        return CommentLoadPage(comments: comments, hasMore: hasMore, nextPage: nextPage)
+    }
+
+    func submitWorkComment(
+        workId: Int,
+        text: String,
+        parentId: Int? = nil,
+        threadId: Int? = nil,
+        level: Int = 0
+    ) async throws {
+        try? await establishWebSession()
+        let token = try await fetchRequestVerificationToken(workPath: "/work/\(workId)")
+        var payload: [String: Any] = [
+            "rootId": workId,
+            "rootType": 1,
+            "text": text,
+            "isPinned": false,
+            "level": level
+        ]
+        if let parentId { payload["parentId"] = parentId }
+        if let threadId { payload["threadId"] = threadId }
+        try await webJSONPost(path: "/comment/submit", body: payload, verificationToken: token)
+    }
+
+    // MARK: - Author profile
+
+    func authorProfile(userName: String, displayNameHint: String? = nil) async throws -> AuthorProfile {
+        let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty else { throw APIError.message("Нет имени автора") }
+        try? await establishWebSession()
+
+        let encoded = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+        let profileHTML = (try? await fetchWebHTML(path: "/u/\(encoded)")) ?? ""
+        let worksHTML = (try? await fetchWebHTML(path: "/u/\(encoded)/works")) ?? profileHTML
+
+        let displayName = Self.firstMatch(#"class="[^"]*user-name[^"]*"[^>]*>([^<]+)<"#, in: profileHTML)
+            ?? Self.firstMatch(#"<h1[^>]*>([^<]+)</h1>"#, in: profileHTML)
+            ?? displayNameHint
+            ?? user
+        let avatar = Self.firstMatch(#"aside-profile[\s\S]{0,800}?src=\"(https://[^\"]+)\""#, in: profileHTML)
+            ?? Self.firstMatch(#"class=\"[^\"]*avatar[^\"]*\"[^>]*src=\"(https://[^\"]+)\""#, in: profileHTML)
+        let about = Self.firstMatch(#"class=\"[^\"]*about[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: profileHTML)
+            .map { HTMLText.plain(from: $0) }
+
+        // Collect work ids + series from works page
+        var orderedIDs: [Int] = []
+        var seen = Set<Int>()
+        for idStr in matches(#"href=\"/work/(\d+)\""#, in: worksHTML) {
+            guard let id = Int(idStr), seen.insert(id).inserted else { continue }
+            orderedIDs.append(id)
+        }
+        // series map: workId -> (seriesId, title) from nearby markup is hard; enrich via meta
+        var metas: [WorkMeta] = []
+        for chunkStart in stride(from: 0, to: orderedIDs.count, by: 40) {
+            let end = min(chunkStart + 40, orderedIDs.count)
+            let chunk = Array(orderedIDs[chunkStart..<end])
+            if let items = try? await workMetas(ids: chunk) {
+                let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+                for id in chunk {
+                    if let m = byId[id] {
+                        metas.append(m)
+                    } else {
+                        metas.append(WorkMeta.stub(id: id, title: nil, author: displayName, coverUrl: nil))
+                    }
+                }
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        let grouped = Dictionary(grouping: metas) { meta -> String in
+            meta.displaySeriesTitle ?? "Без серии"
+        }
+        let series: [AuthorSeriesGroup] = grouped.map { title, works in
+            let sid = works.compactMap(\.seriesId).first
+            let sorted = works.sorted { a, b in
+                let oa = a.seriesOrder ?? Int.max
+                let ob = b.seriesOrder ?? Int.max
+                if oa != ob { return oa < ob }
+                return (a.title ?? "").localizedCaseInsensitiveCompare(b.title ?? "") == .orderedAscending
+            }
+            return AuthorSeriesGroup(title: title, seriesId: sid, works: sorted)
+        }
+        .sorted { a, b in
+            if a.title == "Без серии" { return false }
+            if b.title == "Без серии" { return true }
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+        }
+
+        return AuthorProfile(
+            userName: user,
+            displayName: HTMLText.plain(from: displayName),
+            avatarURL: avatar,
+            about: about,
+            works: metas,
+            series: series
+        )
+    }
+
+    private func fetchWebHTML(path: String) async throws -> String {
+        let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: base + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func fetchRequestVerificationToken(workPath: String) async throws -> String {
+        let html = try await fetchWebHTML(path: workPath)
+        if let token = Self.firstMatch(#"name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\""#, in: html)
+            ?? Self.firstMatch(#"value=\"([^\"]+)\"[^>]*name=\"__RequestVerificationToken\""#, in: html) {
+            return token
+        }
+        throw APIError.message("Не удалось получить токен для комментария")
+    }
+
+    private func webJSONGet(path: String, query: [String: String]) async throws -> (Data, HTTPURLResponse) {
+        let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = URLComponents(string: base + path)!
+        components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = components.url else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            forHTTPHeaderField: "User-Agent"
+        )
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.message("Нет ответа") }
+        try validate(response: response, data: data)
+        return (data, http)
+    }
+
+    private func webJSONPost(path: String, body: [String: Any], verificationToken: String) async throws {
+        let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: base + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(verificationToken, forHTTPHeaderField: "RequestVerificationToken")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            forHTTPHeaderField: "User-Agent"
+        )
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let ok = obj["isSuccessful"] as? Bool, !ok {
+            let messages = (obj["messages"] as? [String])?.first
+            throw APIError.message(messages ?? "Не удалось отправить комментарий")
+        }
+    }
+
+    private static func parseCommentsHTML(_ html: String) -> [WorkComment] {
+        var result: [WorkComment] = []
+        guard let regex = try? NSRegularExpression(
+            pattern: #"(?s)<div class=\"comment[^\"]*\"[^>]*data-id=\"(\d+)\"[^>]*data-level=\"(\d+)\"[^>]*data-thread=\"(\d+)\"[^>]*>(.*?)</div>\s*(?=<div class=\"comment|</div>\s*<div class=\"pagination|</div>\s*$)"#
+        ) else {
+            // Fallback: simpler per-comment blocks
+            return parseCommentsHTMLSimple(html)
+        }
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = regex.matches(in: html, range: range)
+        if matches.isEmpty {
+            return parseCommentsHTMLSimple(html)
+        }
+        for match in matches {
+            guard match.numberOfRanges >= 5,
+                  let idR = Range(match.range(at: 1), in: html),
+                  let levelR = Range(match.range(at: 2), in: html),
+                  let threadR = Range(match.range(at: 3), in: html),
+                  let bodyR = Range(match.range(at: 4), in: html),
+                  let id = Int(html[idR]),
+                  let level = Int(html[levelR]),
+                  let thread = Int(html[threadR]) else { continue }
+            let chunk = String(html[bodyR])
+            result.append(commentFromChunk(id: id, level: level, threadId: thread, chunk: chunk))
+        }
+        return result
+    }
+
+    private static func parseCommentsHTMLSimple(_ html: String) -> [WorkComment] {
+        var result: [WorkComment] = []
+        guard let idRegex = try? NSRegularExpression(pattern: #"data-id=\"(\d+)\""#) else { return [] }
+        let full = NSRange(html.startIndex..<html.endIndex, in: html)
+        let ids = idRegex.matches(in: html, range: full).compactMap { m -> (Int, Int)? in
+            guard let r = Range(m.range(at: 1), in: html), let id = Int(html[r]) else { return nil }
+            return (id, m.range.location)
+        }
+        for (idx, item) in ids.enumerated() {
+            let start = item.1
+            let end = idx + 1 < ids.count ? ids[idx + 1].1 : html.count
+            let startIdx = html.index(html.startIndex, offsetBy: start)
+            let endIdx = html.index(html.startIndex, offsetBy: min(end, html.count))
+            let chunk = String(html[startIdx..<endIdx])
+            let level = Int(firstMatch(#"data-level=\"(\d+)\""#, in: chunk) ?? "0") ?? 0
+            let thread = Int(firstMatch(#"data-thread=\"(\d+)\""#, in: chunk) ?? "\(item.0)") ?? item.0
+            result.append(commentFromChunk(id: item.0, level: level, threadId: thread, chunk: chunk))
+        }
+        return result
+    }
+
+    private static func commentFromChunk(id: Int, level: Int, threadId: Int, chunk: String) -> WorkComment {
+        let author = firstMatch(#"comment-user-name\">([^<]+)<"#, in: chunk)
+            ?? firstMatch(#"/u/([^\"/]+)\"[^>]*>\s*<span"#, in: chunk)
+            ?? "Пользователь"
+        let userName = firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
+        let textHTML = firstMatch(#"(?s)class=\"rich-content[^\"]*\">([\s\S]*?)</div>"#, in: chunk)
+            ?? firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk)
+            ?? ""
+        let created = firstMatch(#"data-time=\"([^\"]+)\""#, in: chunk)
+        let pinned = chunk.contains("data-is-pinned=\"true\"") || chunk.contains("is-pinned")
+        let isAuthor = chunk.contains(">автор<") || chunk.contains("label-primary")
+        let ratingStr = firstMatch(#"comment-rating-count[^>]*>\s*([+\-]?\d+)"#, in: chunk)
+        return WorkComment(
+            id: id,
+            parentId: level > 0 ? threadId : nil,
+            threadId: threadId,
+            level: level,
+            authorName: HTMLText.plain(from: author),
+            authorUserName: userName,
+            text: HTMLText.plain(from: textHTML),
+            createdAt: created,
+            isPinned: pinned,
+            isAuthor: isAuthor,
+            rating: ratingStr.flatMap(Int.init)
+        )
+    }
+
+    private static func firstMatch(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges > 1,
+              let r = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[r])
+    }
+
+    private func matches(_ pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, range: range).compactMap { m in
+            guard m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: text) else { return nil }
+            return String(text[r])
+        }
+    }
+
     // MARK: - Notifications
 
     func checkNotifications() async throws -> NotificationCheck {

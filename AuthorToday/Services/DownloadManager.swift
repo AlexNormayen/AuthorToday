@@ -123,7 +123,7 @@ final class DownloadManager: ObservableObject {
             id: workId,
             title: cached.title,
             authorFIO: cached.author,
-            authorUserName: nil,
+            authorUserName: cached.authorUserName,
             coverUrl: cached.coverURL,
             annotation: cached.annotation,
             chapters: chapters,

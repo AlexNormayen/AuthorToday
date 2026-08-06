@@ -393,9 +393,12 @@ final class OfflineStore: ObservableObject {
         if markFromSite, (state ?? "").lowercased() == "none" {
             state = "Reading"
         }
-        if let existing {
+            if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
+            if let uname = meta.authorUserName, !uname.isEmpty {
+                existing.authorUserName = uname
+            }
             existing.coverURL = meta.absoluteCoverURL ?? existing.coverURL
             existing.annotation = meta.annotation ?? existing.annotation
             existing.libraryState = state
@@ -422,6 +425,7 @@ final class OfflineStore: ObservableObject {
                 workId: meta.id,
                 title: meta.displayTitle,
                 author: meta.displayAuthor,
+                authorUserName: meta.authorUserName,
                 coverURL: meta.absoluteCoverURL,
                 annotation: meta.annotation,
                 libraryState: state,
@@ -444,9 +448,12 @@ final class OfflineStore: ObservableObject {
         )
         let existing = try? modelContext.fetch(descriptor).first
         let chaptersData = try? JSONEncoder().encode(details.chapters ?? [])
-        if let existing {
+            if let existing {
             existing.title = details.displayTitle
             existing.author = details.displayAuthor
+            if let uname = details.authorUserName, !uname.isEmpty {
+                existing.authorUserName = uname
+            }
             existing.coverURL = WorkMeta.normalizeCover(details.coverUrl)
             existing.annotation = details.annotation
             existing.chaptersJSON = chaptersData
@@ -458,6 +465,7 @@ final class OfflineStore: ObservableObject {
                     workId: details.id,
                     title: details.displayTitle,
                     author: details.displayAuthor,
+                    authorUserName: details.authorUserName,
                     coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
                     libraryState: "localonly",

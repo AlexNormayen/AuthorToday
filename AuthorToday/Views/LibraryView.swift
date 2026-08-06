@@ -107,6 +107,8 @@ struct LibraryView: View {
                     AuthorBooksView(author: name, path: $path)
                 case .authorSeries(let author, let series):
                     AuthorSeriesBooksView(author: author, series: series, path: $path)
+                case .authorProfile(let userName, let displayName):
+                    AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -232,6 +234,7 @@ enum LibraryRoute: Hashable {
     case details(workId: Int)
     case author(String)
     case authorSeries(author: String, series: String)
+    case authorProfile(userName: String, displayName: String?)
 }
 
 struct AuthorBooksView: View {
@@ -309,6 +312,19 @@ struct AuthorBooksView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(author)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let userName = siteUserName {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Профиль") {
+                        path.append(LibraryRoute.authorProfile(userName: userName, displayName: author))
+                    }
+                }
+            }
+        }
+    }
+
+    private var siteUserName: String? {
+        works.compactMap(\.authorUserName).first { !$0.isEmpty }
     }
 
     private func booksScroll(_ items: [CachedWork]) -> some View {
@@ -439,6 +455,8 @@ struct RecentReadsView: View {
                     AuthorBooksView(author: name, path: $path)
                 case .authorSeries(let author, let series):
                     AuthorSeriesBooksView(author: author, series: series, path: $path)
+                case .authorProfile(let userName, let displayName):
+                    AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
             }
             .onAppear { offline.reloadLibrary() }

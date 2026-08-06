@@ -316,6 +316,46 @@ struct ChapterMeta: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Comments
+
+struct WorkComment: Identifiable, Hashable, Sendable {
+    let id: Int
+    let parentId: Int?
+    let threadId: Int?
+    let level: Int
+    let authorName: String
+    let authorUserName: String?
+    let text: String
+    let createdAt: String?
+    let isPinned: Bool
+    let isAuthor: Bool
+    let rating: Int?
+}
+
+struct CommentLoadPage: Sendable {
+    let comments: [WorkComment]
+    let hasMore: Bool
+    let nextPage: Int?
+}
+
+// MARK: - Author profile
+
+struct AuthorProfile: Sendable {
+    let userName: String
+    let displayName: String
+    let avatarURL: String?
+    let about: String?
+    let works: [WorkMeta]
+    let series: [AuthorSeriesGroup]
+}
+
+struct AuthorSeriesGroup: Identifiable, Hashable, Sendable {
+    var id: String { title }
+    let title: String
+    let seriesId: Int?
+    let works: [WorkMeta]
+}
+
 struct ChapterTextPayload: Codable, Sendable {
     let id: Int?
     let text: String?
@@ -528,6 +568,7 @@ final class CachedWork {
     @Attribute(.unique) var workId: Int
     var title: String
     var author: String
+    var authorUserName: String?
     var coverURL: String?
     var annotation: String?
     var libraryState: String?
@@ -546,6 +587,7 @@ final class CachedWork {
         workId: Int,
         title: String,
         author: String,
+        authorUserName: String? = nil,
         coverURL: String? = nil,
         annotation: String? = nil,
         libraryState: String? = nil,
@@ -562,6 +604,7 @@ final class CachedWork {
         self.workId = workId
         self.title = title
         self.author = author
+        self.authorUserName = authorUserName
         self.coverURL = coverURL
         self.annotation = annotation
         self.libraryState = libraryState
