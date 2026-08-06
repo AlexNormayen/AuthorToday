@@ -40,34 +40,8 @@ final class DownloadManager: ObservableObject {
         if isOnline {
             details = try await APIClient.shared.workDetails(id: workId)
             store.cacheWorkDetails(details)
-        } else if let cached = store.cachedWork(workId: workId),
-                  let data = cached.chaptersJSON,
-                  let chapters = try? JSONDecoder().decode([ChapterMeta].self, from: data) {
-            details = WorkDetails(
-                id: workId,
-                title: cached.title,
-                authorFIO: cached.author,
-                authorUserName: nil,
-                coverUrl: cached.coverURL,
-                annotation: cached.annotation,
-                chapters: chapters,
-                status: nil,
-                genreName: nil,
-                secondGenreName: nil,
-                likeCount: nil,
-                viewsCount: nil,
-                chapterCount: chapters.count,
-                downloadAllowed: nil,
-                isFinished: nil,
-                price: nil,
-                discount: nil,
-                isPurchased: nil,
-                orderStatus: nil,
-                orderStatusMessage: nil,
-                freeChapterCount: nil
-            )
         } else {
-            throw APIError.message("Нет сети и книга ещё не скачана")
+            details = try offlineDetails(workId: workId, store: store)
         }
 
         let chapters = details.availableChapters
@@ -77,19 +51,24 @@ final class DownloadManager: ObservableObject {
 
         var remoteChapterId: Int?
         if isOnline, let meta = try? await APIClient.shared.workMeta(id: workId) {
-            // Update progress markers only if already in library
             if store.isInLibrary(workId) {
                 store.upsertWork(from: meta, markFromSite: true)
             }
             remoteChapterId = meta.lastReadChapterId
         }
 
-        let startId = preferredChapterId
+        let preferred = preferredChapterId
             ?? store.progress(for: workId)?.chapterId
             ?? remoteChapterId
-            ?? store.library.first(where: { $0.workId == workId })?.lastReadChapterId
-            ?? chapters.first?.id
-            ?? chapters[0].id
+            ?? store.cachedWork(workId: workId)?.lastReadChapterId
+
+        let startId = pickStartChapterId(
+            preferred: preferred,
+            chapters: chapters,
+            workId: workId,
+            store: store,
+            online: isOnline
+        )
 
         let chapterMeta = chapters.first(where: { $0.id == startId }) ?? chapters[0]
         let (title, html) = try await loadChapter(
@@ -101,7 +80,6 @@ final class DownloadManager: ObservableObject {
 
         if isOnline {
             try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
-            // Progress only — do NOT add to site library until half a chapter is read
             try? await APIClient.shared.updateProgress(
                 workId: workId,
                 chapterId: chapterMeta.id,
@@ -111,6 +89,82 @@ final class DownloadManager: ObservableObject {
         }
 
         return (details, chapterMeta.id, html, title)
+    }
+
+    /// Offline: rebuild TOC from chaptersJSON or from already cached chapter rows.
+    private func offlineDetails(workId: Int, store: OfflineStore) throws -> WorkDetails {
+        guard let cached = store.cachedWork(workId: workId) else {
+            throw APIError.message("Нет сети и книга ещё не скачана")
+        }
+        var chapters: [ChapterMeta] = []
+        if let data = cached.chaptersJSON,
+           let decoded = try? JSONDecoder().decode([ChapterMeta].self, from: data),
+           !decoded.isEmpty {
+            chapters = decoded
+        } else {
+            let cachedChapters = store.cachedChapters(workId: workId)
+            chapters = cachedChapters.map {
+                ChapterMeta(
+                    id: $0.chapterId,
+                    workId: workId,
+                    title: $0.title,
+                    isAvailable: true,
+                    publishTime: nil,
+                    lastUpdateTime: nil,
+                    textLength: nil,
+                    isDraft: false
+                )
+            }
+        }
+        guard !chapters.isEmpty else {
+            throw APIError.message("Нет сети и нет сохранённых глав этой книги")
+        }
+        return WorkDetails(
+            id: workId,
+            title: cached.title,
+            authorFIO: cached.author,
+            authorUserName: nil,
+            coverUrl: cached.coverURL,
+            annotation: cached.annotation,
+            chapters: chapters,
+            status: nil,
+            genreName: nil,
+            secondGenreName: nil,
+            likeCount: nil,
+            viewsCount: nil,
+            chapterCount: chapters.count,
+            downloadAllowed: nil,
+            isFinished: nil,
+            price: nil,
+            discount: nil,
+            isPurchased: nil,
+            orderStatus: nil,
+            orderStatusMessage: nil,
+            freeChapterCount: nil
+        )
+    }
+
+    /// Prefer requested chapter if cached; otherwise any downloaded chapter (offline).
+    private func pickStartChapterId(
+        preferred: Int?,
+        chapters: [ChapterMeta],
+        workId: Int,
+        store: OfflineStore,
+        online: Bool
+    ) -> Int {
+        if let preferred,
+           chapters.contains(where: { $0.id == preferred }),
+           online || store.isChapterCached(workId: workId, chapterId: preferred) {
+            return preferred
+        }
+        if !online {
+            if let cached = chapters.first(where: { store.isChapterCached(workId: workId, chapterId: $0.id) }) {
+                return cached.id
+            }
+        }
+        return preferred.flatMap { id in chapters.contains(where: { $0.id == id }) ? id : nil }
+            ?? chapters.first?.id
+            ?? chapters[0].id
     }
 
     func loadChapter(
@@ -123,7 +177,6 @@ final class DownloadManager: ObservableObject {
             if ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
                 return (cached.title, cached.htmlText)
             }
-            // Bad decrypt from older builds — drop and refetch
             store.removeCachedChapter(workId: workId, chapterId: chapter.id)
         }
         guard isOnline else {
@@ -131,7 +184,7 @@ final class DownloadManager: ObservableObject {
                ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
                 return (cached.title, cached.htmlText)
             }
-            throw APIError.message("Глава не скачана, нет сети")
+            throw APIError.message("Эта глава не скачана. Нужен интернет или скачайте книгу целиком на карточке книги.")
         }
 
         let (remoteTitle, html) = try await APIClient.shared.chapterText(
@@ -166,7 +219,6 @@ final class DownloadManager: ObservableObject {
         let chapters = details.availableChapters
         guard !chapters.isEmpty else { return }
 
-        // Try batch first
         do {
             let batch = try await APIClient.shared.manyChapterTexts(workId: workId)
             if !batch.isEmpty {
@@ -186,7 +238,7 @@ final class DownloadManager: ObservableObject {
                 return
             }
         } catch {
-            // fall through to per-chapter
+            // fall through
         }
 
         for (index, chapter) in chapters.enumerated() {
@@ -209,6 +261,8 @@ final class DownloadManager: ObservableObject {
 
         let cachedCount = store.cachedChapters(workId: workId).count
         store.markDownloaded(workId: workId, fully: cachedCount >= chapters.count)
-        statusMessage = "«\(details.displayTitle)» — \(cachedCount)/\(chapters.count) глав"
+        statusMessage = cachedCount >= chapters.count
+            ? "«\(details.displayTitle)» скачана"
+            : "Скачано \(cachedCount) из \(chapters.count) глав"
     }
 }

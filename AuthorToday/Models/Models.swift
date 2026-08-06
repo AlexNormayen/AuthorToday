@@ -87,6 +87,9 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     let price: Double?
     let discount: Double?
     let isPurchased: Bool?
+    let seriesId: Int?
+    let seriesTitle: String?
+    let seriesOrder: Int?
 
     /// Minimal row built from profile HTML when meta-info is empty/unavailable.
     static func stub(
@@ -94,7 +97,10 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
         title: String?,
         author: String?,
         coverUrl: String? = nil,
-        libraryState: String = "Reading"
+        libraryState: String = "Reading",
+        seriesId: Int? = nil,
+        seriesTitle: String? = nil,
+        seriesOrder: Int? = nil
     ) -> WorkMeta {
         WorkMeta(
             id: id,
@@ -121,7 +127,10 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
             lastChapterProgress: nil,
             price: nil,
             discount: nil,
-            isPurchased: nil
+            isPurchased: nil,
+            seriesId: seriesId,
+            seriesTitle: seriesTitle,
+            seriesOrder: seriesOrder
         )
     }
 
@@ -151,8 +160,16 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
             lastChapterProgress: lastChapterProgress,
             price: price,
             discount: discount,
-            isPurchased: isPurchased
+            isPurchased: isPurchased,
+            seriesId: seriesId,
+            seriesTitle: seriesTitle,
+            seriesOrder: seriesOrder
         )
+    }
+
+    var displaySeriesTitle: String? {
+        let raw = seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? nil : raw
     }
 
     var displayAuthor: String {
@@ -435,6 +452,9 @@ final class CachedWork {
     var updatedAt: Date
     var isFullyDownloaded: Bool
     var chaptersJSON: Data?
+    var seriesId: Int?
+    var seriesTitle: String?
+    var seriesOrder: Int?
 
     init(
         workId: Int,
@@ -448,7 +468,10 @@ final class CachedWork {
         progress: Double = 0,
         updatedAt: Date = .now,
         isFullyDownloaded: Bool = false,
-        chaptersJSON: Data? = nil
+        chaptersJSON: Data? = nil,
+        seriesId: Int? = nil,
+        seriesTitle: String? = nil,
+        seriesOrder: Int? = nil
     ) {
         self.workId = workId
         self.title = title
@@ -462,6 +485,9 @@ final class CachedWork {
         self.updatedAt = updatedAt
         self.isFullyDownloaded = isFullyDownloaded
         self.chaptersJSON = chaptersJSON
+        self.seriesId = seriesId
+        self.seriesTitle = seriesTitle
+        self.seriesOrder = seriesOrder
     }
 
     /// Safe 0…100 for UI (handles legacy rows that stored API percent as-is).
@@ -469,6 +495,11 @@ final class CachedWork {
         let raw = progress
         let fraction = raw > 1.0 ? raw / 100.0 : raw
         return Int((min(max(fraction, 0), 1) * 100).rounded())
+    }
+
+    var displaySeriesFolder: String {
+        let raw = seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? "Без серии" : raw
     }
 }
 

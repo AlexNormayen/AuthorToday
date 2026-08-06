@@ -146,44 +146,38 @@ final class OfflineStore: ObservableObject {
                 }
             }
 
-            // Primary: full profile shelf HTML (what the site shows)
-            let username = AuthService.shared.resolvedUserName
-            if let username, !username.isEmpty {
-                do {
-                    let profileItems = try await APIClient.shared.libraryFromProfile(username: username, maxPages: 60)
-                    merge(profileItems)
-                } catch {
-                    errors.append("profile: \(error.localizedDescription)")
-                }
-            } else {
-                errors.append("profile: нет userName — обновите профиль в «Ещё»")
-            }
-
-            // Always also pull API library and merge (covers private shelf + progress)
+            // Primary: official API (Reading + Read + Wish…, up to totalCount)
             do {
                 var page = 1
                 while true {
                     let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                    for item in items {
-                        let state = (item.resolvedLibraryState ?? "").lowercased()
-                        if let existing = byID[item.id] {
-                            // Prefer richer meta, keep non-None shelf state
-                            let existingState = (existing.resolvedLibraryState ?? "").lowercased()
-                            if existingState == "none" || existingState.isEmpty {
-                                byID[item.id] = item
-                            } else if state != "none" {
-                                byID[item.id] = item.withLibraryState(existing.resolvedLibraryState ?? "Reading")
-                            }
-                        } else if state != "none" {
-                            byID[item.id] = item
-                        }
-                    }
+                    merge(items)
                     if items.isEmpty || items.count < 50 { break }
                     page += 1
-                    if page > 40 { break }
+                    if page > 80 { break }
+                    // Avoid 429 rate limits
+                    try? await Task.sleep(nanoseconds: 250_000_000)
                 }
             } catch {
                 errors.append("api: \(error.localizedDescription)")
+            }
+
+            // Supplement: profile HTML shelf (reading tab) for any gaps
+            let username = AuthService.shared.resolvedUserName
+            if let username, !username.isEmpty {
+                do {
+                    let profileItems = try await APIClient.shared.libraryFromProfile(
+                        username: username,
+                        maxPages: 40,
+                        enrichMissingOnly: true,
+                        knownIDs: Set(byID.keys)
+                    )
+                    merge(profileItems)
+                } catch {
+                    errors.append("profile: \(error.localizedDescription)")
+                }
+            } else if byID.isEmpty {
+                errors.append("profile: нет userName — обновите профиль в «Ещё»")
             }
 
             collected = Array(byID.values)
@@ -287,8 +281,16 @@ final class OfflineStore: ObservableObject {
             }
             let remoteProgress = meta.resolvedProgress
             if remoteProgress > 0 {
-                // Furthest known progress wins (site or app)
                 existing.progress = min(max(existing.progress, remoteProgress), 1)
+            }
+            if let seriesTitle = meta.displaySeriesTitle {
+                existing.seriesTitle = seriesTitle
+            }
+            if let seriesId = meta.seriesId {
+                existing.seriesId = seriesId
+            }
+            if let seriesOrder = meta.seriesOrder {
+                existing.seriesOrder = seriesOrder
             }
             existing.updatedAt = .now
         } else {
@@ -300,7 +302,10 @@ final class OfflineStore: ObservableObject {
                 annotation: meta.annotation,
                 libraryState: state,
                 lastReadChapterId: meta.lastReadChapterId,
-                progress: min(max(meta.resolvedProgress, 0), 1)
+                progress: min(max(meta.resolvedProgress, 0), 1),
+                seriesId: meta.seriesId,
+                seriesTitle: meta.displaySeriesTitle,
+                seriesOrder: meta.seriesOrder
             )
             ctx.insert(work)
         }

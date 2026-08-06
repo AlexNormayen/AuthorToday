@@ -105,15 +105,48 @@ actor APIClient {
     // MARK: - Library / works
 
     func userLibrary(page: Int = 1, pageSize: Int = 50) async throws -> [WorkMeta] {
-        let (data, _) = try await rawGet(path: "/v1/account/user-library", query: [
-            "page": "\(page)",
-            "pageSize": "\(pageSize)"
-        ])
-        return try decodeWorkList(from: data)
+        try await withRetry(times: 4) {
+            let (data, _) = try await rawGet(path: "/v1/account/user-library", query: [
+                "page": "\(page)",
+                "pageSize": "\(pageSize)"
+            ])
+            return try decodeWorkList(from: data)
+        }
+    }
+
+    /// Retries transient HTTP errors (esp. 429 rate limit).
+    private func withRetry<T>(times: Int, operation: () async throws -> T) async throws -> T {
+        var attempt = 0
+        var lastError: Error?
+        while attempt < times {
+            do {
+                return try await operation()
+            } catch let error as APIError {
+                lastError = error
+                if case .http(let code, _) = error, code == 429 || code == 503 {
+                    attempt += 1
+                    let ns = UInt64(pow(2.0, Double(attempt))) * 400_000_000
+                    try? await Task.sleep(nanoseconds: ns)
+                    continue
+                }
+                throw error
+            } catch {
+                lastError = error
+                attempt += 1
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        throw lastError ?? APIError.message("Повтор запроса не удался")
     }
 
     /// Public (or cookie-authenticated) profile library pages, e.g. /u/dark_tarkhan/library
-    func libraryFromProfile(username: String, maxPages: Int = 25) async throws -> [WorkMeta] {
+    /// - Parameter enrichMissingOnly: if true, skip meta-info for IDs already known (avoids 429).
+    func libraryFromProfile(
+        username: String,
+        maxPages: Int = 25,
+        enrichMissingOnly: Bool = false,
+        knownIDs: Set<Int> = []
+    ) async throws -> [WorkMeta] {
         let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !user.isEmpty else { return [] }
         try? await establishWebSession()
@@ -126,7 +159,6 @@ actor APIClient {
             guard let url = URL(string: "\(base)/u/\(encoded)/library?sorting=lr&page=\(page)") else { continue }
             var request = URLRequest(url: url)
             request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-            // Desktop HTML has real bookcards; mobile UA often returns Framework7 shell.
             request.setValue(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 forHTTPHeaderField: "User-Agent"
@@ -141,26 +173,30 @@ actor APIClient {
             let fresh = pageItems.filter { seen.insert($0.id).inserted }
             if fresh.isEmpty { break }
             scraped.append(contentsOf: fresh)
+            try? await Task.sleep(nanoseconds: 150_000_000)
         }
         guard !scraped.isEmpty else { return [] }
 
+        let needMeta = scraped.map(\.id).filter { !enrichMissingOnly || !knownIDs.contains($0) }
         var metaByID: [Int: WorkMeta] = [:]
-        let orderedIDs = scraped.map(\.id)
-        for chunkStart in stride(from: 0, to: orderedIDs.count, by: 40) {
-            let end = min(chunkStart + 40, orderedIDs.count)
-            let chunk = Array(orderedIDs[chunkStart..<end])
+        for chunkStart in stride(from: 0, to: needMeta.count, by: 40) {
+            let end = min(chunkStart + 40, needMeta.count)
+            let chunk = Array(needMeta[chunkStart..<end])
             if let metas = try? await workMetas(ids: chunk) {
                 for meta in metas {
                     metaByID[meta.id] = meta
                 }
             }
+            try? await Task.sleep(nanoseconds: 200_000_000)
         }
 
-        return scraped.map { item in
+        return scraped.compactMap { item -> WorkMeta? in
+            if enrichMissingOnly, knownIDs.contains(item.id) {
+                return nil
+            }
             let state = Self.normalizeLibraryState(item.state) ?? "Reading"
             if let meta = metaByID[item.id] {
                 let remote = (meta.resolvedLibraryState ?? "").lowercased()
-                // Guest/meta often returns None even for shelf books — keep scraped state.
                 if remote.isEmpty || remote == "none" {
                     return meta.withLibraryState(state)
                 }
@@ -547,11 +583,15 @@ actor APIClient {
             workInLibraryState: work.workInLibraryState,
             inLibraryState: work.inLibraryState,
             progress: work.resolvedProgress,
-            lastReadChapterId: work.lastReadChapterId ?? work.lastChapterId,
+            // Never fall back to lastChapterId — that is the latest published chapter, not last read
+            lastReadChapterId: work.lastReadChapterId,
             lastChapterProgress: work.lastChapterProgress,
             price: work.price,
             discount: work.discount,
-            isPurchased: work.isPurchased
+            isPurchased: work.isPurchased,
+            seriesId: work.seriesId,
+            seriesTitle: work.seriesTitle,
+            seriesOrder: work.seriesOrder
         )
     }
 

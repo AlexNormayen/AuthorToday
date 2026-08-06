@@ -5,6 +5,7 @@ struct ReaderView: View {
     let workId: Int
     let initialChapterId: Int?
 
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var settings: ReaderSettingsStore
@@ -37,31 +38,39 @@ struct ReaderView: View {
                 ProgressView("Открываем книгу…")
                     .tint(settings.textColor)
             } else if let error {
-                VStack(spacing: 12) {
+                VStack(spacing: 16) {
+                    Image(systemName: "wifi.slash")
+                        .font(.largeTitle)
+                        .foregroundStyle(settings.textColor.opacity(0.7))
                     Text(error)
                         .foregroundStyle(settings.textColor)
                         .multilineTextAlignment(.center)
                     Button("Повторить") { Task { await bootstrap() } }
+                        .buttonStyle(.borderedProminent)
+                    Button("Назад в библиотеку") { dismiss() }
+                        .foregroundStyle(settings.textColor)
                 }
-                .padding()
+                .padding(24)
             } else {
                 readerContent
             }
 
-            if showChrome {
+            if showChrome || error != nil {
                 VStack {
                     topBar
                     Spacer()
-                    bottomBar
+                    if error == nil {
+                        bottomBar
+                    }
                 }
                 .transition(.opacity)
             }
         }
         .navigationBarHidden(true)
-        .statusBarHidden(!showChrome)
+        .statusBarHidden(!showChrome && error == nil)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
-        .ignoresSafeArea(edges: showChrome ? [] : .all)
+        .ignoresSafeArea(edges: (showChrome || error != nil) ? [] : .all)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 ReaderSettingsView()

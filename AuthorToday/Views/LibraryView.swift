@@ -85,6 +85,8 @@ struct LibraryView: View {
                     BookDetailView(workId: workId)
                 case .author(let name):
                     AuthorBooksView(author: name, path: $path)
+                case .authorSeries(let author, let series):
+                    AuthorSeriesBooksView(author: author, series: series, path: $path)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -209,6 +211,7 @@ enum LibraryRoute: Hashable {
     case reader(workId: Int, chapterId: Int?)
     case details(workId: Int)
     case author(String)
+    case authorSeries(author: String, series: String)
 }
 
 struct AuthorBooksView: View {
@@ -217,9 +220,130 @@ struct AuthorBooksView: View {
     @EnvironmentObject private var offline: OfflineStore
 
     private var works: [CachedWork] {
+        offline.library.filter { matchesAuthor($0) }
+    }
+
+    private var seriesGroups: [(series: String, works: [CachedWork])] {
+        let grouped = Dictionary(grouping: works) { $0.displaySeriesFolder }
+        return grouped
+            .map { key, value in
+                let sorted = value.sorted { a, b in
+                    let oa = a.seriesOrder ?? Int.max
+                    let ob = b.seriesOrder ?? Int.max
+                    if oa != ob { return oa < ob }
+                    return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+                }
+                return (series: key, works: sorted)
+            }
+            .sorted { a, b in
+                if a.series == "Без серии" { return false }
+                if b.series == "Без серии" { return true }
+                return a.series.localizedCaseInsensitiveCompare(b.series) == .orderedAscending
+            }
+    }
+
+    private var onlyFlatList: Bool {
+        seriesGroups.count <= 1 && seriesGroups.first?.series == "Без серии"
+    }
+
+    var body: some View {
+        Group {
+            if onlyFlatList {
+                booksScroll(works.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending })
+            } else {
+                List {
+                    ForEach(seriesGroups, id: \.series) { group in
+                        Button {
+                            path.append(LibraryRoute.authorSeries(author: author, series: group.series))
+                        } label: {
+                            HStack(spacing: 14) {
+                                AuthorCoverCollage(
+                                    coverURLs: group.works
+                                        .sorted { ($0.coverURL?.isEmpty == false ? 0 : 1) < ($1.coverURL?.isEmpty == false ? 0 : 1) }
+                                        .prefix(8)
+                                        .map(\.coverURL),
+                                    size: 52,
+                                    corner: 10
+                                )
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(group.series)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .multilineTextAlignment(.leading)
+                                    Text(booksCountText(group.works.count))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle(author)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func booksScroll(_ items: [CachedWork]) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(items, id: \.workId) { work in
+                    Button {
+                        path.append(LibraryRoute.details(workId: work.workId))
+                    } label: {
+                        LibraryRow(work: work, showAuthor: false)
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 88)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func matchesAuthor(_ work: CachedWork) -> Bool {
+        if author == "Без автора" {
+            return work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return work.author.caseInsensitiveCompare(author) == .orderedSame
+    }
+
+    private func booksCountText(_ n: Int) -> String {
+        let mod10 = n % 10
+        let mod100 = n % 100
+        if mod10 == 1, mod100 != 11 { return "\(n) книга" }
+        if (2...4).contains(mod10), !(12...14).contains(mod100) { return "\(n) книги" }
+        return "\(n) книг"
+    }
+}
+
+struct AuthorSeriesBooksView: View {
+    let author: String
+    let series: String
+    @Binding var path: NavigationPath
+    @EnvironmentObject private var offline: OfflineStore
+
+    private var works: [CachedWork] {
         offline.library
-            .filter { $0.author.caseInsensitiveCompare(author) == .orderedSame || (author == "Без автора" && $0.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            .filter { work in
+                let authorMatch = author == "Без автора"
+                    ? work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    : work.author.caseInsensitiveCompare(author) == .orderedSame
+                return authorMatch && work.displaySeriesFolder == series
+            }
+            .sorted { a, b in
+                let oa = a.seriesOrder ?? Int.max
+                let ob = b.seriesOrder ?? Int.max
+                if oa != ob { return oa < ob }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
     }
 
     var body: some View {
@@ -238,7 +362,7 @@ struct AuthorBooksView: View {
             .padding(.vertical, 8)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle(author)
+        .navigationTitle(series)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -293,6 +417,8 @@ struct RecentReadsView: View {
                     BookDetailView(workId: workId)
                 case .author(let name):
                     AuthorBooksView(author: name, path: $path)
+                case .authorSeries(let author, let series):
+                    AuthorSeriesBooksView(author: author, series: series, path: $path)
                 }
             }
             .onAppear { offline.reloadLibrary() }
