@@ -367,6 +367,7 @@ struct BookDetailView: View {
         let text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         isSendingComment = true
+        commentsError = nil
         defer { isSendingComment = false }
         do {
             try await APIClient.shared.submitWorkComment(
@@ -378,6 +379,7 @@ struct BookDetailView: View {
             )
             draftText = ""
             replyTo = nil
+            commentsError = nil
             await loadComments(reset: true)
         } catch {
             commentsError = error.localizedDescription
@@ -495,13 +497,18 @@ private struct BookCommentsSection: View {
 
             if canWrite {
                 composer
+                if let commentsError {
+                    Text(commentsError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
             } else {
                 Text("Войдите в аккаунт, чтобы писать комментарии.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            if let commentsError {
+            if !canWrite, let commentsError {
                 Text(commentsError)
                     .font(.footnote)
                     .foregroundStyle(.red)

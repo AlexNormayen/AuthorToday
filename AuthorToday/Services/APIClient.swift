@@ -775,18 +775,36 @@ actor APIClient {
         threadId: Int? = nil,
         level: Int = 0
     ) async throws {
-        try? await establishWebSession()
-        let token = try await fetchRequestVerificationToken(workPath: "/work/\(workId)")
+        // Need LoginCookie + CSRF cookie from the work page (same as site AjaxUtils.post).
+        try await establishWebSession()
+        let workPath = "/work/\(workId)"
+        let html = try await fetchWebHTML(path: workPath)
+        guard let verificationToken = Self.extractRequestVerificationToken(from: html) else {
+            throw APIError.message("Не удалось получить токен для комментария")
+        }
+
+        // Top-level comments: only rootId/rootType/text/isPinned (see CommentFormV1 on author.today).
+        // Replies also send parentId/threadId/level.
         var payload: [String: Any] = [
             "rootId": workId,
             "rootType": 1,
             "text": text,
-            "isPinned": false,
-            "level": level
+            "isPinned": false
         ]
-        if let parentId { payload["parentId"] = parentId }
-        if let threadId { payload["threadId"] = threadId }
-        try await webJSONPost(path: "/comment/submit", body: payload, verificationToken: token)
+        if let parentId {
+            payload["parentId"] = parentId
+            payload["threadId"] = threadId ?? parentId
+            payload["level"] = max(level, 1)
+            payload["id"] = NSNull()
+            payload["isIgnored"] = false
+        }
+
+        try await webJSONPost(
+            path: "/comment/submit",
+            body: payload,
+            verificationToken: verificationToken,
+            refererPath: workPath
+        )
     }
 
     // MARK: - Author profile
@@ -872,21 +890,19 @@ actor APIClient {
             forHTTPHeaderField: "User-Agent"
         )
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        if token != "guest" {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue(base + "/", forHTTPHeaderField: "Referer")
+        // Prefer LoginCookie from establishWebSession; Bearer alone does not set CSRF correctly.
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private func fetchRequestVerificationToken(workPath: String) async throws -> String {
-        let html = try await fetchWebHTML(path: workPath)
-        if let token = Self.firstMatch(#"name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\""#, in: html)
-            ?? Self.firstMatch(#"value=\"([^\"]+)\"[^>]*name=\"__RequestVerificationToken\""#, in: html) {
+    private static func extractRequestVerificationToken(from html: String) -> String? {
+        // Same as site: $("input[name='__RequestVerificationToken']").val() — first match.
+        if let token = firstMatch(#"name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)["']"#, in: html) {
             return token
         }
-        throw APIError.message("Не удалось получить токен для комментария")
+        return firstMatch(#"value=["']([^"']+)["'][^>]*name=["']__RequestVerificationToken["']"#, in: html)
     }
 
     private func webJSONGet(path: String, query: [String: String]) async throws -> (Data, HTTPURLResponse) {
@@ -898,6 +914,7 @@ actor APIClient {
         request.httpMethod = "GET"
         request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue("https://author.today/", forHTTPHeaderField: "Referer")
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
             forHTTPHeaderField: "User-Agent"
@@ -911,7 +928,12 @@ actor APIClient {
         return (data, http)
     }
 
-    private func webJSONPost(path: String, body: [String: Any], verificationToken: String) async throws {
+    private func webJSONPost(
+        path: String,
+        body: [String: Any],
+        verificationToken: String,
+        refererPath: String
+    ) async throws {
         let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
@@ -920,21 +942,44 @@ actor APIClient {
         request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         request.setValue(verificationToken, forHTTPHeaderField: "RequestVerificationToken")
+        request.setValue("https://author.today", forHTTPHeaderField: "Origin")
+        request.setValue(base + refererPath, forHTTPHeaderField: "Referer")
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
             forHTTPHeaderField: "User-Agent"
         )
-        if token != "guest" {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        // Site AjaxUtils uses cookies (LoginCookie + CSRFToken), not Bearer.
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
-        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let ok = obj["isSuccessful"] as? Bool, !ok {
-            let messages = (obj["messages"] as? [String])?.first
-            throw APIError.message(messages ?? "Не удалось отправить комментарий")
+
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let snippet = String(data: data, encoding: .utf8)?.prefix(160) ?? ""
+            throw APIError.message("Сервер вернул неожиданный ответ при отправке комментария\(snippet.isEmpty ? "" : ": \(snippet)")")
         }
+        let ok = obj["isSuccessful"] as? Bool
+        guard ok == true else {
+            throw APIError.message(Self.messageFromAPIResult(obj) ?? "Не удалось отправить комментарий")
+        }
+    }
+
+    private static func messageFromAPIResult(_ obj: [String: Any]) -> String? {
+        if let messages = obj["messages"] as? [String], let first = messages.first, !first.isEmpty {
+            return first
+        }
+        if let messages = obj["messages"] as? [[String: Any]] {
+            for item in messages {
+                if let text = item["message"] as? String, !text.isEmpty { return text }
+                if let text = item["text"] as? String, !text.isEmpty { return text }
+            }
+        }
+        if let message = obj["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let error = obj["error"] as? String, !error.isEmpty {
+            return error
+        }
+        return nil
     }
 
     private static func parseCommentsHTML(_ html: String) -> [WorkComment] {
