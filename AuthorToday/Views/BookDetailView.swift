@@ -133,7 +133,7 @@ struct BookDetailView: View {
             }
             .padding(20)
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .themedGroupedFill()
     }
 
     private func header(_ details: WorkDetails) -> some View {

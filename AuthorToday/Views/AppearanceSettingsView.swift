@@ -6,6 +6,27 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                ZStack {
+                    ThemeAtmosphereView(preset: appearance.themePreset, intensity: 1, animated: true)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    VStack(spacing: 8) {
+                        Text(appearance.themePreset.title)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Text("Живой фон темы")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    .padding(20)
+                    .background(.ultraThinMaterial.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .frame(height: 140)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+            }
+
             Section("Тема приложения") {
                 Picker("Режим", selection: $appearance.colorMode) {
                     ForEach(AppColorMode.allCases) { mode in
@@ -25,21 +46,29 @@ struct AppearanceSettingsView: View {
                             } label: {
                                 VStack(spacing: 6) {
                                     ZStack {
-                                        Circle()
-                                            .fill(preset.prefersDark ? Color.black : Color(.systemGray5))
-                                            .frame(width: 40, height: 40)
+                                        ThemeAtmosphereView(
+                                            preset: preset,
+                                            intensity: 0.9,
+                                            animated: appearance.themePreset == preset
+                                        )
+                                        .frame(width: 56, height: 56)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .strokeBorder(
+                                                    appearance.themePreset == preset
+                                                        ? preset.accent
+                                                        : Color.white.opacity(0.15),
+                                                    lineWidth: appearance.themePreset == preset ? 2.5 : 1
+                                                )
+                                        }
                                         Circle()
                                             .fill(preset == .custom
                                                   ? (Color(hex: appearance.customAccentHex) ?? preset.accent)
                                                   : preset.accent)
-                                            .frame(width: 28, height: 28)
-                                            .overlay {
-                                                if appearance.themePreset == preset {
-                                                    Image(systemName: "checkmark")
-                                                        .font(.caption2.bold())
-                                                        .foregroundStyle(.white)
-                                                }
-                                            }
+                                            .frame(width: 14, height: 14)
+                                            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                                            .offset(x: 16, y: 16)
                                     }
                                     Text(preset.title)
                                         .font(.caption2)
@@ -77,12 +106,15 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
-                Text("Тёмная тема влияет на весь интерфейс. Фон читалки настраивается отдельно (в том числе ночной пресет и своя картинка).")
+                Text("Тема задаёт живой фон всего приложения и цвет акцента. Фон читалки настраивается отдельно.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
+        .themedScreenChrome()
+        .themedGroupedFill()
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     }
 }

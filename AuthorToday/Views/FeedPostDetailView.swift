@@ -127,7 +127,7 @@ struct FeedPostDetailView: View {
                     }
                     .padding(20)
                 }
-                .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                .themedGroupedFill()
             }
         }
         .navigationTitle("Пост")

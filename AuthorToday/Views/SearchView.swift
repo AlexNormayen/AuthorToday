@@ -54,12 +54,15 @@ struct SearchView: View {
                                 }
                             }
                         }
+                        .listRowBackground(Color.clear)
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .themedGroupedFill()
             .navigationTitle("Поиск")
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .searchable(text: $query, prompt: "Название или автор")
             .onSubmit(of: .search) {
                 Task { await runSearch() }

@@ -69,9 +69,11 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .background(Color.clear)
+            .themedGroupedFill()
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .searchable(text: $query, prompt: "Название или автор")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -102,7 +104,7 @@ struct LibraryView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
-                    .background(Color(.systemGroupedBackground))
+                    .background(.ultraThinMaterial.opacity(0.55))
                 }
             }
             .refreshable {
@@ -186,6 +188,7 @@ struct LibraryView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     private func booksList(works: [CachedWork]) -> some View {
@@ -358,9 +361,10 @@ struct AuthorBooksView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .themedGroupedFill()
         .navigationTitle(author)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -448,7 +452,7 @@ struct AuthorSeriesBooksView: View {
             }
             .padding(.vertical, 8)
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .themedGroupedFill()
         .navigationTitle(series)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -494,8 +498,9 @@ struct RecentReadsView: View {
                     }
                 }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .themedGroupedFill()
             .navigationTitle("Недавние")
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):

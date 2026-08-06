@@ -1,21 +1,27 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var offline: OfflineStore
     @StateObject private var downloads = DownloadManager.shared
 
     var body: some View {
-        Group {
-            if auth.isAuthenticated {
-                MainTabView()
-            } else {
-                LoginView()
+        ZStack {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+            Group {
+                if auth.isAuthenticated {
+                    MainTabView()
+                } else {
+                    LoginView()
+                }
             }
         }
         .environmentObject(downloads)
+        .onAppear { configureTranslucentChrome() }
         .task {
             offline.attach(context: modelContext)
             downloads.startMonitoring()
@@ -33,6 +39,21 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    private func configureTranslucentChrome() {
+        let tab = UITabBarAppearance()
+        tab.configureWithTransparentBackground()
+        tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+
+        let nav = UINavigationBarAppearance()
+        nav.configureWithTransparentBackground()
+        nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        UINavigationBar.appearance().standardAppearance = nav
+        UINavigationBar.appearance().scrollEdgeAppearance = nav
+        UINavigationBar.appearance().compactAppearance = nav
     }
 }
 
@@ -69,6 +90,7 @@ struct MainTabView: View {
                 }
         }
         .tint(appearance.accent)
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
     }
 }
 
@@ -129,6 +151,9 @@ struct SettingsHubView: View {
                 }
             }
             .navigationTitle("Ещё")
+            .themedScreenChrome()
+            .themedGroupedFill()
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         }
     }
 }

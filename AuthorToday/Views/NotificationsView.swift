@@ -27,6 +27,7 @@ struct NotificationsView: View {
                     List {
                         ForEach(notifications.items, id: \.stableId) { item in
                             feedRow(item)
+                                .listRowBackground(Color.clear)
                                 .onAppear {
                                     if item.stableId == notifications.items.last?.stableId {
                                         Task { await notifications.loadMore() }
@@ -41,18 +42,23 @@ struct NotificationsView: View {
                                 Spacer()
                             }
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         } else if notifications.hasMore {
                             Color.clear
                                 .frame(height: 1)
+                                .listRowBackground(Color.clear)
                                 .onAppear {
                                     Task { await notifications.loadMore() }
                                 }
                         }
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .themedGroupedFill()
             .navigationTitle("Лента")
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Обновить") {

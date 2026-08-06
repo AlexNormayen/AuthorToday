@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var email = ""
     @State private var password = ""
     @FocusState private var focused: Field?
@@ -10,32 +11,10 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.12, green: 0.22, blue: 0.20),
-                    Color(red: 0.08, green: 0.12, blue: 0.14)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            // subtle grain-like overlay via pattern of circles
-            GeometryReader { geo in
-                Canvas { context, size in
-                    for i in 0..<40 {
-                        let x = CGFloat((i * 47) % Int(size.width))
-                        let y = CGFloat((i * 89) % Int(size.height))
-                        let r = CGFloat(20 + (i % 5) * 8)
-                        context.fill(
-                            Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)),
-                            with: .color(.white.opacity(0.03))
-                        )
-                    }
-                }
-            }
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+            // Dim the living atmosphere so white login copy stays readable on any theme.
+            Color.black.opacity(appearance.themePreset.prefersDark ? 0.22 : 0.42)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 Spacer(minLength: 48)
@@ -99,14 +78,14 @@ struct LoginView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .background(AppTheme.mossSoft)
+                    .background(appearance.accent)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .disabled(email.isEmpty || password.isEmpty || auth.isBusy)
                     .opacity(email.isEmpty || password.isEmpty ? 0.5 : 1)
                 }
                 .padding(22)
-                .background(.ultraThinMaterial.opacity(0.35))
+                .background(.ultraThinMaterial.opacity(0.55))
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .padding(.horizontal, 22)
 
@@ -118,6 +97,7 @@ struct LoginView: View {
                     .padding(.bottom, 24)
             }
         }
+        .preferredColorScheme(.dark)
         .onSubmit {
             if focused == .email {
                 focused = .password

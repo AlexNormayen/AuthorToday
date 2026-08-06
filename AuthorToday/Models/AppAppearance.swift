@@ -118,6 +118,70 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
             return false
         }
     }
+
+    var atmosphereStyle: ThemeAtmosphereStyle {
+        switch self {
+        case .neon: return .neon
+        case .plasma: return .plasma
+        case .orbit: return .orbit
+        case .hologram: return .hologram
+        case .ion: return .ion
+        case .daredevil, .hellsKitchen, .murdock: return .daredevil
+        default: return .classic
+        }
+    }
+
+    var atmosphereBase: Color {
+        switch self {
+        case .moss: return Color(red: 0.90, green: 0.93, blue: 0.91)
+        case .ocean: return Color(red: 0.88, green: 0.93, blue: 0.97)
+        case .wine: return Color(red: 0.95, green: 0.90, blue: 0.92)
+        case .graphite: return Color(red: 0.91, green: 0.92, blue: 0.93)
+        case .sand: return Color(red: 0.96, green: 0.93, blue: 0.87)
+        case .neon: return Color(red: 0.02, green: 0.05, blue: 0.08)
+        case .plasma: return Color(red: 0.06, green: 0.02, blue: 0.12)
+        case .orbit: return Color(red: 0.02, green: 0.04, blue: 0.12)
+        case .hologram: return Color(red: 0.02, green: 0.08, blue: 0.08)
+        case .ion: return Color(red: 0.04, green: 0.06, blue: 0.12)
+        case .daredevil: return Color(red: 0.06, green: 0.02, blue: 0.02)
+        case .hellsKitchen: return Color(red: 0.08, green: 0.02, blue: 0.02)
+        case .murdock: return Color(red: 0.05, green: 0.03, blue: 0.03)
+        case .custom: return Color(red: 0.92, green: 0.93, blue: 0.93)
+        }
+    }
+
+    var atmosphereBlobColors: [Color] {
+        switch self {
+        case .moss:
+            return [Color(red: 0.25, green: 0.55, blue: 0.42), Color(red: 0.45, green: 0.62, blue: 0.40)]
+        case .ocean:
+            return [Color(red: 0.25, green: 0.50, blue: 0.75), Color(red: 0.40, green: 0.70, blue: 0.85)]
+        case .wine:
+            return [Color(red: 0.70, green: 0.25, blue: 0.35), Color(red: 0.55, green: 0.20, blue: 0.40)]
+        case .graphite:
+            return [Color(red: 0.45, green: 0.50, blue: 0.55), Color(red: 0.55, green: 0.58, blue: 0.62)]
+        case .sand:
+            return [Color(red: 0.85, green: 0.68, blue: 0.40), Color(red: 0.75, green: 0.55, blue: 0.35)]
+        case .neon:
+            return [Color(red: 0.00, green: 0.95, blue: 1.00), Color(red: 1.00, green: 0.15, blue: 0.75), Color(red: 0.20, green: 0.40, blue: 1.00)]
+        case .plasma:
+            return [Color(red: 0.70, green: 0.20, blue: 1.00), Color(red: 0.95, green: 0.25, blue: 0.70), Color(red: 0.35, green: 0.15, blue: 0.90)]
+        case .orbit:
+            return [Color(red: 0.25, green: 0.45, blue: 1.00), Color(red: 0.45, green: 0.70, blue: 1.00)]
+        case .hologram:
+            return [Color(red: 0.20, green: 1.00, blue: 0.75), Color(red: 0.35, green: 0.90, blue: 1.00)]
+        case .ion:
+            return [Color(red: 0.55, green: 0.75, blue: 1.00), Color(red: 0.75, green: 0.90, blue: 1.00)]
+        case .daredevil:
+            return [Color(red: 0.85, green: 0.08, blue: 0.12), Color(red: 0.45, green: 0.02, blue: 0.05), Color(red: 0.25, green: 0.02, blue: 0.02)]
+        case .hellsKitchen:
+            return [Color(red: 0.95, green: 0.25, blue: 0.05), Color(red: 0.70, green: 0.08, blue: 0.05), Color(red: 0.35, green: 0.02, blue: 0.02)]
+        case .murdock:
+            return [Color(red: 0.90, green: 0.20, blue: 0.15), Color(red: 0.35, green: 0.08, blue: 0.08)]
+        case .custom:
+            return [accent, accent.opacity(0.7)]
+        }
+    }
 }
 
 @MainActor
