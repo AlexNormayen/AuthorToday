@@ -55,6 +55,12 @@ struct LibraryPage: Codable, Sendable {
     }
 }
 
+struct UserLibraryPageResult: Sendable {
+    let items: [WorkMeta]
+    let totalCount: Int?
+    let isLastPage: Bool
+}
+
 struct WorkMetaEnvelope: Codable, Sendable {
     let id: Int?
     let data: WorkMeta?

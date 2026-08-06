@@ -32,7 +32,7 @@ struct LibraryView: View {
         NavigationStack(path: $path) {
             Group {
                 if offline.library.isEmpty && offline.isSyncing {
-                    ProgressView("Синхронизация библиотеки…")
+                    ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
                 } else if offline.library.isEmpty {
                     ContentUnavailableView(
                         "Библиотека пуста",
@@ -76,16 +76,17 @@ struct LibraryView: View {
                 }
             }
             .safeAreaInset(edge: .top) {
-                if offline.lastSyncCount > 0 || !offline.library.isEmpty {
+                if offline.isSyncing || offline.lastSyncCount > 0 || !offline.library.isEmpty {
                     HStack {
                         Text("\(offline.library.count) книг · \(offline.authorsGrouped.count) авторов")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
                         if offline.isSyncing {
-                            Text("синхронизация…")
+                            Text(offline.syncStatusText ?? "синхронизация…")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                     .padding(.horizontal, 16)

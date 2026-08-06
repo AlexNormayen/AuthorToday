@@ -105,13 +105,29 @@ actor APIClient {
     // MARK: - Library / works
 
     func userLibrary(page: Int = 1, pageSize: Int = 50) async throws -> [WorkMeta] {
-        try await withRetry(times: 4) {
-            let (data, _) = try await rawGet(path: "/v1/account/user-library", query: [
-                "page": "\(page)",
-                "pageSize": "\(pageSize)"
-            ])
-            return try decodeWorkList(from: data)
+        try await userLibraryPage(page: page, pageSize: pageSize).items
+    }
+
+    /// One page of `/v1/account/user-library` with totalCount (no inner retry — caller paces 429s).
+    func userLibraryPage(page: Int = 1, pageSize: Int = 100) async throws -> UserLibraryPageResult {
+        let (data, _) = try await rawGet(path: "/v1/account/user-library", query: [
+            "page": "\(page)",
+            "pageSize": "\(pageSize)"
+        ])
+        if let pagePayload = try? decoder.decode(LibraryPage.self, from: data) {
+            let items = pagePayload.items.map { normalize($0) }
+            let total = pagePayload.realTotalCount ?? pagePayload.totalCount
+            let last = pagePayload.isLastPage
+                ?? (pagePayload.hasMore.map { !$0 })
+                ?? (items.isEmpty || items.count < pageSize)
+            return UserLibraryPageResult(items: items, totalCount: total, isLastPage: last)
         }
+        let items = try decodeWorkList(from: data)
+        return UserLibraryPageResult(
+            items: items,
+            totalCount: nil,
+            isLastPage: items.isEmpty || items.count < pageSize
+        )
     }
 
     /// Retries transient HTTP errors (esp. 429 rate limit).

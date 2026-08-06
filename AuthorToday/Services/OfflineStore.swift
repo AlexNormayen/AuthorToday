@@ -8,6 +8,9 @@ final class OfflineStore: ObservableObject {
 
     @Published var library: [CachedWork] = []
     @Published var isSyncing = false
+    @Published var syncStatusText: String?
+    @Published var syncLoadedCount: Int = 0
+    @Published var syncExpectedTotal: Int = 0
     @Published var downloadProgress: [Int: Double] = [:] // workId -> 0...1
     @Published var lastSyncError: String?
     @Published var lastSyncCount: Int = 0
@@ -16,6 +19,21 @@ final class OfflineStore: ObservableObject {
     private var lastLibrarySync: Date? {
         get { UserDefaults.standard.object(forKey: "at.lastLibrarySync") as? Date }
         set { UserDefaults.standard.set(newValue, forKey: "at.lastLibrarySync") }
+    }
+
+    private var librarySyncIncomplete: Bool {
+        get { UserDefaults.standard.bool(forKey: "at.librarySyncIncomplete") }
+        set { UserDefaults.standard.set(newValue, forKey: "at.librarySyncIncomplete") }
+    }
+
+    private var pendingExpectedTotal: Int {
+        get { UserDefaults.standard.integer(forKey: "at.librarySyncExpected") }
+        set { UserDefaults.standard.set(newValue, forKey: "at.librarySyncExpected") }
+    }
+
+    private var lastSuccessfulLibraryPage: Int {
+        get { UserDefaults.standard.integer(forKey: "at.librarySyncLastPage") }
+        set { UserDefaults.standard.set(newValue, forKey: "at.librarySyncLastPage") }
     }
 
     func attach(context: ModelContext) {
@@ -110,6 +128,10 @@ final class OfflineStore: ObservableObject {
     }
 
     func syncLibraryIfNeeded(force: Bool = false) async {
+        if librarySyncIncomplete {
+            await syncLibrary(force: true)
+            return
+        }
         if !force, let last = lastLibrarySync, Date().timeIntervalSince(last) < 60 {
             reloadLibrary()
             return
@@ -126,7 +148,13 @@ final class OfflineStore: ObservableObject {
         }
         isSyncing = true
         lastSyncError = nil
-        defer { isSyncing = false }
+        syncStatusText = "Подключение…"
+        syncLoadedCount = 0
+        syncExpectedTotal = 0
+        defer {
+            isSyncing = false
+            syncStatusText = nil
+        }
 
         do {
             try? await APIClient.shared.establishWebSession()
@@ -140,62 +168,120 @@ final class OfflineStore: ObservableObject {
             var errors: [String] = []
             var byID: [Int: WorkMeta] = [:]
 
+            // Resume incomplete sync from what is already on disk
+            if librarySyncIncomplete {
+                for work in library {
+                    if byID[work.workId] == nil {
+                        byID[work.workId] = WorkMeta.stub(
+                            id: work.workId,
+                            title: work.title,
+                            author: work.author,
+                            coverUrl: work.coverURL,
+                            libraryState: work.libraryState ?? "Reading"
+                        )
+                    }
+                }
+                if pendingExpectedTotal > 0 {
+                    syncExpectedTotal = pendingExpectedTotal
+                }
+            }
+
             func merge(_ items: [WorkMeta]) {
                 for item in items {
                     byID[item.id] = item
                 }
             }
 
-            // Primary: official API (Reading + Read + Wish…, up to totalCount)
-            // Rate limit is aggressive (~3 pages) — retry same page with backoff and persist as we go.
-            do {
-                var page = 1
-                var consecutiveFailures = 0
-                while page <= 120 {
+            func publishProgress(expected: Int?) {
+                syncLoadedCount = byID.count
+                if let expected, expected > 0 {
+                    syncExpectedTotal = max(syncExpectedTotal, expected)
+                    syncStatusText = "\(byID.count) / \(syncExpectedTotal)"
+                } else {
+                    syncStatusText = "\(byID.count) книг…"
+                }
+            }
+
+            publishProgress(expected: syncExpectedTotal > 0 ? syncExpectedTotal : nil)
+
+            // Primary: official API — keep going until last page / totalCount, pacing 429s automatically.
+            let pageSize = 100
+            let deadline = Date().addingTimeInterval(20 * 60) // one continuous sync session
+            var expectedTotal: Int? = syncExpectedTotal > 0 ? syncExpectedTotal : nil
+            var page = librarySyncIncomplete ? max(1, lastSuccessfulLibraryPage + 1) : 1
+            var consecutiveRateLimits = 0
+
+            if !librarySyncIncomplete {
+                lastSuccessfulLibraryPage = 0
+            }
+
+            while Date() < deadline, page <= 200 {
+                do {
+                    let result = try await APIClient.shared.userLibraryPage(page: page, pageSize: pageSize)
+                    consecutiveRateLimits = 0
+                    if let total = result.totalCount, total > 0 {
+                        expectedTotal = total
+                    }
+                    merge(result.items)
+                    for meta in result.items {
+                        upsertWork(from: meta, context: modelContext, markFromSite: true)
+                    }
+                    try? modelContext.save()
+                    lastSuccessfulLibraryPage = page
+                    reloadLibrary()
+                    publishProgress(expected: expectedTotal)
+
+                    let reachedTotal = expectedTotal.map { byID.count >= $0 } ?? false
+                    if result.items.isEmpty || result.isLastPage || reachedTotal {
+                        break
+                    }
+                    page += 1
+                    // Gentle pacing so we rarely hit 429 (~6 pages for ~547 books at 100/page)
+                    try? await Task.sleep(nanoseconds: 1_600_000_000)
+                } catch let error as APIError {
+                    if case .http(let code, _) = error, code == 429 || code == 503 {
+                        consecutiveRateLimits += 1
+                        let seconds = min(90, 8 + consecutiveRateLimits * 7) // 15, 22, 29… → 90
+                        syncStatusText = "Пауза \(seconds)с (лимит API) · \(byID.count)"
+                            + (expectedTotal.map { " / \($0)" } ?? "")
+                        try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                        continue // same page
+                    }
+                    errors.append("api: \(error.localizedDescription)")
+                    break
+                } catch {
+                    errors.append("api: \(error.localizedDescription)")
+                    break
+                }
+            }
+
+            if let expected = expectedTotal, byID.count < expected, Date() >= deadline {
+                errors.append("api: время ожидания истекло (\(byID.count)/\(expected))")
+            }
+
+            // Supplement: profile HTML shelf fills any gaps without requiring another tap
+            let username = AuthService.shared.resolvedUserName
+            if let username, !username.isEmpty {
+                let needMore = expectedTotal.map { byID.count < $0 } ?? true
+                if needMore || byID.isEmpty {
+                    syncStatusText = "Догрузка с профиля…"
                     do {
-                        let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                        consecutiveFailures = 0
-                        merge(items)
-                        for meta in items {
+                        let profileItems = try await APIClient.shared.libraryFromProfile(
+                            username: username,
+                            maxPages: 60,
+                            enrichMissingOnly: true,
+                            knownIDs: Set(byID.keys)
+                        )
+                        merge(profileItems)
+                        for meta in profileItems {
                             upsertWork(from: meta, context: modelContext, markFromSite: true)
                         }
                         try? modelContext.save()
                         reloadLibrary()
-                        if items.isEmpty || items.count < 50 { break }
-                        page += 1
-                        // Stay under API rate limit (~547 books ≈ 11 pages)
-                        try? await Task.sleep(nanoseconds: 900_000_000)
-                    } catch let error as APIError {
-                        if case .http(let code, _) = error, code == 429 || code == 503 {
-                            consecutiveFailures += 1
-                            if consecutiveFailures > 10 {
-                                errors.append("api: лимит запросов, загружено \(byID.count) книг — нажмите обновить ещё раз")
-                                break
-                            }
-                            let wait = UInt64(min(consecutiveFailures, 8)) * 2_500_000_000
-                            try? await Task.sleep(nanoseconds: wait)
-                            continue // retry same page
-                        }
-                        throw error
+                        publishProgress(expected: expectedTotal ?? byID.count)
+                    } catch {
+                        errors.append("profile: \(error.localizedDescription)")
                     }
-                }
-            } catch {
-                errors.append("api: \(error.localizedDescription)")
-            }
-
-            // Supplement: profile HTML shelf (reading tab) for any gaps
-            let username = AuthService.shared.resolvedUserName
-            if let username, !username.isEmpty {
-                do {
-                    let profileItems = try await APIClient.shared.libraryFromProfile(
-                        username: username,
-                        maxPages: 40,
-                        enrichMissingOnly: true,
-                        knownIDs: Set(byID.keys)
-                    )
-                    merge(profileItems)
-                } catch {
-                    errors.append("profile: \(error.localizedDescription)")
                 }
             } else if byID.isEmpty {
                 errors.append("profile: нет userName — обновите профиль в «Ещё»")
@@ -216,16 +302,19 @@ final class OfflineStore: ObservableObject {
                 upsertWork(from: meta, context: modelContext, markFromSite: true)
             }
 
-            // Drop local-only leftovers that are not on the site shelf anymore
-            let descriptor = FetchDescriptor<CachedWork>()
-            if let existing = try? modelContext.fetch(descriptor) {
-                for work in existing where !syncedIDs.contains(work.workId) {
-                    let state = (work.libraryState ?? "").lowercased()
-                    if state == "localonly" || work.isFullyDownloaded == false && work.chaptersJSON == nil {
-                        if !work.isFullyDownloaded {
-                            modelContext.delete(work)
-                        } else {
-                            work.libraryState = "localonly"
+            let syncLooksComplete = expectedTotal.map { collected.count >= $0 } ?? errors.isEmpty
+            // Drop local-only leftovers only after a complete sync (partial runs must not prune unread pages)
+            if syncLooksComplete {
+                let descriptor = FetchDescriptor<CachedWork>()
+                if let existing = try? modelContext.fetch(descriptor) {
+                    for work in existing where !syncedIDs.contains(work.workId) {
+                        let state = (work.libraryState ?? "").lowercased()
+                        if state == "localonly" || work.isFullyDownloaded == false && work.chaptersJSON == nil {
+                            if !work.isFullyDownloaded {
+                                modelContext.delete(work)
+                            } else {
+                                work.libraryState = "localonly"
+                            }
                         }
                     }
                 }
@@ -234,9 +323,19 @@ final class OfflineStore: ObservableObject {
             try modelContext.save()
             lastLibrarySync = .now
             lastSyncCount = collected.count
-            if let incomplete = errors.first(where: { $0.contains("лимит") }) {
-                lastSyncError = "\(incomplete). Авторов: \(authorsGrouped.count)."
+            if let expected = expectedTotal, collected.count < expected {
+                librarySyncIncomplete = true
+                pendingExpectedTotal = expected
+                lastSyncError = nil
+                // Site rate limit window — resume automatically without another tap
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 45_000_000_000)
+                    await self?.syncLibrary(force: true)
+                }
             } else {
+                librarySyncIncomplete = false
+                pendingExpectedTotal = 0
+                lastSuccessfulLibraryPage = 0
                 lastSyncError = errors.isEmpty ? nil : errors.joined(separator: "; ")
             }
             reloadLibrary()
