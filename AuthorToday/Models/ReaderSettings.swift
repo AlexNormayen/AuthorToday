@@ -104,6 +104,30 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable {
             return .system(size: size)
         }
     }
+
+    func uiFont(size: CGFloat) -> UIFont {
+        switch self {
+        case .system:
+            return .systemFont(ofSize: size)
+        case .serif:
+            if let descriptor = UIFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif) {
+                return UIFont(descriptor: descriptor, size: size)
+            }
+            return .systemFont(ofSize: size)
+        case .rounded:
+            if let descriptor = UIFont.systemFont(ofSize: size).fontDescriptor.withDesign(.rounded) {
+                return UIFont(descriptor: descriptor, size: size)
+            }
+            return .systemFont(ofSize: size)
+        default:
+            for name in candidates {
+                if let font = UIFont(name: name, size: size) {
+                    return font
+                }
+            }
+            return .systemFont(ofSize: size)
+        }
+    }
 }
 
 enum ReaderThemePreset: String, CaseIterable, Identifiable, Codable {
