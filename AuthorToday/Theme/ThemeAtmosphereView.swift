@@ -95,7 +95,7 @@ struct ThemeAtmosphereView: View {
             let x = (sin(seed * 12.9898) * 43758.5453).truncatingRemainder(dividingBy: 1)
             let y = (sin(seed * 78.233) * 43758.5453).truncatingRemainder(dividingBy: 1)
             let twinkle = 0.35 + 0.65 * (0.5 + 0.5 * sin(time * (1.2 + Double(n % 5) * 0.35) + seed))
-            let r: CGFloat = CGFloat(1.0 + (n % 3))
+            let r: CGFloat = CGFloat(1.0 + Double(n % 3))
             let rect = CGRect(
                 x: abs(x) * size.width,
                 y: abs(y) * size.height,
@@ -155,7 +155,7 @@ struct ThemeAtmosphereView: View {
             let speed = 0.08 + Double(n % 7) * 0.02
             let y = ((time * speed) + seed * 0.01).truncatingRemainder(dividingBy: 1.0)
             let x = (baseX + 0.08 * sin(time * 0.9 + seed)).truncatingRemainder(dividingBy: 1.0)
-            let r: CGFloat = CGFloat(1.5 + (n % 4))
+            let r: CGFloat = CGFloat(1.5 + Double(n % 4))
             let rect = CGRect(
                 x: abs(x) * size.width,
                 y: (1 - abs(y)) * size.height,
