@@ -37,13 +37,49 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     case orbit
     case hologram
     case ion
-    // Daredevil / Сорвиголова
-    case daredevil
-    case hellsKitchen
-    case murdock
+    // Сорвиголова — 10 фото-фонов
+    case ddRooftop
+    case ddSilhouette
+    case ddLeap
+    case ddRain
+    case ddShadow
+    case ddRadar
+    case ddBatons
+    case ddCourt
+    case ddEscape
+    case ddFabric
     case custom
 
     var id: String { rawValue }
+
+    /// Legacy theme keys from earlier builds.
+    static func resolved(rawValue: String?) -> AppThemePreset {
+        guard let raw = rawValue, !raw.isEmpty else { return .moss }
+        switch raw {
+        case "daredevil": return .ddLeap
+        case "hellsKitchen": return .ddShadow
+        case "murdock": return .ddRain
+        default:
+            return AppThemePreset(rawValue: raw) ?? .moss
+        }
+    }
+
+    var isDaredevilFamily: Bool {
+        switch self {
+        case .ddRooftop, .ddSilhouette, .ddLeap, .ddRain, .ddShadow,
+             .ddRadar, .ddBatons, .ddCourt, .ddEscape, .ddFabric:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isFuturisticFamily: Bool {
+        switch self {
+        case .neon, .plasma, .orbit, .hologram, .ion: return true
+        default: return false
+        }
+    }
 
     var title: String {
         switch self {
@@ -57,9 +93,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .orbit: return "Орбита"
         case .hologram: return "Голограмма"
         case .ion: return "Ион"
-        case .daredevil: return "Сорвиголова"
-        case .hellsKitchen: return "Адская кухня"
-        case .murdock: return "Мёрдок"
+        case .ddRooftop: return "Крыша"
+        case .ddSilhouette: return "Силуэт"
+        case .ddLeap: return "Прыжок"
+        case .ddRain: return "Дождь"
+        case .ddShadow: return "Тень"
+        case .ddRadar: return "Радар"
+        case .ddBatons: return "Дубинки"
+        case .ddCourt: return "Суд"
+        case .ddEscape: return "Лестница"
+        case .ddFabric: return "Багрянец"
         case .custom: return "Свой цвет"
         }
     }
@@ -76,9 +119,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .orbit: return Color(red: 0.20, green: 0.45, blue: 1.00)
         case .hologram: return Color(red: 0.25, green: 0.95, blue: 0.75)
         case .ion: return Color(red: 0.70, green: 0.85, blue: 1.00)
-        case .daredevil: return Color(red: 0.78, green: 0.09, blue: 0.14)
-        case .hellsKitchen: return Color(red: 0.55, green: 0.05, blue: 0.08)
-        case .murdock: return Color(red: 0.90, green: 0.22, blue: 0.18)
+        case .ddRooftop: return Color(red: 0.72, green: 0.08, blue: 0.12)
+        case .ddSilhouette: return Color(red: 0.85, green: 0.10, blue: 0.14)
+        case .ddLeap: return Color(red: 0.78, green: 0.09, blue: 0.14)
+        case .ddRain: return Color(red: 0.90, green: 0.22, blue: 0.18)
+        case .ddShadow: return Color(red: 0.55, green: 0.05, blue: 0.08)
+        case .ddRadar: return Color(red: 0.95, green: 0.15, blue: 0.20)
+        case .ddBatons: return Color(red: 0.80, green: 0.12, blue: 0.10)
+        case .ddCourt: return Color(red: 0.70, green: 0.10, blue: 0.12)
+        case .ddEscape: return Color(red: 0.88, green: 0.18, blue: 0.12)
+        case .ddFabric: return Color(red: 0.65, green: 0.05, blue: 0.10)
         case .custom: return Color(red: 0.18, green: 0.42, blue: 0.36)
         }
     }
@@ -90,19 +140,20 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .wine: return Color(red: 0.97, green: 0.93, blue: 0.94)
         case .graphite: return Color(red: 0.94, green: 0.94, blue: 0.95)
         case .sand: return Color(red: 0.96, green: 0.94, blue: 0.90)
-        case .neon, .plasma, .orbit, .hologram, .ion:
+        case _ where isFuturisticFamily:
             return Color(red: 0.07, green: 0.09, blue: 0.12)
-        case .daredevil, .hellsKitchen, .murdock:
+        case _ where isDaredevilFamily:
             return Color(red: 0.08, green: 0.06, blue: 0.06)
         case .custom: return Color(red: 0.94, green: 0.94, blue: 0.94)
+        default: return Color(red: 0.94, green: 0.94, blue: 0.94)
         }
     }
 
     var mistDark: Color {
         switch self {
-        case .daredevil, .hellsKitchen, .murdock:
+        case _ where isDaredevilFamily:
             return Color(red: 0.06, green: 0.04, blue: 0.04)
-        case .neon, .plasma, .orbit, .hologram, .ion:
+        case _ where isFuturisticFamily:
             return Color(red: 0.05, green: 0.06, blue: 0.09)
         default:
             return Color(red: 0.10, green: 0.11, blue: 0.12)
@@ -111,12 +162,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
 
     /// Themes that look best with dark UI chrome.
     var prefersDark: Bool {
-        switch self {
-        case .neon, .plasma, .orbit, .hologram, .ion, .daredevil, .hellsKitchen, .murdock:
-            return true
-        default:
-            return false
-        }
+        isFuturisticFamily || isDaredevilFamily
     }
 
     var atmosphereStyle: ThemeAtmosphereStyle {
@@ -126,7 +172,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .orbit: return .orbit
         case .hologram: return .hologram
         case .ion: return .ion
-        case .daredevil, .hellsKitchen, .murdock: return .daredevil
+        case _ where isDaredevilFamily: return .daredevil
         default: return .classic
         }
     }
@@ -144,9 +190,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .orbit: return "ThemeOrbit"
         case .hologram: return "ThemeHologram"
         case .ion: return "ThemeIon"
-        case .daredevil: return "ThemeDaredevil"
-        case .hellsKitchen: return "ThemeHellsKitchen"
-        case .murdock: return "ThemeMurdock"
+        case .ddRooftop: return "ThemeDD01"
+        case .ddSilhouette: return "ThemeDD02"
+        case .ddLeap: return "ThemeDD03"
+        case .ddRain: return "ThemeDD04"
+        case .ddShadow: return "ThemeDD05"
+        case .ddRadar: return "ThemeDD06"
+        case .ddBatons: return "ThemeDD07"
+        case .ddCourt: return "ThemeDD08"
+        case .ddEscape: return "ThemeDD09"
+        case .ddFabric: return "ThemeDD10"
         case .custom: return "ThemeGraphite"
         }
     }
@@ -163,10 +216,10 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .orbit: return Color(red: 0.02, green: 0.04, blue: 0.12)
         case .hologram: return Color(red: 0.02, green: 0.08, blue: 0.08)
         case .ion: return Color(red: 0.04, green: 0.06, blue: 0.12)
-        case .daredevil: return Color(red: 0.06, green: 0.02, blue: 0.02)
-        case .hellsKitchen: return Color(red: 0.08, green: 0.02, blue: 0.02)
-        case .murdock: return Color(red: 0.05, green: 0.03, blue: 0.03)
+        case _ where isDaredevilFamily:
+            return Color(red: 0.06, green: 0.02, blue: 0.02)
         case .custom: return Color(red: 0.92, green: 0.93, blue: 0.93)
+        default: return Color(red: 0.92, green: 0.93, blue: 0.93)
         }
     }
 
@@ -192,14 +245,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
             return [Color(red: 0.20, green: 1.00, blue: 0.75), Color(red: 0.35, green: 0.90, blue: 1.00)]
         case .ion:
             return [Color(red: 0.55, green: 0.75, blue: 1.00), Color(red: 0.75, green: 0.90, blue: 1.00)]
-        case .daredevil:
-            return [Color(red: 0.85, green: 0.08, blue: 0.12), Color(red: 0.45, green: 0.02, blue: 0.05), Color(red: 0.25, green: 0.02, blue: 0.02)]
-        case .hellsKitchen:
-            return [Color(red: 0.95, green: 0.25, blue: 0.05), Color(red: 0.70, green: 0.08, blue: 0.05), Color(red: 0.35, green: 0.02, blue: 0.02)]
-        case .murdock:
-            return [Color(red: 0.90, green: 0.20, blue: 0.15), Color(red: 0.35, green: 0.08, blue: 0.08)]
+        case _ where isDaredevilFamily:
+            return [
+                Color(red: 0.85, green: 0.08, blue: 0.12),
+                Color(red: 0.45, green: 0.02, blue: 0.05),
+                Color(red: 0.25, green: 0.02, blue: 0.02)
+            ]
         case .custom:
             return [accent, accent.opacity(0.7)]
+        default:
+            return [accent]
         }
     }
 }
@@ -225,7 +280,7 @@ final class AppAppearanceStore: ObservableObject {
 
     init() {
         colorMode = AppColorMode(rawValue: defaults.string(forKey: "aa.colorMode") ?? "") ?? .system
-        themePreset = AppThemePreset(rawValue: defaults.string(forKey: "aa.theme") ?? "") ?? .moss
+        themePreset = AppThemePreset.resolved(rawValue: defaults.string(forKey: "aa.theme"))
         customAccentHex = defaults.string(forKey: "aa.accentHex") ?? "#2E6B5C"
     }
 
