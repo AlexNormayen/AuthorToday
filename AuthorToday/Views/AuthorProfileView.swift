@@ -31,7 +31,7 @@ struct AuthorProfileView: View {
                                 Text("@\(profile.userName)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text("\(profile.works.count) произведений · \(profile.series.filter { $0.title != "Без серии" }.count) циклов")
+                                Text(worksAndCyclesText(profile))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -90,6 +90,11 @@ struct AuthorProfileView: View {
             }
         }
         .task { await load() }
+    }
+
+    private func worksAndCyclesText(_ profile: AuthorProfile) -> String {
+        let cycleCount = profile.series.filter { $0.title != "Без серии" }.count
+        return "\(profile.works.count) произведений · \(cycleCount) циклов"
     }
 
     private func authorAvatar(_ url: String?) -> some View {

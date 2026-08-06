@@ -7,6 +7,7 @@ struct BookDetailView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var auth: AuthService
+
     @State private var details: WorkDetails?
     @State private var error: String?
     @State private var isLoading = true
@@ -25,166 +26,24 @@ struct BookDetailView: View {
     @State private var replyTo: WorkComment?
     @State private var isSendingComment = false
 
+    private var resolvedAuthorUserName: String? {
+        if let name = details?.authorUserName, !name.isEmpty { return name }
+        if let name = offline.cachedWork(workId: workId)?.authorUserName, !name.isEmpty { return name }
+        return nil
+    }
+
     var body: some View {
         Group {
             if isLoading {
                 ProgressView("Загрузка…")
             } else if let error, details == nil {
-                ContentUnavailableView("Не удалось открыть", systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView(
+                    "Не удалось открыть",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error)
+                )
             } else if let details {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        HStack(alignment: .top, spacing: 16) {
-                            CoverImage(urlString: details.coverUrl, corner: 10)
-                                .frame(width: 120, height: 170)
-                                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(details.displayTitle)
-                                    .font(.system(.title2, design: .serif).weight(.semibold))
-                                Button {
-                                    openAuthorProfile = true
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Text(details.displayAuthor)
-                                        if resolvedAuthorUserName != nil {
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption2.weight(.semibold))
-                                        }
-                                    }
-                                    .font(.subheadline)
-                                    .foregroundStyle(resolvedAuthorUserName != nil ? appearance.accent : Color.secondary)
-                                }
-                                .disabled(resolvedAuthorUserName == nil)
-                                if let genre = details.genreName {
-                                    Text([genre, details.secondGenreName].compactMap { $0 }.joined(separator: " · "))
-                                        .font(.caption)
-                                        .foregroundStyle(appearance.accent)
-                                }
-                                if details.isPurchased == true {
-                                    Label("Куплено", systemImage: "checkmark.seal.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(appearance.accent)
-                                } else if let price = details.displayPriceText {
-                                    Text(price)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(appearance.accent)
-                                }
-                                if offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded }) {
-                                    Label("Скачано", systemImage: "arrow.down.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(appearance.accent)
-                                }
-                            }
-                        }
-
-                        if details.needsPurchase {
-                            Button {
-                                Task {
-                                    try? await APIClient.shared.establishWebSession()
-                                    showPurchase = true
-                                }
-                            } label: {
-                                Text(details.displayPriceText.map { "Купить за \($0)" } ?? "Купить на author.today")
-                            }
-                            .buttonStyle(PrimaryButtonStyle())
-
-                            Text("Оплата проходит на сайте author.today в защищённом окне. После покупки нажмите «Обновить» и откройте книгу снова.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button {
-                            startChapterId = offline.progress(for: workId)?.chapterId
-                                ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
-                                ?? details.availableChapters.first?.id
-                            openReader = true
-                        } label: {
-                            Text(offline.progress(for: workId) != nil || offline.library.contains(where: { $0.workId == workId && $0.lastReadChapterId != nil })
-                                 ? "Продолжить чтение" : "Читать")
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .opacity(details.availableChapters.isEmpty && details.needsPurchase ? 0.45 : 1)
-                        .disabled(details.availableChapters.isEmpty && details.needsPurchase)
-
-                        if let chapters = details.chapters, !chapters.isEmpty {
-                            Button {
-                                showTOC = true
-                            } label: {
-                                Label("Оглавление (\(chapters.count))", systemImage: "list.bullet")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        if offline.library.contains(where: { $0.workId == workId }) {
-                            Text("В вашей библиотеке")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Button {
-                                Task {
-                                    do {
-                                        try await offline.addToSiteLibrary(workId: workId, state: "Reading")
-                                    } catch {
-                                        self.error = error.localizedDescription
-                                    }
-                                }
-                            } label: {
-                                Label("В библиотеку", systemImage: "plus.circle")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        if downloads.online, !details.availableChapters.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Загрузка")
-                                    .font(AppTheme.headlineFont)
-                                Button {
-                                    Task {
-                                        await downloads.downloadEntireBook(details: details, store: offline)
-                                    }
-                                } label: {
-                                    if downloads.activeDownloads.contains(workId) {
-                                        HStack {
-                                            ProgressView()
-                                            Text("Скачивание…")
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                    } else {
-                                        Label(
-                                            offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
-                                            ? "Скачать заново" : "Скачать все главы",
-                                            systemImage: "arrow.down.circle"
-                                        )
-                                        .frame(maxWidth: .infinity)
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(downloads.activeDownloads.contains(workId))
-
-                                if let p = offline.downloadProgress[workId], p > 0, p < 1 {
-                                    ProgressView(value: p)
-                                }
-                            }
-                        }
-
-                        if let annotation = details.annotation, !annotation.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("О книге")
-                                    .font(AppTheme.headlineFont)
-                                Text(HTMLText.plain(from: annotation))
-                                    .font(.body)
-                                    .foregroundStyle(.primary.opacity(0.85))
-                            }
-                        }
-
-                        commentsSection
-                    }
-                    .padding(20)
-                }
-                .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                detailScroll(details)
             }
         }
         .navigationTitle("Книга")
@@ -202,21 +61,31 @@ struct BookDetailView: View {
             ReaderView(workId: workId, initialChapterId: startChapterId)
         }
         .navigationDestination(isPresented: $openAuthorProfile) {
-            if let userName = resolvedAuthorUserName {
-                AuthorProfileView(userName: userName, displayNameHint: details?.displayAuthor)
-            } else {
-                ContentUnavailableView("Нет профиля", systemImage: "person.crop.circle.badge.questionmark", description: Text("У этой книги нет ссылки на автора."))
-            }
+            authorDestination
         }
         .sheet(isPresented: $showPurchase, onDismiss: {
             Task { await load() }
         }) {
-            if let details {
-                PurchaseWebView(url: details.purchaseURL, title: "Покупка")
-            }
+            purchaseSheet
         }
         .sheet(isPresented: $showTOC) {
-            tocSheet
+            BookTOCSheet(
+                workId: workId,
+                chapters: details?.chapters ?? [],
+                needsPurchase: details?.needsPurchase == true,
+                onOpen: { id in
+                    showTOC = false
+                    startChapterId = id
+                    openReader = true
+                },
+                onPurchase: {
+                    showTOC = false
+                    showPurchase = true
+                },
+                onClose: { showTOC = false }
+            )
+            .environmentObject(offline)
+            .environmentObject(appearance)
         }
         .task {
             await load()
@@ -224,170 +93,218 @@ struct BookDetailView: View {
         }
     }
 
-    private var resolvedAuthorUserName: String? {
-        if let name = details?.authorUserName, !name.isEmpty { return name }
-        if let name = offline.cachedWork(workId: workId)?.authorUserName, !name.isEmpty { return name }
-        return nil
+    @ViewBuilder
+    private var authorDestination: some View {
+        if let userName = resolvedAuthorUserName {
+            AuthorProfileView(userName: userName, displayNameHint: details?.displayAuthor)
+        } else {
+            ContentUnavailableView(
+                "Нет профиля",
+                systemImage: "person.crop.circle.badge.questionmark",
+                description: Text("У этой книги нет ссылки на автора.")
+            )
+        }
     }
 
-    private var tocSheet: some View {
-        NavigationStack {
-            List {
-                if let chapters = details?.chapters {
-                    ForEach(chapters) { chapter in
-                        Button {
-                            if chapter.isAvailableEffective {
-                                showTOC = false
-                                startChapterId = chapter.id
-                                openReader = true
-                            } else if details?.needsPurchase == true {
-                                showTOC = false
-                                showPurchase = true
-                            }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(chapter.displayTitle)
-                                        .foregroundStyle(chapter.isAvailableEffective ? Color.primary : .secondary)
-                                    if !chapter.isAvailableEffective {
-                                        Text("Недоступна")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                if !chapter.isAvailableEffective {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.secondary)
-                                        .font(.caption)
-                                } else if offline.isChapterCached(workId: workId, chapterId: chapter.id) {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .foregroundStyle(appearance.accent)
-                                        .font(.caption)
-                                }
-                            }
-                        }
+    @ViewBuilder
+    private var purchaseSheet: some View {
+        if let details {
+            PurchaseWebView(url: details.purchaseURL, title: "Покупка")
+        } else {
+            ProgressView()
+        }
+    }
+
+    private func detailScroll(_ details: WorkDetails) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                header(details)
+                actions(details)
+                if let annotation = details.annotation, !annotation.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("О книге")
+                            .font(AppTheme.headlineFont)
+                        Text(HTMLText.plain(from: annotation))
+                            .font(.body)
+                            .foregroundStyle(.primary.opacity(0.85))
                     }
                 }
+                commentsBlock
             }
-            .navigationTitle("Оглавление")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Закрыть") { showTOC = false }
+            .padding(20)
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+    }
+
+    private func header(_ details: WorkDetails) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            CoverImage(urlString: details.coverUrl, corner: 10)
+                .frame(width: 120, height: 170)
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(details.displayTitle)
+                    .font(.system(.title2, design: .serif).weight(.semibold))
+
+                Button {
+                    openAuthorProfile = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(details.displayAuthor)
+                        if resolvedAuthorUserName != nil {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(resolvedAuthorUserName != nil ? appearance.accent : Color.secondary)
+                }
+                .disabled(resolvedAuthorUserName == nil)
+
+                if let genre = details.genreName {
+                    Text([genre, details.secondGenreName].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(appearance.accent)
+                }
+
+                if details.isPurchased == true {
+                    Label("Куплено", systemImage: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(appearance.accent)
+                } else if let price = details.displayPriceText {
+                    Text(price)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(appearance.accent)
+                }
+
+                if offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded }) {
+                    Label("Скачано", systemImage: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(appearance.accent)
                 }
             }
         }
     }
 
-    private var commentsSection: some View {
+    private func actions(_ details: WorkDetails) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Комментарии")
-                    .font(AppTheme.headlineFont)
-                Spacer()
-                if commentsLoading {
-                    ProgressView()
+            if details.needsPurchase {
+                Button {
+                    Task {
+                        try? await APIClient.shared.establishWebSession()
+                        showPurchase = true
+                    }
+                } label: {
+                    Text(details.displayPriceText.map { "Купить за \($0)" } ?? "Купить на author.today")
                 }
-            }
+                .buttonStyle(PrimaryButtonStyle())
 
-            if auth.isAuthenticated {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let replyTo {
-                        HStack {
-                            Text("Ответ для \(replyTo.authorName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Отмена") { self.replyTo = nil }
-                                .font(.caption)
-                        }
-                    }
-                    TextField(replyTo == nil ? "Написать комментарий…" : "Ваш ответ…", text: $draftText, axis: .vertical)
-                        .lineLimit(3...8)
-                        .textFieldStyle(.roundedBorder)
-                    Button {
-                        Task { await sendComment() }
-                    } label: {
-                        if isSendingComment {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text(replyTo == nil ? "Отправить" : "Ответить")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
-                }
-            } else {
-                Text("Войдите в аккаунт, чтобы писать комментарии.")
+                Text("Оплата проходит на сайте author.today в защищённом окне. После покупки нажмите «Обновить» и откройте книгу снова.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            if let commentsError {
-                Text(commentsError)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+            Button {
+                startChapterId = offline.progress(for: workId)?.chapterId
+                    ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
+                    ?? details.availableChapters.first?.id
+                openReader = true
+            } label: {
+                Text(readButtonTitle)
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .opacity(details.availableChapters.isEmpty && details.needsPurchase ? 0.45 : 1)
+            .disabled(details.availableChapters.isEmpty && details.needsPurchase)
 
-            if comments.isEmpty, !commentsLoading {
-                Text("Пока нет комментариев")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            ForEach(comments) { comment in
-                commentRow(comment)
-                Divider()
-            }
-
-            if commentsHasMore {
-                Button("Ещё комментарии") {
-                    Task { await loadComments(reset: false) }
+            if let chapters = details.chapters, !chapters.isEmpty {
+                Button {
+                    showTOC = true
+                } label: {
+                    Label("Оглавление (\(chapters.count))", systemImage: "list.bullet")
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
                 .buttonStyle(.bordered)
             }
+
+            if offline.library.contains(where: { $0.workId == workId }) {
+                Text("В вашей библиотеке")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    Task {
+                        do {
+                            try await offline.addToSiteLibrary(workId: workId, state: "Reading")
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    Label("В библиотеку", systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if downloads.online, !details.availableChapters.isEmpty {
+                downloadBlock(details)
+            }
         }
     }
 
-    private func commentRow(_ comment: WorkComment) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(comment.authorName)
-                    .font(.subheadline.weight(.semibold))
-                if comment.isAuthor {
-                    Text("автор")
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(appearance.accent.opacity(0.15))
-                        .clipShape(Capsule())
+    private func downloadBlock(_ details: WorkDetails) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Загрузка")
+                .font(AppTheme.headlineFont)
+            Button {
+                Task {
+                    await downloads.downloadEntireBook(details: details, store: offline)
                 }
-                if comment.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let rating = comment.rating, rating != 0 {
-                    Text(rating > 0 ? "+\(rating)" : "\(rating)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            } label: {
+                if downloads.activeDownloads.contains(workId) {
+                    HStack {
+                        ProgressView()
+                        Text("Скачивание…")
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Label(downloadButtonTitle, systemImage: "arrow.down.circle")
+                        .frame(maxWidth: .infinity)
                 }
             }
-            Text(comment.text)
-                .font(.subheadline)
-                .foregroundStyle(.primary.opacity(0.9))
-            if auth.isAuthenticated {
-                Button("Ответить") {
-                    replyTo = comment
-                }
-                .font(.caption)
+            .buttonStyle(.bordered)
+            .disabled(downloads.activeDownloads.contains(workId))
+
+            if let p = offline.downloadProgress[workId], p > 0, p < 1 {
+                ProgressView(value: p)
             }
         }
-        .padding(.leading, CGFloat(min(comment.level, 4)) * 14)
+    }
+
+    private var readButtonTitle: String {
+        let canContinue = offline.progress(for: workId) != nil
+            || offline.library.contains(where: { $0.workId == workId && $0.lastReadChapterId != nil })
+        return canContinue ? "Продолжить чтение" : "Читать"
+    }
+
+    private var downloadButtonTitle: String {
+        let downloaded = offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
+        return downloaded ? "Скачать заново" : "Скачать все главы"
+    }
+
+    private var commentsBlock: some View {
+        BookCommentsSection(
+            comments: comments,
+            commentsLoading: commentsLoading,
+            commentsError: commentsError,
+            commentsHasMore: commentsHasMore,
+            draftText: $draftText,
+            replyTo: $replyTo,
+            isSendingComment: isSendingComment,
+            canWrite: auth.isAuthenticated,
+            onSend: { Task { await sendComment() } },
+            onLoadMore: { Task { await loadComments(reset: false) } }
+        )
     }
 
     private func load() async {
@@ -421,7 +338,7 @@ struct BookDetailView: View {
             commentsError = "Комментарии доступны только онлайн"
             return
         }
-        if commentsLoading { return }
+        guard !commentsLoading else { return }
         commentsLoading = true
         defer { commentsLoading = false }
         do {
@@ -494,5 +411,188 @@ struct BookDetailView: View {
             orderStatusMessage: nil,
             freeChapterCount: nil
         )
+    }
+}
+
+private struct BookTOCSheet: View {
+    let workId: Int
+    let chapters: [ChapterMeta]
+    let needsPurchase: Bool
+    let onOpen: (Int) -> Void
+    let onPurchase: () -> Void
+    let onClose: () -> Void
+
+    @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
+
+    var body: some View {
+        NavigationStack {
+            List(chapters) { chapter in
+                Button {
+                    if chapter.isAvailableEffective {
+                        onOpen(chapter.id)
+                    } else if needsPurchase {
+                        onPurchase()
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(chapter.displayTitle)
+                                .foregroundStyle(chapter.isAvailableEffective ? Color.primary : .secondary)
+                            if !chapter.isAvailableEffective {
+                                Text("Недоступна")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if !chapter.isAvailableEffective {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                        } else if offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundStyle(appearance.accent)
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Оглавление")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть", action: onClose)
+                }
+            }
+        }
+    }
+}
+
+private struct BookCommentsSection: View {
+    let comments: [WorkComment]
+    let commentsLoading: Bool
+    let commentsError: String?
+    let commentsHasMore: Bool
+    @Binding var draftText: String
+    @Binding var replyTo: WorkComment?
+    let isSendingComment: Bool
+    let canWrite: Bool
+    let onSend: () -> Void
+    let onLoadMore: () -> Void
+
+    @EnvironmentObject private var appearance: AppAppearanceStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Комментарии")
+                    .font(AppTheme.headlineFont)
+                Spacer()
+                if commentsLoading {
+                    ProgressView()
+                }
+            }
+
+            if canWrite {
+                composer
+            } else {
+                Text("Войдите в аккаунт, чтобы писать комментарии.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let commentsError {
+                Text(commentsError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+
+            if comments.isEmpty, !commentsLoading {
+                Text("Пока нет комментариев")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(comments) { comment in
+                commentRow(comment)
+                Divider()
+            }
+
+            if commentsHasMore {
+                Button("Ещё комментарии", action: onLoadMore)
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let replyTo {
+                HStack {
+                    Text("Ответ для \(replyTo.authorName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Отмена") { self.replyTo = nil }
+                        .font(.caption)
+                }
+            }
+            TextField(
+                replyTo == nil ? "Написать комментарий…" : "Ваш ответ…",
+                text: $draftText,
+                axis: .vertical
+            )
+            .lineLimit(3...8)
+            .textFieldStyle(.roundedBorder)
+
+            Button(action: onSend) {
+                if isSendingComment {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Text(replyTo == nil ? "Отправить" : "Ответить")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
+        }
+    }
+
+    private func commentRow(_ comment: WorkComment) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(comment.authorName)
+                    .font(.subheadline.weight(.semibold))
+                if comment.isAuthor {
+                    Text("автор")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(appearance.accent.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+                if comment.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let rating = comment.rating, rating != 0 {
+                    Text(rating > 0 ? "+\(rating)" : "\(rating)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(comment.text)
+                .font(.subheadline)
+                .foregroundStyle(.primary.opacity(0.9))
+            if canWrite {
+                Button("Ответить") { replyTo = comment }
+                    .font(.caption)
+            }
+        }
+        .padding(.leading, CGFloat(min(comment.level, 4)) * 14)
     }
 }

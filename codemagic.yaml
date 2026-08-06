@@ -19,6 +19,10 @@ workflows:
         script: |
           set -euo pipefail
           set -x
+          set -o pipefail
+          LOG="$CM_BUILD_DIR/xcodebuild.log"
+          # Do not hide xcodebuild exit code behind tee
+          set +e
           xcodebuild \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
@@ -31,10 +35,15 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=NO \
-            build | tee "$CM_BUILD_DIR/xcodebuild.log"
-          # Surface the real compiler / asset errors at the end of the Codemagic log
+            build 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          set -e
           echo "==== xcodebuild errors (if any) ===="
-          grep -E "error:|fatal error:|❌|warning:.*AppIcon" "$CM_BUILD_DIR/xcodebuild.log" | tail -n 80 || true
+          grep -E "error:|fatal error:|❌|unable to type-check|SwiftCompile" "$LOG" | tail -n 120 || true
+          if [ "$STATUS" -ne 0 ]; then
+            echo "xcodebuild failed with status $STATUS"
+            exit "$STATUS"
+          fi
 
       - name: Package AuthorToday.ipa
         script: |
