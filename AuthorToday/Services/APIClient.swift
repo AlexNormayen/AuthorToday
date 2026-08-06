@@ -498,7 +498,7 @@ actor APIClient {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return CatalogSearchBundle(authors: [], works: []) }
 
-        if let site = try? await searchSiteBundle(query: trimmed), !site.works.isEmpty || !site.authors.isEmpty {
+        if let site = try? await searchSiteBundle(query: trimmed), !site.workIDs.isEmpty || !site.authors.isEmpty {
             let works: [WorkMeta]
             if site.workIDs.isEmpty {
                 works = []
