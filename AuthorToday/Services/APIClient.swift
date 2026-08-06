@@ -890,21 +890,60 @@ actor APIClient {
             ?? ""
 
         var imageURLs: [URL] = []
-        var seen = Set<String>()
+        var videoURLs: [URL] = []
+        var linkURLs: [URL] = []
+        var seenMedia = Set<String>()
+        var seenLinks = Set<String>()
+
         for raw in matches(#"<img[^>]+src="([^"]+)""#, in: bodyHTML) {
-            let normalized = normalizeMediaURL(raw)
-            guard let url = URL(string: normalized), seen.insert(normalized).inserted else { continue }
+            let normalized = MediaURL.normalize(raw)
+            guard let url = URL(string: normalized), seenMedia.insert(normalized).inserted else { continue }
             if normalized.contains("emoji") || normalized.contains("smiley") { continue }
             imageURLs.append(url)
         }
 
-        var videoURLs: [URL] = []
         for raw in matches(#"<iframe[^>]+src="([^"]+)""#, in: bodyHTML)
             + matches(#"<video[^>]+src="([^"]+)""#, in: bodyHTML)
         {
-            let normalized = normalizeMediaURL(raw)
-            guard let url = URL(string: normalized), seen.insert(normalized).inserted else { continue }
+            let normalized = MediaURL.normalize(raw)
+            guard var url = URL(string: normalized), seenMedia.insert(normalized).inserted else { continue }
+            if MediaURL.isVideo(url) {
+                url = MediaURL.embedURL(for: url)
+            }
             videoURLs.append(url)
+        }
+
+        // Anchors: collect links + promote video anchors to in-app players
+        for raw in matches(#"(?is)<a[^>]+href=["']([^"']+)["']"#, in: bodyHTML) {
+            let normalized = MediaURL.normalize(raw)
+            guard let url = URL(string: normalized), seenLinks.insert(normalized).inserted else { continue }
+            linkURLs.append(url)
+            if MediaURL.isVideo(url) {
+                let embed = MediaURL.embedURL(for: url)
+                if seenMedia.insert(embed.absoluteString).inserted {
+                    videoURLs.append(embed)
+                }
+            }
+        }
+
+        // Bare URLs in stripped text (authors often paste YouTube without <a>)
+        let plainBody = HTMLText.plain(from: bodyHTML)
+        if let urlRegex = try? NSRegularExpression(pattern: #"https?://[^\s<>\[\]\(\)]+"#) {
+            let range = NSRange(plainBody.startIndex..<plainBody.endIndex, in: plainBody)
+            for match in urlRegex.matches(in: plainBody, range: range) {
+                guard let r = Range(match.range, in: plainBody) else { continue }
+                let normalized = MediaURL.normalize(String(plainBody[r]))
+                guard let url = URL(string: normalized) else { continue }
+                if seenLinks.insert(normalized).inserted {
+                    linkURLs.append(url)
+                }
+                if MediaURL.isVideo(url) {
+                    let embed = MediaURL.embedURL(for: url)
+                    if seenMedia.insert(embed.absoluteString).inserted {
+                        videoURLs.append(embed)
+                    }
+                }
+            }
         }
 
         return PostDetails(
@@ -913,18 +952,16 @@ actor APIClient {
             authorName: authorName.map { HTMLText.plain(from: $0) },
             authorUserName: authorUser,
             html: bodyHTML,
-            plainText: HTMLText.plain(from: bodyHTML),
+            plainText: plainBody,
+            attributedBody: HTMLText.attributedPostBody(from: bodyHTML),
             imageURLs: imageURLs,
-            videoEmbedURLs: videoURLs
+            videoEmbedURLs: videoURLs,
+            linkURLs: linkURLs
         )
     }
 
     private static func normalizeMediaURL(_ raw: String) -> String {
-        var value = raw
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("//") { value = "https:" + value }
-        return value
+        MediaURL.normalize(raw)
     }
 
     // MARK: - Author profile

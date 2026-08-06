@@ -570,8 +570,10 @@ struct PostDetails: Sendable {
     let authorUserName: String?
     let html: String
     let plainText: String
+    let attributedBody: AttributedString
     let imageURLs: [URL]
     let videoEmbedURLs: [URL]
+    let linkURLs: [URL]
 }
 
 struct NotificationList: Codable, Sendable {

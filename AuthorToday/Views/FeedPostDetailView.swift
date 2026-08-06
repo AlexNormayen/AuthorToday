@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import WebKit
 
@@ -11,6 +12,8 @@ struct FeedPostDetailView: View {
     @State private var error: String?
     @State private var isLoading = true
     @State private var previewImage: URL?
+    @State private var activeVideo: IdentifiableURL?
+    @State private var activeBrowser: IdentifiableURL?
 
     @State private var comments: [WorkComment] = []
     @State private var commentsLoading = false
@@ -55,10 +58,15 @@ struct FeedPostDetailView: View {
                             .disabled(details.authorUserName == nil)
                         }
 
-                        Text(details.plainText)
+                        Text(details.attributedBody)
                             .font(.body)
                             .foregroundStyle(.primary)
+                            .tint(appearance.accent)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .environment(\.openURL, OpenURLAction { url in
+                                handleLink(url)
+                            })
 
                         ForEach(details.imageURLs, id: \.absoluteString) { url in
                             Button {
@@ -84,10 +92,22 @@ struct FeedPostDetailView: View {
                             .buttonStyle(.plain)
                         }
 
-                        ForEach(details.videoEmbedURLs, id: \.absoluteString) { url in
-                            VideoEmbedView(url: url)
-                                .frame(height: 220)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        if !details.videoEmbedURLs.isEmpty {
+                            Text("Видео")
+                                .font(AppTheme.headlineFont)
+                            ForEach(details.videoEmbedURLs, id: \.absoluteString) { url in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    VideoEmbedView(url: url)
+                                        .frame(height: 220)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Button {
+                                        activeVideo = IdentifiableURL(url: url)
+                                    } label: {
+                                        Label("На весь экран", systemImage: "arrow.up.left.and.arrow.down.right")
+                                            .font(.caption)
+                                    }
+                                }
+                            }
                         }
 
                         Divider()
@@ -121,6 +141,12 @@ struct FeedPostDetailView: View {
         )) { item in
             ImagePreviewView(url: item.url)
         }
+        .fullScreenCover(item: $activeVideo) { item in
+            InAppVideoPlayerView(url: item.url)
+        }
+        .sheet(item: $activeBrowser) { item in
+            InAppBrowserView(url: item.url)
+        }
         .task {
             await load()
             await loadComments(reset: true)
@@ -134,6 +160,16 @@ struct FeedPostDetailView: View {
         } else {
             ContentUnavailableView("Нет профиля", systemImage: "person.crop.circle.badge.questionmark")
         }
+    }
+
+    private func handleLink(_ url: URL) -> OpenURLAction.Result {
+        if MediaURL.isVideo(url) {
+            activeVideo = IdentifiableURL(url: MediaURL.embedURL(for: url))
+            return .handled
+        }
+        // Keep author.today deep content inside the app browser (cookies / no App Store jump).
+        activeBrowser = IdentifiableURL(url: url)
+        return .handled
     }
 
     private func load() async {
@@ -231,19 +267,154 @@ private struct ImagePreviewView: View {
     }
 }
 
-private struct VideoEmbedView: UIViewRepresentable {
+private struct InAppVideoPlayerView: View {
     let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    private var isDirectFile: Bool {
+        ["mp4", "m3u8", "webm", "mov"].contains(url.pathExtension.lowercased())
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if isDirectFile {
+                    VideoPlayer(player: AVPlayer(url: url))
+                        .ignoresSafeArea(edges: .bottom)
+                } else {
+                    VideoEmbedView(url: url)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+            }
+            .navigationTitle("Видео")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+            .toolbarBackground(.visible, for: .navigationBar)
+        }
+    }
+}
+
+private struct InAppBrowserView: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                BrowserWebView(url: url, isLoading: $isLoading)
+                if isLoading {
+                    ProgressView()
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .navigationTitle(url.host ?? "Ссылка")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct BrowserWebView: UIViewRepresentable {
+    let url: URL
+    @Binding var isLoading: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isLoading: $isLoading)
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = false
-        webView.backgroundColor = .black
-        webView.isOpaque = false
+        webView.navigationDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
         webView.load(URLRequest(url: url))
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        @Binding var isLoading: Bool
+        init(isLoading: Binding<Bool>) { _isLoading = isLoading }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            isLoading = true
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isLoading = false
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            isLoading = false
+        }
+    }
+}
+
+private struct VideoEmbedView: UIViewRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        if #available(iOS 15.0, *) {
+            config.allowsPictureInPictureMediaPlayback = true
+        }
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.scrollView.isScrollEnabled = false
+        webView.backgroundColor = .black
+        webView.isOpaque = false
+        context.coordinator.load(url, into: webView)
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        if context.coordinator.loadedURL != url {
+            context.coordinator.load(url, into: uiView)
+        }
+    }
+
+    final class Coordinator {
+        var loadedURL: URL?
+
+        func load(_ url: URL, into webView: WKWebView) {
+            loadedURL = url
+            let ext = url.pathExtension.lowercased()
+            if ["mp4", "m3u8", "webm", "mov"].contains(ext) {
+                webView.load(URLRequest(url: url))
+                return
+            }
+            let src = url.absoluteString.replacingOccurrences(of: "\"", with: "%22")
+            let html = """
+            <!DOCTYPE html><html><head>
+            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+            <style>
+              html,body{margin:0;padding:0;background:#000;height:100%;}
+              iframe{position:fixed;inset:0;width:100%;height:100%;border:0;}
+            </style></head><body>
+            <iframe src="\(src)" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen playsinline></iframe>
+            </body></html>
+            """
+            webView.loadHTMLString(html, baseURL: URL(string: "https://author.today"))
+        }
+    }
 }

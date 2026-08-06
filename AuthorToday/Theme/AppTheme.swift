@@ -291,4 +291,156 @@ enum HTMLText {
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
     }
+
+    /// Post body with tappable links (Markdown → AttributedString).
+    static func attributedPostBody(from html: String) -> AttributedString {
+        var s = html
+        for pattern in [#"(?is)<script[^>]*>.*?</script>"#, #"(?is)<style[^>]*>.*?</style>"#, #"(?is)<iframe[\s\S]*?</iframe>"#] {
+            s = s.replacingOccurrences(of: pattern, with: "\n", options: .regularExpression)
+        }
+        // <a href="url">label</a> → [label](url)
+        if let regex = try? NSRegularExpression(
+            pattern: #"(?is)<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)</a>"#,
+            options: []
+        ) {
+            let ns = s as NSString
+            let matches = regex.matches(in: s, range: NSRange(location: 0, length: ns.length)).reversed()
+            for match in matches {
+                guard match.numberOfRanges >= 3,
+                      let hrefRange = Range(match.range(at: 1), in: s),
+                      let labelRange = Range(match.range(at: 2), in: s),
+                      let full = Range(match.range(at: 0), in: s) else { continue }
+                let href = MediaURL.normalize(String(s[hrefRange]))
+                var label = plain(from: String(s[labelRange]))
+                    .replacingOccurrences(of: "[", with: "(")
+                    .replacingOccurrences(of: "]", with: ")")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if label.isEmpty { label = href }
+                let md = "[\(label)](\(href))"
+                s.replaceSubrange(full, with: md)
+            }
+        }
+        s = s
+            .replacingOccurrences(of: "<br>", with: "\n", options: .caseInsensitive)
+            .replacingOccurrences(of: "<br/>", with: "\n", options: .caseInsensitive)
+            .replacingOccurrences(of: "<br />", with: "\n", options: .caseInsensitive)
+            .replacingOccurrences(of: "</p>", with: "\n\n", options: .caseInsensitive)
+            .replacingOccurrences(of: "</div>", with: "\n", options: .caseInsensitive)
+            .replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Autolink bare video / http URLs that are not already markdown links.
+        s = autolinkBareURLs(in: s)
+
+        if let attributed = try? AttributedString(
+            markdown: s,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            return attributed
+        }
+        return AttributedString(plain(from: html))
+    }
+
+    private static func autolinkBareURLs(in text: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"(https?://[^\s<>\[\]\(\)]+|www\.[^\s<>\[\]\(\)]+)"#
+        ) else { return text }
+        var result = text
+        let ns = result as NSString
+        let matches = regex.matches(in: result, range: NSRange(location: 0, length: ns.length)).reversed()
+        for match in matches {
+            guard let range = Range(match.range(at: 1), in: result) else { continue }
+            let prefix = String(result[..<range.lowerBound])
+            // Skip URLs already inside markdown: [label](url) or [url](...)
+            if prefix.hasSuffix("](") || prefix.hasSuffix("[") { continue }
+
+            let original = String(result[range])
+            var cleaned = original
+            var suffix = ""
+            while let last = cleaned.last, ".,;:!?)]»\"".contains(last) {
+                suffix = String(last) + suffix
+                cleaned.removeLast()
+            }
+            guard !cleaned.isEmpty else { continue }
+            if cleaned.hasPrefix("www.") {
+                cleaned = "https://" + cleaned
+            }
+            result.replaceSubrange(range, with: "[\(cleaned)](\(cleaned))" + suffix)
+        }
+        return result
+    }
+}
+
+enum MediaURL {
+    static func normalize(_ raw: String) -> String {
+        var value = raw
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("//") { value = "https:" + value }
+        if value.hasPrefix("/") { value = "https://author.today" + value }
+        if value.hasPrefix("www.") { value = "https://" + value }
+        return value
+    }
+
+    static func isVideo(_ url: URL) -> Bool {
+        let host = (url.host ?? "").lowercased()
+        let path = url.path.lowercased()
+        let abs = url.absoluteString.lowercased()
+        if host.contains("youtube") || host.contains("youtu.be") { return true }
+        if host.contains("vimeo.com") { return true }
+        if host.contains("rutube.ru") { return true }
+        if host.contains("vk.com") || host.contains("vkvideo") {
+            return path.contains("video") || abs.contains("video")
+        }
+        if host.contains("dailymotion") { return true }
+        if ["mp4", "m3u8", "webm", "mov"].contains(url.pathExtension.lowercased()) { return true }
+        return abs.contains("/embed/")
+    }
+
+    /// Prefer an embeddable player URL for in-app WKWebView.
+    static func embedURL(for url: URL) -> URL {
+        let abs = url.absoluteString
+        let host = (url.host ?? "").lowercased()
+
+        if host.contains("youtu.be") {
+            let id = url.path.split(separator: "/").first.map(String.init) ?? ""
+            if !id.isEmpty, let embed = URL(string: "https://www.youtube.com/embed/\(id)?playsinline=1") {
+                return embed
+            }
+        }
+        if host.contains("youtube.com") {
+            if abs.contains("/embed/") {
+                return url
+            }
+            if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let id = comps.queryItems?.first(where: { $0.name == "v" })?.value,
+               let embed = URL(string: "https://www.youtube.com/embed/\(id)?playsinline=1") {
+                return embed
+            }
+            // /shorts/ID
+            let parts = url.path.split(separator: "/")
+            if parts.count >= 2, parts[0] == "shorts",
+               let embed = URL(string: "https://www.youtube.com/embed/\(parts[1])?playsinline=1") {
+                return embed
+            }
+        }
+        if host.contains("vimeo.com"), !host.contains("player.") {
+            let id = url.path.split(separator: "/").first(where: { Int($0) != nil }).map(String.init)
+            if let id, let embed = URL(string: "https://player.vimeo.com/video/\(id)") {
+                return embed
+            }
+        }
+        if host.contains("rutube.ru"), abs.contains("/video/") {
+            let id = url.path.split(separator: "/").last.map(String.init) ?? ""
+            if !id.isEmpty, let embed = URL(string: "https://rutube.ru/play/embed/\(id)") {
+                return embed
+            }
+        }
+        return url
+    }
 }
