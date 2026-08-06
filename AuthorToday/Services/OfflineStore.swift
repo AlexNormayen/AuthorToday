@@ -281,10 +281,13 @@ final class OfflineStore: ObservableObject {
             existing.coverURL = meta.absoluteCoverURL ?? existing.coverURL
             existing.annotation = meta.annotation ?? existing.annotation
             existing.libraryState = state
-            existing.lastReadChapterId = meta.lastReadChapterId ?? meta.lastChapterId ?? existing.lastReadChapterId
-            // Keep local reading % / lastReadAt — sync must not wipe reading history
+            // Site → app: adopt remote last-read chapter when API provides it
+            if let remoteChapter = meta.lastReadChapterId {
+                existing.lastReadChapterId = remoteChapter
+            }
             let remoteProgress = meta.resolvedProgress
             if remoteProgress > 0 {
+                // Furthest known progress wins (site or app)
                 existing.progress = min(max(existing.progress, remoteProgress), 1)
             }
             existing.updatedAt = .now
@@ -296,7 +299,7 @@ final class OfflineStore: ObservableObject {
                 coverURL: meta.absoluteCoverURL,
                 annotation: meta.annotation,
                 libraryState: state,
-                lastReadChapterId: meta.lastReadChapterId ?? meta.lastChapterId,
+                lastReadChapterId: meta.lastReadChapterId,
                 progress: min(max(meta.resolvedProgress, 0), 1)
             )
             ctx.insert(work)
