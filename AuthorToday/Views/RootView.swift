@@ -47,6 +47,7 @@ struct RootView: View {
         tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
+        UITabBar.appearance().isTranslucent = true
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
@@ -54,8 +55,10 @@ struct RootView: View {
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
+        UINavigationBar.appearance().isTranslucent = true
 
         UITableView.appearance().backgroundColor = .clear
+        UITableViewCell.appearance().backgroundColor = .clear
         UICollectionView.appearance().backgroundColor = .clear
     }
 }
@@ -94,6 +97,7 @@ struct MainTabView: View {
         }
         .tint(appearance.accent)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .background(Color.clear)
     }
 }
 
@@ -155,7 +159,9 @@ struct SettingsHubView: View {
             }
             .navigationTitle("Ещё")
             .themedScreenChrome()
-            .themedGroupedFill()
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         }
     }

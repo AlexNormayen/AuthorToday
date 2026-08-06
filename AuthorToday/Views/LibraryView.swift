@@ -3,6 +3,7 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var mode: LibraryBrowseMode = .authors
@@ -69,8 +70,9 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(Color.clear)
-            .themedGroupedFill()
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -185,6 +187,9 @@ struct LibraryView: View {
                     }
                     .padding(.vertical, 6)
                 }
+                .listRowBackground(
+                    Rectangle().fill(.ultraThinMaterial.opacity(0.82))
+                )
             }
         }
         .listStyle(.plain)
@@ -461,6 +466,7 @@ struct AuthorSeriesBooksView: View {
 /// Tab: books sorted by last open/read time in the app.
 struct RecentReadsView: View {
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var path = NavigationPath()
 
     var body: some View {
@@ -489,6 +495,8 @@ struct RecentReadsView: View {
                                                 .padding(.bottom, 8)
                                         }
                                     }
+                                    .padding(.horizontal, 8)
+                                    .background(.ultraThinMaterial.opacity(0.75))
                                 }
                                 .buttonStyle(.plain)
                                 Divider().padding(.leading, 88)
@@ -498,7 +506,9 @@ struct RecentReadsView: View {
                     }
                 }
             }
-            .themedGroupedFill()
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
             .navigationTitle("Недавние")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationDestination(for: LibraryRoute.self) { route in

@@ -102,7 +102,10 @@ struct SearchView: View {
                     .scrollContentBackground(.hidden)
                 }
             }
-            .themedGroupedFill()
+            .themedScreenChrome()
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
             .navigationTitle("Поиск")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .searchable(text: $query, prompt: "Название или автор")

@@ -40,7 +40,7 @@ struct AppearanceSettingsView: View {
                         ForEach(AppThemePreset.allCases) { preset in
                             Button {
                                 appearance.themePreset = preset
-                                if preset.prefersDark, appearance.colorMode == .system {
+                                if preset.prefersDark {
                                     appearance.colorMode = .dark
                                 }
                             } label: {
@@ -114,7 +114,9 @@ struct AppearanceSettingsView: View {
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
         .themedScreenChrome()
-        .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     }
 }

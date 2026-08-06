@@ -131,6 +131,26 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Asset catalog image name for the full-app background photo.
+    var backgroundImageName: String? {
+        switch self {
+        case .moss: return "ThemeMoss"
+        case .ocean: return "ThemeOcean"
+        case .wine: return "ThemeWine"
+        case .graphite: return "ThemeGraphite"
+        case .sand: return "ThemeSand"
+        case .neon: return "ThemeNeon"
+        case .plasma: return "ThemePlasma"
+        case .orbit: return "ThemeOrbit"
+        case .hologram: return "ThemeHologram"
+        case .ion: return "ThemeIon"
+        case .daredevil: return "ThemeDaredevil"
+        case .hellsKitchen: return "ThemeHellsKitchen"
+        case .murdock: return "ThemeMurdock"
+        case .custom: return "ThemeGraphite"
+        }
+    }
+
     var atmosphereBase: Color {
         switch self {
         case .moss: return Color(red: 0.90, green: 0.93, blue: 0.91)

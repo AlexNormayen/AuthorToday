@@ -8,6 +8,7 @@ enum FeedRoute: Hashable {
 
 struct NotificationsView: View {
     @EnvironmentObject private var notifications: NotificationPoller
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var path = NavigationPath()
     @State private var expandedIds: Set<String> = []
 
@@ -27,7 +28,9 @@ struct NotificationsView: View {
                     List {
                         ForEach(notifications.items, id: \.stableId) { item in
                             feedRow(item)
-                                .listRowBackground(Color.clear)
+                                .listRowBackground(
+                                    Rectangle().fill(.ultraThinMaterial.opacity(0.82))
+                                )
                                 .onAppear {
                                     if item.stableId == notifications.items.last?.stableId {
                                         Task { await notifications.loadMore() }
@@ -56,7 +59,9 @@ struct NotificationsView: View {
                     .scrollContentBackground(.hidden)
                 }
             }
-            .themedGroupedFill()
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
             .navigationTitle("Лента")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
