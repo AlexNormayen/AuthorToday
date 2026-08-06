@@ -36,16 +36,22 @@ struct CurrentUser: Codable, Identifiable, Sendable {
 // MARK: - Library / Works
 
 struct LibraryPage: Codable, Sendable {
+    /// Official `/v1/account/user-library` payload field.
+    let worksInLibrary: [WorkMeta]?
     let works: [WorkMeta]?
     let data: [WorkMeta]?
     let searchResults: [WorkMeta]?
     let totalCount: Int?
+    let readingCount: Int?
+    let savedCount: Int?
+    let finishedCount: Int?
+    let purchasedCount: Int?
     let hasMore: Bool?
     let realTotalCount: Int?
     let isLastPage: Bool?
 
     var items: [WorkMeta] {
-        works ?? data ?? searchResults ?? []
+        worksInLibrary ?? works ?? data ?? searchResults ?? []
     }
 }
 
