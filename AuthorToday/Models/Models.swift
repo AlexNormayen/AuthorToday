@@ -621,7 +621,7 @@ final class CachedWork {
     var annotation: String?
     var libraryState: String?
     var lastReadChapterId: Int?
-    /// Last time the user opened/read this book in the app (not sync time).
+    /// Last time the user opened/read this book (app or inferred from site progress).
     var lastReadAt: Date?
     var progress: Double
     var updatedAt: Date
@@ -630,6 +630,9 @@ final class CachedWork {
     var seriesId: Int?
     var seriesTitle: String?
     var seriesOrder: Int?
+    /// Site like count — used for author popularity sort.
+    var likeCount: Int?
+    var viewsCount: Int?
 
     init(
         workId: Int,
@@ -647,7 +650,9 @@ final class CachedWork {
         chaptersJSON: Data? = nil,
         seriesId: Int? = nil,
         seriesTitle: String? = nil,
-        seriesOrder: Int? = nil
+        seriesOrder: Int? = nil,
+        likeCount: Int? = nil,
+        viewsCount: Int? = nil
     ) {
         self.workId = workId
         self.title = title
@@ -665,6 +670,8 @@ final class CachedWork {
         self.seriesId = seriesId
         self.seriesTitle = seriesTitle
         self.seriesOrder = seriesOrder
+        self.likeCount = likeCount
+        self.viewsCount = viewsCount
     }
 
     /// Safe 0…100 for UI (handles legacy rows that stored API percent as-is).

@@ -46,7 +46,7 @@ final class OfflineStore: ObservableObject {
 
     /// Migrate older installs: copy ReadingProgress.updatedAt → CachedWork.lastReadAt
     private func backfillLastReadAtIfNeeded() {
-        let key = "at.lastReadAtBackfill"
+        let key = "at.lastReadAtBackfill.v2"
         guard !UserDefaults.standard.bool(forKey: key), let modelContext else { return }
         let works = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
         let progressRows = (try? modelContext.fetch(FetchDescriptor<ReadingProgress>())) ?? []
@@ -55,6 +55,9 @@ final class OfflineStore: ObservableObject {
             if let p = byWork[work.workId] {
                 work.lastReadAt = p.updatedAt
                 work.lastReadChapterId = work.lastReadChapterId ?? p.chapterId
+            } else if work.lastReadChapterId != nil || work.progress > 0.001 {
+                // Site sync already had reading markers without a local timestamp.
+                work.lastReadAt = work.updatedAt
             }
         }
         try? modelContext.save()
@@ -106,25 +109,68 @@ final class OfflineStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Books opened recently, newest first (includes local-only downloads with read history).
+    /// Books opened recently (in app or with reading progress from site), newest first.
     var recentlyRead: [CachedWork] {
         guard let modelContext else { return [] }
         let descriptor = FetchDescriptor<CachedWork>()
         let all = (try? modelContext.fetch(descriptor)) ?? []
         return all
-            .filter { $0.lastReadAt != nil }
-            .sorted { ($0.lastReadAt ?? .distantPast) > ($1.lastReadAt ?? .distantPast) }
+            .filter { work in
+                work.lastReadAt != nil
+                    || work.lastReadChapterId != nil
+                    || work.progress > 0.001
+            }
+            .sorted {
+                let lhs = $0.lastReadAt ?? $0.updatedAt
+                let rhs = $1.lastReadAt ?? $1.updatedAt
+                return lhs > rhs
+            }
     }
 
     /// Authors as folders for the library shelf.
     var authorsGrouped: [(author: String, works: [CachedWork])] {
+        authorsGrouped(sortedBy: .name)
+    }
+
+    func authorsGrouped(sortedBy mode: AuthorSortMode) -> [(author: String, works: [CachedWork])] {
         let grouped = Dictionary(grouping: library) { work -> String in
             let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Без автора" : name
         }
-        return grouped
-            .map { (author: $0.key, works: $0.value.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) }
-            .sorted { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
+        let mapped = grouped.map { key, value -> (author: String, works: [CachedWork]) in
+            let sortedWorks = value.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+            return (author: key, works: sortedWorks)
+        }
+        switch mode {
+        case .name:
+            return mapped.sorted {
+                $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
+            }
+        case .bookCount:
+            return mapped.sorted {
+                if $0.works.count != $1.works.count { return $0.works.count > $1.works.count }
+                return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
+            }
+        case .recentlyRead:
+            return mapped.sorted {
+                let l = $0.works.compactMap(\.lastReadAt).max() ?? $0.works.map(\.updatedAt).max() ?? .distantPast
+                let r = $1.works.compactMap(\.lastReadAt).max() ?? $1.works.map(\.updatedAt).max() ?? .distantPast
+                if l != r { return l > r }
+                return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
+            }
+        case .popularity:
+            return mapped.sorted {
+                let l = $0.works.reduce(0) { $0 + ($1.likeCount ?? 0) }
+                let r = $1.works.reduce(0) { $0 + ($1.likeCount ?? 0) }
+                if l != r { return l > r }
+                let lv = $0.works.reduce(0) { $0 + ($1.viewsCount ?? 0) }
+                let rv = $1.works.reduce(0) { $0 + ($1.viewsCount ?? 0) }
+                if lv != rv { return lv > rv }
+                return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
+            }
+        }
     }
 
     func syncLibraryIfNeeded(force: Bool = false) async {
@@ -394,6 +440,7 @@ final class OfflineStore: ObservableObject {
             state = "Reading"
         }
             if let existing {
+            let previousChapter = existing.lastReadChapterId
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
             if let uname = meta.authorUserName, !uname.isEmpty {
@@ -410,6 +457,12 @@ final class OfflineStore: ObservableObject {
             if remoteProgress > 0 {
                 existing.progress = min(max(existing.progress, remoteProgress), 1)
             }
+            if let likes = meta.likeCount {
+                existing.likeCount = likes
+            }
+            if let views = meta.viewsCount ?? meta.viewCount {
+                existing.viewsCount = views
+            }
             if let seriesTitle = meta.displaySeriesTitle {
                 existing.seriesTitle = seriesTitle
             }
@@ -419,6 +472,12 @@ final class OfflineStore: ObservableObject {
             if let seriesOrder = meta.seriesOrder {
                 existing.seriesOrder = seriesOrder
             }
+            // Bring site reading activity into "Recent"
+            applySiteReadingActivity(
+                to: existing,
+                meta: meta,
+                previousChapterId: previousChapter
+            )
             existing.updatedAt = .now
         } else {
             let work = CachedWork(
@@ -433,10 +492,56 @@ final class OfflineStore: ObservableObject {
                 progress: min(max(meta.resolvedProgress, 0), 1),
                 seriesId: meta.seriesId,
                 seriesTitle: meta.displaySeriesTitle,
-                seriesOrder: meta.seriesOrder
+                seriesOrder: meta.seriesOrder,
+                likeCount: meta.likeCount,
+                viewsCount: meta.viewsCount ?? meta.viewCount
             )
+            applySiteReadingActivity(to: work, meta: meta, previousChapterId: nil)
             ctx.insert(work)
         }
+    }
+
+    /// Maps site progress / last-read chapter into lastReadAt so "Недавние" works after web reading.
+    private func applySiteReadingActivity(
+        to work: CachedWork,
+        meta: WorkMeta,
+        previousChapterId: Int?
+    ) {
+        let hasSiteProgress = meta.lastReadChapterId != nil || meta.resolvedProgress > 0.001
+        guard hasSiteProgress else { return }
+
+        let remoteDate = Self.parseAPIDate(meta.lastUpdateTime)
+        let chapterChanged = meta.lastReadChapterId != nil
+            && meta.lastReadChapterId != previousChapterId
+
+        if let remoteDate {
+            if work.lastReadAt == nil || remoteDate > work.lastReadAt! || chapterChanged {
+                work.lastReadAt = max(work.lastReadAt ?? .distantPast, remoteDate)
+            }
+        } else if work.lastReadAt == nil || chapterChanged {
+            // No timestamp from API — still surface the book in Recent.
+            work.lastReadAt = work.lastReadAt ?? .now
+            if chapterChanged {
+                work.lastReadAt = .now
+            }
+        }
+    }
+
+    private static func parseAPIDate(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: raw) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: raw) { return d }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy HH:mm"] {
+            df.dateFormat = format
+            if let d = df.date(from: raw) { return d }
+        }
+        return nil
     }
 
     /// Updates chapter list / cover for a book without adding it to the site library shelf.

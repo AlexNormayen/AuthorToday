@@ -272,4 +272,23 @@ enum HTMLText {
             .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// Reader text with first-line paragraph indent (as in paper books).
+    static func readerPlain(from html: String) -> String {
+        let indent = "\u{2003}\u{2003}" // two em-spaces
+        let plain = plain(from: html)
+        let paragraphs = plain.components(separatedBy: "\n\n")
+        return paragraphs
+            .map { raw -> String in
+                let para = raw
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !para.isEmpty else { return "" }
+                if para.hasPrefix(indent) { return para }
+                return indent + para
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
 }

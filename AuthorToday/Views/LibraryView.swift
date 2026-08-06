@@ -6,6 +6,7 @@ struct LibraryView: View {
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var mode: LibraryBrowseMode = .authors
+    @State private var authorSort: AuthorSortMode = .name
 
     private var filteredWorks: [CachedWork] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -17,7 +18,7 @@ struct LibraryView: View {
 
     private var filteredAuthors: [(author: String, works: [CachedWork])] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let groups = offline.authorsGrouped
+        let groups = offline.authorsGrouped(sortedBy: authorSort)
         if q.isEmpty { return groups }
         return groups.compactMap { group in
             if group.author.lowercased().contains(q) {
@@ -51,6 +52,16 @@ struct LibraryView: View {
                         .padding(.vertical, 10)
 
                         if mode == .authors {
+                            Picker("Сортировка", selection: $authorSort) {
+                                ForEach(AuthorSortMode.allCases) { item in
+                                    Text(item.title).tag(item)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                             authorsList
                         } else {
                             booksList(works: filteredWorks)
@@ -161,7 +172,7 @@ struct LibraryView: View {
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
-                            Text(booksCountText(group.works.count))
+                            Text(authorSubtitle(group))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -207,6 +218,28 @@ struct LibraryView: View {
         return "Нет сети. Когда появится интернет — обновите библиотеку."
     }
 
+    private func authorSubtitle(_ group: (author: String, works: [CachedWork])) -> String {
+        let count = booksCountText(group.works.count)
+        switch authorSort {
+        case .name, .bookCount:
+            return count
+        case .recentlyRead:
+            if let date = group.works.compactMap(\.lastReadAt).max() {
+                let f = RelativeDateTimeFormatter()
+                f.locale = Locale(identifier: "ru_RU")
+                f.unitsStyle = .short
+                return "\(count) · \(f.localizedString(for: date, relativeTo: Date()))"
+            }
+            return count
+        case .popularity:
+            let likes = group.works.reduce(0) { $0 + ($1.likeCount ?? 0) }
+            if likes > 0 {
+                return "\(count) · ★ \(likes)"
+            }
+            return count
+        }
+    }
+
     private func booksCountText(_ n: Int) -> String {
         let mod10 = n % 10
         let mod100 = n % 100
@@ -225,6 +258,24 @@ enum LibraryBrowseMode: String, CaseIterable, Identifiable {
         switch self {
         case .authors: return "Авторы"
         case .all: return "Все книги"
+        }
+    }
+}
+
+enum AuthorSortMode: String, CaseIterable, Identifiable {
+    case name
+    case bookCount
+    case recentlyRead
+    case popularity
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name: return "По имени"
+        case .bookCount: return "По числу книг"
+        case .recentlyRead: return "По недавнему чтению"
+        case .popularity: return "По популярности"
         }
     }
 }
@@ -426,7 +477,7 @@ struct RecentReadsView: View {
                                 } label: {
                                     VStack(alignment: .leading, spacing: 0) {
                                         LibraryRow(work: work)
-                                        if let date = work.lastReadAt {
+                                        if let date = work.lastReadAt ?? (work.progress > 0 || work.lastReadChapterId != nil ? work.updatedAt : nil) {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
                                                 .foregroundStyle(.tertiary)

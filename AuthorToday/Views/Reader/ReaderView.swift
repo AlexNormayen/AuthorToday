@@ -358,7 +358,7 @@ struct ReaderView: View {
             }
             html = result.html
             chapterTitle = result.title
-            plainText = HTMLText.plain(from: result.html)
+            plainText = HTMLText.readerPlain(from: result.html)
             if Self.looksGarbled(plainText) {
                 // Drop bad cache from older builds and refetch once
                 offline.removeCachedChapter(workId: workId, chapterId: result.chapterId)
@@ -372,7 +372,7 @@ struct ReaderView: View {
                 )
                 html = reloaded.html
                 chapterTitle = reloaded.title
-                plainText = HTMLText.plain(from: reloaded.html)
+                plainText = HTMLText.readerPlain(from: reloaded.html)
             }
             if let progress = offline.progress(for: workId) {
                 pageIndex = progress.pageIndex
@@ -409,7 +409,7 @@ struct ReaderView: View {
             chapterIndex = index
             chapterTitle = loaded.title
             html = loaded.html
-            plainText = HTMLText.plain(from: loaded.html)
+            plainText = HTMLText.readerPlain(from: loaded.html)
             pageIndex = 0
             persistProgress()
             syncProgressRemote()
