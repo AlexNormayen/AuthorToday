@@ -91,41 +91,7 @@ struct ReaderView: View {
             NavigationStack {
                 List {
                     ForEach(Array(chapters.enumerated()), id: \.element.id) { idx, chapter in
-                        let locked = !chapter.isAvailableEffective
-                        Button {
-                            guard !locked else {
-                                if details?.needsPurchase == true {
-                                    showTOC = false
-                                    showPurchase = true
-                                }
-                                return
-                            }
-                            showTOC = false
-                            Task { await openChapter(at: idx) }
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(chapter.displayTitle)
-                                        .foregroundStyle(locked ? Color.secondary : Color.primary)
-                                        .multilineTextAlignment(.leading)
-                                    if locked {
-                                        Text("Недоступна · нужна покупка")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                if locked {
-                                    Image(systemName: "lock.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else if idx == chapterIndex {
-                                    Image(systemName: "book.fill")
-                                        .foregroundStyle(AppTheme.moss)
-                                }
-                            }
-                        }
-                        .disabled(locked && details?.needsPurchase != true)
+                        tocRow(idx: idx, chapter: chapter)
                     }
                 }
                 .navigationTitle("Оглавление")
@@ -320,6 +286,44 @@ struct ReaderView: View {
         .foregroundStyle(settings.textColor)
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial.opacity(0.92))
+    }
+
+    private func tocRow(idx: Int, chapter: ChapterMeta) -> some View {
+        let locked = !chapter.isAvailableEffective
+        return Button {
+            guard !locked else {
+                if details?.needsPurchase == true {
+                    showTOC = false
+                    showPurchase = true
+                }
+                return
+            }
+            showTOC = false
+            Task { await openChapter(at: idx) }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(chapter.displayTitle)
+                        .foregroundStyle(locked ? Color.secondary : Color.primary)
+                        .multilineTextAlignment(.leading)
+                    if locked {
+                        Text("Недоступна · нужна покупка")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if idx == chapterIndex {
+                    Image(systemName: "book.fill")
+                        .foregroundStyle(AppTheme.moss)
+                }
+            }
+        }
+        .disabled(locked && details?.needsPurchase != true)
     }
 
     // MARK: - Logic
