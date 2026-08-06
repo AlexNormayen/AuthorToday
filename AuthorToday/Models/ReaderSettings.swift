@@ -373,4 +373,6 @@ extension Color {
             Int(r * 255), Int(g * 255), Int(b * 255)
         )
     }
+
+    func uiColor() -> UIColor { UIColor(self) }
 }
