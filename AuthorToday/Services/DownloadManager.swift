@@ -58,6 +58,7 @@ final class DownloadManager: ObservableObject {
         }
 
         let preferred = preferredChapterId
+            ?? ReadingSessionStore.shared.checkpoint(for: workId)?.chapterId
             ?? store.progress(for: workId)?.chapterId
             ?? remoteChapterId
             ?? store.cachedWork(workId: workId)?.lastReadChapterId

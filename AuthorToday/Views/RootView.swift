@@ -66,38 +66,64 @@ struct RootView: View {
 struct MainTabView: View {
     @EnvironmentObject private var notifications: NotificationPoller
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @ObservedObject private var session = ReadingSessionStore.shared
+    @State private var selectedTab = 0
+    @State private var resumeReader: ReadingSessionStore.ResumeReader?
+    @State private var didApplyColdStart = false
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             LibraryView()
                 .tabItem {
                     Label("Библиотека", systemImage: "books.vertical")
                 }
+                .tag(0)
 
             RecentReadsView()
                 .tabItem {
                     Label("Недавние", systemImage: "clock")
                 }
+                .tag(1)
 
             SearchView()
                 .tabItem {
                     Label("Поиск", systemImage: "magnifyingglass")
                 }
+                .tag(2)
 
             NotificationsView()
                 .tabItem {
                     Label("Лента", systemImage: "bell")
                 }
                 .badge(notifications.unreadCount)
+                .tag(3)
 
             SettingsHubView()
                 .tabItem {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
+                .tag(4)
         }
         .tint(appearance.accent)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
         .background(Color.clear)
+        .onAppear {
+            guard !didApplyColdStart else { return }
+            didApplyColdStart = true
+            selectedTab = session.selectedTab
+            session.prepareColdStartResume()
+            resumeReader = session.pendingResume
+        }
+        .onChange(of: selectedTab) { _, tab in
+            session.setSelectedTab(tab)
+        }
+        .fullScreenCover(item: $resumeReader, onDismiss: {
+            session.endReading()
+        }) { item in
+            NavigationStack {
+                ReaderView(workId: item.workId, initialChapterId: item.chapterId)
+            }
+        }
     }
 }
 

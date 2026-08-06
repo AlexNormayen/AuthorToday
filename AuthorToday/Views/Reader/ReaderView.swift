@@ -6,9 +6,11 @@ struct ReaderView: View {
     let initialChapterId: Int?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var settings: ReaderSettingsStore
+    @ObservedObject private var session = ReadingSessionStore.shared
 
     @State private var details: WorkDetails?
     @State private var chapters: [ChapterMeta] = []
@@ -30,7 +32,11 @@ struct ReaderView: View {
     @State private var restorePageIndex = 0
     @State private var restoreOffsetY: Double = 0
     @State private var persistScrollTask: Task<Void, Never>?
+    @State private var restoreRetryTask: Task<Void, Never>?
     @State private var scrollViewRef: UIScrollView?
+    /// After programmatic restore, ignore offset noise that reports 0.
+    @State private var ignoreScrollTrackingUntil: Date = .distantPast
+    @State private var didStartSession = false
 
     private var currentChapter: ChapterMeta? {
         chapters.indices.contains(chapterIndex) ? chapters[chapterIndex] : nil
@@ -113,13 +119,32 @@ struct ReaderView: View {
             await bootstrap()
             UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOn
         }
+        .onAppear {
+            if !didStartSession {
+                didStartSession = true
+                session.beginReading(workId: workId, chapterId: initialChapterId)
+            }
+        }
         .onChange(of: settings.keepScreenOn) { _, on in
             UIApplication.shared.isIdleTimerDisabled = on
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .inactive || phase == .background {
+                persistScrollTask?.cancel()
+                persistProgress()
+                syncProgressRemote()
+            }
+        }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            persistScrollTask?.cancel()
+            restoreRetryTask?.cancel()
             persistProgress()
             syncProgressRemote()
+            // Only clear "was reading" when user navigates away while app is active.
+            if scenePhase == .active {
+                session.endReading()
+            }
         }
     }
 
@@ -162,23 +187,12 @@ struct ReaderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, settings.marginHorizontal)
                 .padding(.vertical, settings.marginVertical + (showChrome ? 56 : 12))
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.preference(
-                            key: ScrollOffsetKey.self,
-                            value: -geo.frame(in: .named("readerScroll")).minY
-                        )
-                    }
-                )
         }
-        .coordinateSpace(name: "readerScroll")
-        .background(ScrollViewFinder(scrollView: $scrollViewRef))
-        .onPreferenceChange(ScrollOffsetKey.self) { value in
-            scrollOffset = value
-            let approx = min(max(value / 1200.0, 0), 1)
-            considerLibraryAdd(chapterProgress: approx)
-            schedulePersistScroll()
-        }
+        .background(
+            ScrollViewTracker(scrollView: $scrollViewRef) { y in
+                handleScrollOffset(y)
+            }
+        )
         .onChange(of: scrollViewRef) { _, _ in
             applyPendingScrollRestoreIfNeeded()
         }
@@ -188,6 +202,26 @@ struct ReaderView: View {
         .simultaneousGesture(
             TapGesture().onEnded { toggleChrome() }
         )
+    }
+
+    private func handleScrollOffset(_ value: Double) {
+        if pendingRestore { return }
+        if Date() < ignoreScrollTrackingUntil { return }
+        // Ignore tiny layout jitter near zero right after appear.
+        if abs(value - scrollOffset) < 0.5 { return }
+        scrollOffset = value
+        let approx = min(max(value / 1200.0, 0), 1)
+        considerLibraryAdd(chapterProgress: approx)
+        // Immediate UserDefaults checkpoint — survives kill before debounce fires.
+        if let chapter = currentChapter {
+            session.saveCheckpoint(
+                workId: workId,
+                chapterId: chapter.id,
+                offsetY: value,
+                pageIndex: pageIndex
+            )
+        }
+        schedulePersistScroll()
     }
 
     private var pagedReader: some View {
@@ -243,22 +277,39 @@ struct ReaderView: View {
         }
         .onChange(of: pageIndex) { _, newValue in
             pageCountForChapter = max(pages.count, 1)
+            if pendingRestore { return }
+            if let chapter = currentChapter {
+                session.saveCheckpoint(
+                    workId: workId,
+                    chapterId: chapter.id,
+                    offsetY: scrollOffset,
+                    pageIndex: newValue
+                )
+            }
             persistProgress()
             considerLibraryAdd(chapterProgress: chapterReadProgress(page: newValue, pages: pages.count))
         }
         .onAppear {
             pageCountForChapter = max(pages.count, 1)
-            if pendingRestore, settings.pageTurnMode != .verticalScroll {
-                pageIndex = min(max(restorePageIndex, 0), max(pages.count - 1, 0))
-                pendingRestore = false
-            }
+            applyPendingPageRestoreIfNeeded(pageCount: pages.count)
             considerLibraryAdd(chapterProgress: chapterReadProgress(page: pageIndex, pages: pages.count))
+        }
+        .onChange(of: pages.count) { _, newCount in
+            applyPendingPageRestoreIfNeeded(pageCount: newCount)
         }
     }
 
     private var topBar: some View {
         HStack {
-            DismissReaderButton()
+            Button {
+                persistProgress()
+                session.endReading()
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(details?.displayTitle ?? "Чтение")
                     .font(.subheadline.weight(.semibold))
@@ -395,8 +446,7 @@ struct ReaderView: View {
                 chapterTitle = reloaded.title
                 plainText = HTMLText.readerPlain(from: reloaded.html)
             }
-            if let progress = offline.progress(for: workId),
-               progress.chapterId == result.chapterId {
+            if let progress = bestCheckpoint(for: result.chapterId) {
                 restorePageIndex = progress.pageIndex
                 restoreOffsetY = progress.offsetY
                 scrollOffset = progress.offsetY
@@ -412,11 +462,11 @@ struct ReaderView: View {
             if !didAddToLibrary, downloads.online {
                 considerLibraryAdd(chapterProgress: 1)
             }
+            session.beginReading(workId: workId, chapterId: result.chapterId)
+            // Persist chapter/page immediately; keep offsetY from saved progress (do not zero it).
             persistProgress()
             prefetchNeighborChapters()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                applyPendingScrollRestoreIfNeeded()
-            }
+            scheduleRestoreRetries()
         } catch {
             self.error = error.localizedDescription
         }
@@ -449,8 +499,12 @@ struct ReaderView: View {
             pageIndex = 0
             scrollOffset = 0
             pendingRestore = false
+            restoreOffsetY = 0
+            restorePageIndex = 0
+            restoreRetryTask?.cancel()
             persistProgress()
             syncProgressRemote()
+            session.updateActiveChapter(chapter.id)
             considerLibraryAdd(chapterProgress: 0.55)
             prefetchNeighborChapters()
             if downloads.online {
@@ -535,45 +589,136 @@ struct ReaderView: View {
     private func schedulePersistScroll() {
         persistScrollTask?.cancel()
         persistScrollTask = Task {
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
+            guard !pendingRestore else { return }
             persistProgress()
         }
     }
 
+    /// Retries restore until ScrollView has laid out enough content (or gives up).
+    private func scheduleRestoreRetries() {
+        restoreRetryTask?.cancel()
+        guard pendingRestore else { return }
+        restoreRetryTask = Task { @MainActor in
+            let delaysNs: [UInt64] = [
+                50_000_000, 150_000_000, 300_000_000, 500_000_000,
+                800_000_000, 1_200_000_000, 2_000_000_000
+            ]
+            for delay in delaysNs {
+                guard !Task.isCancelled, pendingRestore else { return }
+                try? await Task.sleep(nanoseconds: delay)
+                guard !Task.isCancelled, pendingRestore else { return }
+                applyPendingScrollRestoreIfNeeded()
+            }
+            // Give up quietly — keep saved offset for next open rather than wiping it.
+            if pendingRestore {
+                pendingRestore = false
+            }
+        }
+    }
+
     private func applyPendingScrollRestoreIfNeeded() {
-        guard pendingRestore, settings.pageTurnMode == .verticalScroll else { return }
+        guard pendingRestore else { return }
+
+        if settings.pageTurnMode != .verticalScroll {
+            // Paged modes restore via pageIndex.
+            return
+        }
+
         guard restoreOffsetY > 8 else {
             pendingRestore = false
             return
         }
         guard let scroll = scrollViewRef else { return }
+
+        // Wait until text has a real height — early restore clamps to 0 and loses place.
         let maxY = max(scroll.contentSize.height - scroll.bounds.height, 0)
+        if maxY < restoreOffsetY * 0.5, maxY < 80 {
+            return
+        }
+
         let y = min(max(restoreOffsetY, 0), Double(maxY))
         scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
         scrollOffset = y
+        ignoreScrollTrackingUntil = Date().addingTimeInterval(0.5)
         pendingRestore = false
+        // Re-save after successful restore so a zeroed intermediate write cannot stick.
+        persistProgress()
+    }
+
+    private func applyPendingPageRestoreIfNeeded(pageCount: Int) {
+        guard pendingRestore, settings.pageTurnMode != .verticalScroll else { return }
+        guard pageCount > 0 else { return }
+        pageIndex = min(max(restorePageIndex, 0), max(pageCount - 1, 0))
+        pendingRestore = false
+        persistProgress()
+    }
+
+    private func liveScrollOffset() -> Double {
+        if settings.pageTurnMode == .verticalScroll,
+           let scroll = scrollViewRef {
+            return Double(scroll.contentOffset.y)
+        }
+        return scrollOffset
     }
 
     private func persistProgress() {
         guard let chapter = currentChapter else { return }
+        // Never persist a zeroed scroll while we still owe a restore from disk.
+        let offset: Double
+        if pendingRestore, restoreOffsetY > 8 {
+            offset = restoreOffsetY
+        } else {
+            offset = liveScrollOffset()
+            scrollOffset = offset
+        }
+        let page = pendingRestore && settings.pageTurnMode != .verticalScroll
+            ? max(restorePageIndex, pageIndex)
+            : pageIndex
         offline.saveProgress(
             workId: workId,
             chapterId: chapter.id,
-            offsetY: scrollOffset,
-            pageIndex: pageIndex
+            offsetY: offset,
+            pageIndex: page
         )
+        session.updateActiveChapter(chapter.id)
+    }
+
+    private struct ChapterPosition {
+        let chapterId: Int
+        let offsetY: Double
+        let pageIndex: Int
+    }
+
+    private func bestCheckpoint(for chapterId: Int) -> ChapterPosition? {
+        let sessionCP = session.checkpoint(for: workId)
+        let offlineCP = offline.progress(for: workId)
+
+        let candidates: [ChapterPosition] = [
+            sessionCP.map { ChapterPosition(chapterId: $0.chapterId, offsetY: $0.offsetY, pageIndex: $0.pageIndex) },
+            offlineCP.map { ChapterPosition(chapterId: $0.chapterId, offsetY: $0.offsetY, pageIndex: $0.pageIndex) }
+        ].compactMap { $0 }
+
+        // Prefer checkpoint for the chapter we actually opened.
+        if let match = candidates.first(where: { $0.chapterId == chapterId && ($0.offsetY > 8 || $0.pageIndex > 0) })
+            ?? candidates.first(where: { $0.chapterId == chapterId }) {
+            return match
+        }
+        return nil
     }
 
     private func syncProgressRemote() {
         guard downloads.online, let chapter = currentChapter else { return }
         let progress = chapters.isEmpty ? 0.0 : Double(chapterIndex + 1) / Double(chapters.count)
+        let offset = Int(liveScrollOffset())
+        let page = pageIndex
         Task {
             try? await APIClient.shared.updateProgress(
                 workId: workId,
                 chapterId: chapter.id,
                 progress: progress,
-                location: "offset:\(Int(scrollOffset));page:\(pageIndex)"
+                location: "offset:\(offset);page:\(page)"
             )
         }
     }
@@ -662,16 +807,14 @@ struct ReaderView: View {
     }
 }
 
-private struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: Double = 0
-    static func reduce(value: inout Double, nextValue: () -> Double) {
-        value = nextValue()
-    }
-}
-
-/// Finds the enclosing UIScrollView so we can restore contentOffset after relaunch.
-private struct ScrollViewFinder: UIViewRepresentable {
+/// Finds the enclosing UIScrollView and observes contentOffset via KVO (more reliable than PreferenceKey).
+private struct ScrollViewTracker: UIViewRepresentable {
     @Binding var scrollView: UIScrollView?
+    var onOffsetChange: (Double) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onOffsetChange: onOffsetChange)
+    }
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: .zero)
@@ -681,10 +824,39 @@ private struct ScrollViewFinder: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onOffsetChange = onOffsetChange
         DispatchQueue.main.async {
-            if let found = Self.findScrollView(from: uiView), scrollView !== found {
+            guard let found = Self.findScrollView(from: uiView) else { return }
+            if scrollView !== found {
                 scrollView = found
             }
+            context.coordinator.attach(found)
+        }
+    }
+
+    final class Coordinator {
+        var onOffsetChange: (Double) -> Void
+        private var observation: NSKeyValueObservation?
+        private weak var observed: UIScrollView?
+
+        init(onOffsetChange: @escaping (Double) -> Void) {
+            self.onOffsetChange = onOffsetChange
+        }
+
+        func attach(_ scroll: UIScrollView) {
+            guard observed !== scroll else { return }
+            observation?.invalidate()
+            observed = scroll
+            observation = scroll.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
+                let y = Double(sv.contentOffset.y)
+                DispatchQueue.main.async {
+                    self?.onOffsetChange(y)
+                }
+            }
+        }
+
+        deinit {
+            observation?.invalidate()
         }
     }
 
@@ -695,19 +867,5 @@ private struct ScrollViewFinder: UIViewRepresentable {
             current = c.superview
         }
         return nil
-    }
-}
-
-private struct DismissReaderButton: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.body.weight(.semibold))
-                .frame(width: 36, height: 36)
-        }
     }
 }

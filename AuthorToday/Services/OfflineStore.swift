@@ -656,6 +656,14 @@ final class OfflineStore: ObservableObject {
     }
 
     func saveProgress(workId: Int, chapterId: Int, offsetY: Double, pageIndex: Int) {
+        // Always write UserDefaults first — survives force-quit even if SwiftData context is missing.
+        ReadingSessionStore.shared.saveCheckpoint(
+            workId: workId,
+            chapterId: chapterId,
+            offsetY: offsetY,
+            pageIndex: pageIndex
+        )
+
         guard let modelContext else { return }
         let descriptor = FetchDescriptor<ReadingProgress>(
             predicate: #Predicate { $0.workId == workId }
@@ -680,15 +688,42 @@ final class OfflineStore: ObservableObject {
             work.updatedAt = .now
         }
         try? modelContext.save()
-        reloadLibrary()
+        // Avoid reloadLibrary() on every scroll tick — it republishes the shelf and can recreate the reader.
     }
 
     func progress(for workId: Int) -> ReadingProgress? {
-        guard let modelContext else { return nil }
-        let descriptor = FetchDescriptor<ReadingProgress>(
-            predicate: #Predicate { $0.workId == workId }
-        )
-        return try? modelContext.fetch(descriptor).first
+        let fromDefaults = ReadingSessionStore.shared.checkpoint(for: workId)
+        let fromSwiftData: ReadingProgress? = {
+            guard let modelContext else { return nil }
+            let descriptor = FetchDescriptor<ReadingProgress>(
+                predicate: #Predicate { $0.workId == workId }
+            )
+            return try? modelContext.fetch(descriptor).first
+        }()
+
+        // Prefer the newest source.
+        switch (fromDefaults, fromSwiftData) {
+        case let (d?, s?):
+            if d.updatedAt >= s.updatedAt {
+                s.chapterId = d.chapterId
+                s.offsetY = d.offsetY
+                s.pageIndex = d.pageIndex
+                s.updatedAt = d.updatedAt
+            }
+            return s
+        case let (d?, nil):
+            return ReadingProgress(
+                workId: d.workId,
+                chapterId: d.chapterId,
+                offsetY: d.offsetY,
+                pageIndex: d.pageIndex,
+                updatedAt: d.updatedAt
+            )
+        case let (nil, s?):
+            return s
+        case (nil, nil):
+            return nil
+        }
     }
 
     func isChapterCached(workId: Int, chapterId: Int) -> Bool {

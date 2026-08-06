@@ -209,7 +209,8 @@ struct BookDetailView: View {
                     if !offline.isInLibrary(workId) {
                         try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
                     }
-                    startChapterId = offline.progress(for: workId)?.chapterId
+                    startChapterId = ReadingSessionStore.shared.checkpoint(for: workId)?.chapterId
+                        ?? offline.progress(for: workId)?.chapterId
                         ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
                         ?? details.availableChapters.first?.id
                     openReader = true
@@ -287,7 +288,8 @@ struct BookDetailView: View {
     }
 
     private var readButtonTitle: String {
-        let canContinue = offline.progress(for: workId) != nil
+        let canContinue = ReadingSessionStore.shared.checkpoint(for: workId) != nil
+            || offline.progress(for: workId) != nil
             || offline.library.contains(where: { $0.workId == workId && $0.lastReadChapterId != nil })
         return canContinue ? "Продолжить чтение" : "Читать"
     }
