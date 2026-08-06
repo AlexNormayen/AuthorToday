@@ -135,7 +135,7 @@ struct BookDetailView: View {
                                     ProgressView(value: p)
                                 }
 
-                                Text("Отдельные главы можно скачать, открыв их в читалке (кэшируются автоматически). Кнопка выше качает книгу целиком для офлайна.")
+                                Text("«Скачать все главы» сохраняет книгу целиком. Текущая глава при чтении кэшируется сама — её можно открыть без сети.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -227,38 +227,49 @@ struct BookDetailView: View {
                 if let details {
                     offline.cacheWorkDetails(details)
                 }
-            } else if let cached = offline.library.first(where: { $0.workId == workId }) {
-                let chapters = (cached.chaptersJSON).flatMap {
-                    try? JSONDecoder().decode([ChapterMeta].self, from: $0)
-                } ?? []
-                details = WorkDetails(
-                    id: workId,
-                    title: cached.title,
-                    authorFIO: cached.author,
-                    authorUserName: nil,
-                    coverUrl: cached.coverURL,
-                    annotation: cached.annotation,
-                    chapters: chapters,
-                    status: nil,
-                    genreName: nil,
-                    secondGenreName: nil,
-                    likeCount: nil,
-                    viewsCount: nil,
-                    chapterCount: chapters.count,
-                    downloadAllowed: nil,
-                    isFinished: nil,
-                    price: nil,
-                    discount: nil,
-                    isPurchased: nil,
-                    orderStatus: nil,
-                    orderStatusMessage: nil,
-                    freeChapterCount: nil
-                )
+            } else if let cached = offline.cachedWork(workId: workId) {
+                details = Self.detailsFromCache(cached)
+                if (details?.chapters ?? []).isEmpty, offline.cachedChapters(workId: workId).isEmpty {
+                    error = "Нет сети и нет оглавления. Откройте книгу онлайн хотя бы раз или скачайте главы."
+                }
             } else {
                 error = "Нет сети и нет локальной копии"
             }
         } catch {
-            self.error = error.localizedDescription
+            if details == nil, let cached = offline.cachedWork(workId: workId) {
+                details = Self.detailsFromCache(cached)
+            } else {
+                self.error = error.localizedDescription
+            }
         }
+    }
+
+    private static func detailsFromCache(_ cached: CachedWork) -> WorkDetails {
+        let chapters = (cached.chaptersJSON).flatMap {
+            try? JSONDecoder().decode([ChapterMeta].self, from: $0)
+        } ?? []
+        return WorkDetails(
+            id: cached.workId,
+            title: cached.title,
+            authorFIO: cached.author,
+            authorUserName: nil,
+            coverUrl: cached.coverURL,
+            annotation: cached.annotation,
+            chapters: chapters,
+            status: nil,
+            genreName: nil,
+            secondGenreName: nil,
+            likeCount: nil,
+            viewsCount: nil,
+            chapterCount: chapters.count,
+            downloadAllowed: nil,
+            isFinished: nil,
+            price: nil,
+            discount: nil,
+            isPurchased: nil,
+            orderStatus: nil,
+            orderStatusMessage: nil,
+            freeChapterCount: nil
+        )
     }
 }

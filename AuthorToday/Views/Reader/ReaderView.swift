@@ -317,6 +317,8 @@ struct ReaderView: View {
                 scrollOffset = progress.offsetY
             }
             didAddToLibrary = offline.isInLibrary(workId)
+            persistProgress()
+            prefetchNeighborChapters()
         } catch {
             self.error = error.localizedDescription
         }
@@ -341,6 +343,7 @@ struct ReaderView: View {
             pageIndex = 0
             persistProgress()
             syncProgressRemote()
+            prefetchNeighborChapters()
             if downloads.online {
                 try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
                 try? await APIClient.shared.updateProgress(
@@ -352,6 +355,24 @@ struct ReaderView: View {
             }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Keep current (+ next) chapter on disk so offline reopen works.
+    private func prefetchNeighborChapters() {
+        guard downloads.online else { return }
+        let indices = [chapterIndex, chapterIndex + 1].filter { chapters.indices.contains($0) }
+        Task {
+            for idx in indices {
+                let chapter = chapters[idx]
+                if offline.isChapterCached(workId: workId, chapterId: chapter.id) { continue }
+                _ = try? await downloads.loadChapter(
+                    workId: workId,
+                    chapter: chapter,
+                    sortIndex: idx,
+                    store: offline
+                )
+            }
         }
     }
 

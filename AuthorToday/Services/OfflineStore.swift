@@ -21,7 +21,25 @@ final class OfflineStore: ObservableObject {
     func attach(context: ModelContext) {
         modelContext = context
         purgeBadChapterCacheIfNeeded()
+        backfillLastReadAtIfNeeded()
         reloadLibrary()
+    }
+
+    /// Migrate older installs: copy ReadingProgress.updatedAt → CachedWork.lastReadAt
+    private func backfillLastReadAtIfNeeded() {
+        let key = "at.lastReadAtBackfill"
+        guard !UserDefaults.standard.bool(forKey: key), let modelContext else { return }
+        let works = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
+        let progressRows = (try? modelContext.fetch(FetchDescriptor<ReadingProgress>())) ?? []
+        let byWork = Dictionary(uniqueKeysWithValues: progressRows.map { ($0.workId, $0) })
+        for work in works where work.lastReadAt == nil {
+            if let p = byWork[work.workId] {
+                work.lastReadAt = p.updatedAt
+                work.lastReadChapterId = work.lastReadChapterId ?? p.chapterId
+            }
+        }
+        try? modelContext.save()
+        UserDefaults.standard.set(true, forKey: key)
     }
 
     /// One-shot wipe of chapters cached by older builds that used the wrong decrypt key.
@@ -54,6 +72,28 @@ final class OfflineStore: ObservableObject {
             guard let state = work.libraryState?.lowercased() else { return true }
             return state != "localonly" && state != "none"
         }
+        objectWillChange.send()
+    }
+
+    /// Books opened recently, newest first (includes local-only downloads with read history).
+    var recentlyRead: [CachedWork] {
+        guard let modelContext else { return [] }
+        let descriptor = FetchDescriptor<CachedWork>()
+        let all = (try? modelContext.fetch(descriptor)) ?? []
+        return all
+            .filter { $0.lastReadAt != nil }
+            .sorted { ($0.lastReadAt ?? .distantPast) > ($1.lastReadAt ?? .distantPast) }
+    }
+
+    /// Authors as folders for the library shelf.
+    var authorsGrouped: [(author: String, works: [CachedWork])] {
+        let grouped = Dictionary(grouping: library) { work -> String in
+            let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? "Без автора" : name
+        }
+        return grouped
+            .map { (author: $0.key, works: $0.value.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) }
+            .sorted { $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending }
     }
 
     func syncLibraryIfNeeded(force: Bool = false) async {
@@ -225,11 +265,14 @@ final class OfflineStore: ObservableObject {
         if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
-            existing.coverURL = meta.absoluteCoverURL
-            existing.annotation = meta.annotation
+            existing.coverURL = meta.absoluteCoverURL ?? existing.coverURL
+            existing.annotation = meta.annotation ?? existing.annotation
             existing.libraryState = state
             existing.lastReadChapterId = meta.lastReadChapterId ?? meta.lastChapterId ?? existing.lastReadChapterId
-            existing.progress = meta.resolvedProgress
+            // Keep local reading % / lastReadAt — sync must not wipe reading history
+            if meta.resolvedProgress > 0 {
+                existing.progress = max(existing.progress, meta.resolvedProgress)
+            }
             existing.updatedAt = .now
         } else {
             let work = CachedWork(
@@ -374,9 +417,11 @@ final class OfflineStore: ObservableObject {
         )
         if let work = try? modelContext.fetch(workDesc).first {
             work.lastReadChapterId = chapterId
+            work.lastReadAt = .now
             work.updatedAt = .now
         }
         try? modelContext.save()
+        reloadLibrary()
     }
 
     func progress(for workId: Int) -> ReadingProgress? {

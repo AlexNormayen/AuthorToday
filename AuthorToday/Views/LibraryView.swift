@@ -5,12 +5,26 @@ struct LibraryView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @State private var path = NavigationPath()
     @State private var query = ""
+    @State private var mode: LibraryBrowseMode = .authors
 
-    private var filtered: [CachedWork] {
+    private var filteredWorks: [CachedWork] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty { return offline.library }
         return offline.library.filter {
             $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
+        }
+    }
+
+    private var filteredAuthors: [(author: String, works: [CachedWork])] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let groups = offline.authorsGrouped
+        if q.isEmpty { return groups }
+        return groups.compactMap { group in
+            if group.author.lowercased().contains(q) {
+                return group
+            }
+            let works = group.works.filter { $0.title.lowercased().contains(q) }
+            return works.isEmpty ? nil : (author: group.author, works: works)
         }
     }
 
@@ -26,20 +40,21 @@ struct LibraryView: View {
                         description: Text(emptyLibraryMessage)
                     )
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(filtered, id: \.workId) { work in
-                                Button {
-                                    path.append(LibraryRoute.reader(workId: work.workId, chapterId: work.lastReadChapterId))
-                                } label: {
-                                    LibraryRow(work: work)
-                                }
-                                .buttonStyle(.plain)
-
-                                Divider().padding(.leading, 88)
+                    VStack(spacing: 0) {
+                        Picker("Вид", selection: $mode) {
+                            ForEach(LibraryBrowseMode.allCases) { item in
+                                Text(item.title).tag(item)
                             }
                         }
-                        .padding(.vertical, 8)
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+
+                        if mode == .authors {
+                            authorsList
+                        } else {
+                            booksList(works: filteredWorks)
+                        }
                     }
                 }
             }
@@ -60,7 +75,7 @@ struct LibraryView: View {
                 }
             }
             .refreshable {
-                await offline.syncLibrary()
+                await offline.syncLibrary(force: true)
             }
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
@@ -68,6 +83,8 @@ struct LibraryView: View {
                     ReaderView(workId: workId, initialChapterId: chapterId)
                 case .details(let workId):
                     BookDetailView(workId: workId)
+                case .author(let name):
+                    AuthorBooksView(author: name, path: $path)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -79,7 +96,6 @@ struct LibraryView: View {
                         .background(.ultraThinMaterial)
                         .clipShape(Capsule())
                         .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else if let err = offline.lastSyncError {
                     Text(err)
                         .font(.caption)
@@ -92,11 +108,64 @@ struct LibraryView: View {
                 }
             }
             .task {
-                // RootView already syncs after profile refresh — only sync here if empty
+                // Show SwiftData shelf immediately; sync only if empty
+                offline.reloadLibrary()
                 if offline.library.isEmpty, !offline.isSyncing {
                     await offline.syncLibrary(force: true)
                 }
             }
+        }
+    }
+
+    private var authorsList: some View {
+        List {
+            ForEach(filteredAuthors, id: \.author) { group in
+                Button {
+                    path.append(LibraryRoute.author(group.author))
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(AppTheme.mist)
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.crop.rectangle.stack")
+                                .foregroundStyle(AppTheme.moss)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.author)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                            Text(booksCountText(group.works.count))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .listStyle(.plain)
+    }
+
+    private func booksList(works: [CachedWork]) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(works, id: \.workId) { work in
+                    Button {
+                        path.append(LibraryRoute.details(workId: work.workId))
+                    } label: {
+                        LibraryRow(work: work)
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 88)
+                }
+            }
+            .padding(.vertical, 8)
         }
     }
 
@@ -112,15 +181,134 @@ struct LibraryView: View {
         }
         return "Нет сети. Когда появится интернет — обновите библиотеку."
     }
+
+    private func booksCountText(_ n: Int) -> String {
+        let mod10 = n % 10
+        let mod100 = n % 100
+        if mod10 == 1, mod100 != 11 { return "\(n) книга" }
+        if (2...4).contains(mod10), !(12...14).contains(mod100) { return "\(n) книги" }
+        return "\(n) книг"
+    }
+}
+
+enum LibraryBrowseMode: String, CaseIterable, Identifiable {
+    case authors
+    case all
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .authors: return "Авторы"
+        case .all: return "Все книги"
+        }
+    }
 }
 
 enum LibraryRoute: Hashable {
     case reader(workId: Int, chapterId: Int?)
     case details(workId: Int)
+    case author(String)
+}
+
+struct AuthorBooksView: View {
+    let author: String
+    @Binding var path: NavigationPath
+    @EnvironmentObject private var offline: OfflineStore
+
+    private var works: [CachedWork] {
+        offline.library
+            .filter { $0.author.caseInsensitiveCompare(author) == .orderedSame || (author == "Без автора" && $0.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(works, id: \.workId) { work in
+                    Button {
+                        path.append(LibraryRoute.details(workId: work.workId))
+                    } label: {
+                        LibraryRow(work: work, showAuthor: false)
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 88)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle(author)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Tab: books sorted by last open/read time in the app.
+struct RecentReadsView: View {
+    @EnvironmentObject private var offline: OfflineStore
+    @State private var path = NavigationPath()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            Group {
+                if offline.recentlyRead.isEmpty {
+                    ContentUnavailableView(
+                        "Пока пусто",
+                        systemImage: "clock",
+                        description: Text("Здесь появятся книги после того, как вы начнёте чтение. Сортировка — по дате последнего открытия.")
+                    )
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(offline.recentlyRead, id: \.workId) { work in
+                                Button {
+                                    path.append(LibraryRoute.details(workId: work.workId))
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        LibraryRow(work: work)
+                                        if let date = work.lastReadAt {
+                                            Text(Self.dateText(date))
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                                .padding(.leading, 88)
+                                                .padding(.bottom, 8)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                Divider().padding(.leading, 88)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle("Недавние")
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case .reader(let workId, let chapterId):
+                    ReaderView(workId: workId, initialChapterId: chapterId)
+                case .details(let workId):
+                    BookDetailView(workId: workId)
+                case .author(let name):
+                    AuthorBooksView(author: name, path: $path)
+                }
+            }
+            .onAppear { offline.reloadLibrary() }
+        }
+    }
+
+    private static func dateText(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        f.locale = Locale(identifier: "ru_RU")
+        return "Читали \(f.localizedString(for: date, relativeTo: Date()))"
+    }
 }
 
 struct LibraryRow: View {
     let work: CachedWork
+    var showAuthor: Bool = true
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
@@ -137,16 +325,23 @@ struct LibraryRow: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(work.author)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if showAuthor {
+                    Text(work.author)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
                 HStack(spacing: 8) {
                     if work.isFullyDownloaded {
                         Label("Офлайн", systemImage: "arrow.down.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(appearance.accent)
+                    } else if let chapterId = work.lastReadChapterId,
+                              offline.isChapterCached(workId: work.workId, chapterId: chapterId) {
+                        Label("Глава офлайн", systemImage: "arrow.down.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     } else if let p = offline.downloadProgress[work.workId], p > 0, p < 1 {
                         ProgressView(value: p)
                             .frame(width: 60)

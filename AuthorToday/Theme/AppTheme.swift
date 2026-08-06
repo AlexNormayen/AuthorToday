@@ -18,6 +18,9 @@ struct CoverImage: View {
     let urlString: String?
     var corner: CGFloat = 8
 
+    @State private var image: UIImage?
+    @State private var failed = false
+
     private var resolvedURL: URL? {
         guard let normalized = WorkMeta.normalizeCover(urlString) else { return nil }
         return URL(string: normalized)
@@ -25,24 +28,23 @@ struct CoverImage: View {
 
     var body: some View {
         Group {
-            if let url = resolvedURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
-                        placeholder
-                    case .empty:
-                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                    @unknown default:
-                        placeholder
-                    }
-                }
-            } else {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if failed || resolvedURL == nil {
                 placeholder
+            } else {
+                ZStack {
+                    placeholder
+                    ProgressView()
+                }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .task(id: urlString) {
+            await load()
+        }
     }
 
     private var placeholder: some View {
@@ -51,6 +53,79 @@ struct CoverImage: View {
             Image(systemName: "book.closed.fill")
                 .foregroundStyle(AppTheme.moss.opacity(0.55))
         }
+    }
+
+    private func load() async {
+        image = nil
+        failed = false
+        guard let url = resolvedURL else {
+            failed = true
+            return
+        }
+        if let cached = CoverCache.shared.image(for: url) {
+            image = cached
+            return
+        }
+        if let downloaded = await CoverCache.shared.fetch(url: url) {
+            image = downloaded
+        } else {
+            failed = true
+        }
+    }
+}
+
+/// Disk + memory cache for cover art so the library does not re-download on every launch.
+final class CoverCache: @unchecked Sendable {
+    static let shared = CoverCache()
+
+    private let lock = NSLock()
+    private var memory: [String: UIImage] = [:]
+    private let folder: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("CoverCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    func image(for url: URL) -> UIImage? {
+        let key = cacheKey(for: url)
+        lock.lock()
+        let mem = memory[key]
+        lock.unlock()
+        if let mem { return mem }
+        let file = folder.appendingPathComponent(key)
+        guard let data = try? Data(contentsOf: file), let img = UIImage(data: data) else { return nil }
+        lock.lock()
+        memory[key] = img
+        lock.unlock()
+        return img
+    }
+
+    func fetch(url: URL) async -> UIImage? {
+        if let cached = image(for: url) { return cached }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let img = UIImage(data: data) else { return nil }
+            let key = cacheKey(for: url)
+            let file = folder.appendingPathComponent(key)
+            try? data.write(to: file, options: .atomic)
+            lock.lock()
+            memory[key] = img
+            lock.unlock()
+            return img
+        } catch {
+            return nil
+        }
+    }
+
+    private func cacheKey(for url: URL) -> String {
+        let raw = url.absoluteString
+        let digest = raw.data(using: .utf8)?.base64EncodedString() ?? raw
+        let safe = digest
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+        return String(safe.prefix(120)) + ".img"
     }
 }
 

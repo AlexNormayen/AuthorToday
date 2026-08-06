@@ -21,7 +21,8 @@ struct RootView: View {
             downloads.startMonitoring()
             if auth.isAuthenticated {
                 await auth.refreshProfile()
-                await offline.syncLibrary(force: true)
+                // Soft sync: keep local shelf/covers visible, refresh in background
+                await offline.syncLibraryIfNeeded(force: false)
             }
         }
         .onChange(of: auth.isAuthenticated) { _, loggedIn in
@@ -44,6 +45,11 @@ struct MainTabView: View {
             LibraryView()
                 .tabItem {
                     Label("Библиотека", systemImage: "books.vertical")
+                }
+
+            RecentReadsView()
+                .tabItem {
+                    Label("Недавние", systemImage: "clock")
                 }
 
             SearchView()

@@ -426,6 +426,8 @@ final class CachedWork {
     var annotation: String?
     var libraryState: String?
     var lastReadChapterId: Int?
+    /// Last time the user opened/read this book in the app (not sync time).
+    var lastReadAt: Date?
     var progress: Double
     var updatedAt: Date
     var isFullyDownloaded: Bool
@@ -439,6 +441,7 @@ final class CachedWork {
         annotation: String? = nil,
         libraryState: String? = nil,
         lastReadChapterId: Int? = nil,
+        lastReadAt: Date? = nil,
         progress: Double = 0,
         updatedAt: Date = .now,
         isFullyDownloaded: Bool = false,
@@ -451,6 +454,7 @@ final class CachedWork {
         self.annotation = annotation
         self.libraryState = libraryState
         self.lastReadChapterId = lastReadChapterId
+        self.lastReadAt = lastReadAt
         self.progress = progress
         self.updatedAt = updatedAt
         self.isFullyDownloaded = isFullyDownloaded
