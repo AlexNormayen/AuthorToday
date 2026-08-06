@@ -19,6 +19,8 @@ final class AuthService: ObservableObject {
         if let token = KeychainStore.get(tokenKey), !token.isEmpty, token != "guest" {
             Task {
                 await APIClient.shared.setToken(token)
+                let savedId = UserDefaults.standard.object(forKey: userIdKey) as? Int
+                await APIClient.shared.setUserId(savedId)
                 isAuthenticated = true
                 await refreshProfile()
             }
@@ -46,6 +48,7 @@ final class AuthService: ObservableObject {
             KeychainStore.set(response.token, for: tokenKey)
             if let userId = response.userId {
                 UserDefaults.standard.set(userId, forKey: userIdKey)
+                await APIClient.shared.setUserId(userId)
             }
             isAuthenticated = true
             await refreshProfile()
@@ -64,9 +67,11 @@ final class AuthService: ObservableObject {
             }
             let profile = try await APIClient.shared.currentUser()
             user = profile
+            await APIClient.shared.setUserId(profile.id)
             if let name = profile.resolvedUserName {
                 UserDefaults.standard.set(name, forKey: userNameKey)
             }
+            UserDefaults.standard.set(profile.id, forKey: userIdKey)
         } catch {
             if case APIError.unauthorized = error {
                 logout()
@@ -78,7 +83,10 @@ final class AuthService: ObservableObject {
         KeychainStore.delete(tokenKey)
         UserDefaults.standard.removeObject(forKey: userIdKey)
         UserDefaults.standard.removeObject(forKey: userNameKey)
-        Task { await APIClient.shared.setToken("guest") }
+        Task {
+            await APIClient.shared.setToken("guest")
+            await APIClient.shared.setUserId(nil)
+        }
         user = nil
         isAuthenticated = false
     }

@@ -35,6 +35,7 @@ actor APIClient {
     private let decoder: JSONDecoder
 
     private var token: String = "guest"
+    private var userId: String = ""
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -49,6 +50,14 @@ actor APIClient {
 
     func setToken(_ token: String) {
         self.token = token.isEmpty ? "guest" : token
+    }
+
+    func setUserId(_ id: Int?) {
+        if let id {
+            userId = String(id)
+        } else {
+            userId = ""
+        }
     }
 
     func currentToken() -> String { token }
@@ -613,7 +622,7 @@ actor APIClient {
         // Only the web Reader-Secret works with the public XOR scheme.
         guard let headerSecret, !headerSecret.isEmpty else { return nil }
 
-        let html = ChapterDecryptor.decrypt(encrypted, readerSecret: headerSecret)
+        let html = ChapterDecryptor.decrypt(encrypted, readerSecret: headerSecret, userId: userId)
         if ChapterDecryptor.looksLikePlaintext(html) {
             return (payload.resolvedTitle, html)
         }

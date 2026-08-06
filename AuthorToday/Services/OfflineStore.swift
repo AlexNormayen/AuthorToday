@@ -27,7 +27,7 @@ final class OfflineStore: ObservableObject {
     /// One-shot wipe of chapters cached by older builds that used the wrong decrypt key.
     private func purgeBadChapterCacheIfNeeded() {
         let key = "at.chapterCacheVersion"
-        let current = 2
+        let current = 3
         let stored = UserDefaults.standard.integer(forKey: key)
         guard stored < current, let modelContext else {
             if stored < current { UserDefaults.standard.set(current, forKey: key) }
