@@ -17,7 +17,7 @@ struct NotificationsView: View {
                 } else {
                     List(notifications.items, id: \.stableId) { item in
                         Button {
-                            if let workId = item.workId {
+                            if let workId = item.resolvedWorkId {
                                 path.append(workId)
                             }
                         } label: {

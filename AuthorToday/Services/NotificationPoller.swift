@@ -94,10 +94,15 @@ final class NotificationPoller: ObservableObject {
                 text: item.text,
                 title: item.title,
                 message: item.message,
+                content: item.content,
+                body: item.body,
+                html: item.html,
                 creationTime: item.creationTime,
                 isRead: true,
-                workId: item.workId,
+                workId: item.resolvedWorkId,
+                workID: nil,
                 url: item.url,
+                link: item.link,
                 category: item.category
             )
         }

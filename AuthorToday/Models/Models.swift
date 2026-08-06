@@ -18,10 +18,19 @@ struct LoginRequest: Codable, Sendable {
 struct CurrentUser: Codable, Identifiable, Sendable {
     let id: Int
     let userName: String?
+    let username: String?
     let fio: String?
     let email: String?
     let avatarUrl: String?
     let status: String?
+
+    var resolvedUserName: String? {
+        let value = userName ?? username
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
 }
 
 // MARK: - Library / Works
@@ -72,6 +81,73 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     let price: Double?
     let discount: Double?
     let isPurchased: Bool?
+
+    /// Minimal row built from profile HTML when meta-info is empty/unavailable.
+    static func stub(
+        id: Int,
+        title: String?,
+        author: String?,
+        coverUrl: String? = nil,
+        libraryState: String = "Reading"
+    ) -> WorkMeta {
+        WorkMeta(
+            id: id,
+            title: title,
+            authorFIO: author,
+            authorUserName: nil,
+            coverUrl: coverUrl,
+            annotation: nil,
+            lastChapterId: nil,
+            lastChapterTitle: nil,
+            lastUpdateTime: nil,
+            status: nil,
+            genreName: nil,
+            secondGenreName: nil,
+            likeCount: nil,
+            viewsCount: nil,
+            viewCount: nil,
+            chapterCount: nil,
+            libraryState: libraryState,
+            workInLibraryState: nil,
+            inLibraryState: libraryState,
+            progress: nil,
+            lastReadChapterId: nil,
+            lastChapterProgress: nil,
+            price: nil,
+            discount: nil,
+            isPurchased: nil
+        )
+    }
+
+    func withLibraryState(_ state: String) -> WorkMeta {
+        WorkMeta(
+            id: id,
+            title: title,
+            authorFIO: authorFIO,
+            authorUserName: authorUserName,
+            coverUrl: coverUrl,
+            annotation: annotation,
+            lastChapterId: lastChapterId,
+            lastChapterTitle: lastChapterTitle,
+            lastUpdateTime: lastUpdateTime,
+            status: status,
+            genreName: genreName,
+            secondGenreName: secondGenreName,
+            likeCount: likeCount,
+            viewsCount: viewsCount,
+            viewCount: viewCount,
+            chapterCount: chapterCount,
+            libraryState: state,
+            workInLibraryState: state,
+            inLibraryState: state,
+            progress: progress,
+            lastReadChapterId: lastReadChapterId,
+            lastChapterProgress: lastChapterProgress,
+            price: price,
+            discount: discount,
+            isPurchased: isPurchased
+        )
+    }
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -261,20 +337,40 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
     let text: String?
     let title: String?
     let message: String?
+    let content: String?
+    let body: String?
+    let html: String?
     let creationTime: String?
     let isRead: Bool?
     let workId: Int?
+    let workID: Int?
     let url: String?
+    let link: String?
     let category: String?
+
+    var resolvedWorkId: Int? { workId ?? workID }
 
     var stableId: String {
         if let id { return String(id) }
-        return "\(creationTime ?? "")-\(text ?? title ?? message ?? "")"
+        return "\(creationTime ?? "")-\(displayText)"
     }
 
     var displayText: String {
-        let raw = text ?? message ?? title ?? "Уведомление"
+        let raw = text ?? message ?? content ?? body ?? html ?? title ?? "Уведомление"
         return HTMLText.plain(from: raw)
+    }
+
+    /// Filter SPA chrome / catalog filters mistaken for feed rows.
+    var isJunk: Bool {
+        let t = displayText.lowercased()
+        if t.isEmpty || t.count < 6 { return true }
+        if t.contains("тыс. зн") || t.contains("тыс зн") { return true }
+        if t.contains("размер") && t.contains("зн") { return true }
+        if t.range(of: #"^\+?\s*\d[\d\s]*зн"#, options: .regularExpression) != nil { return true }
+        if t.contains("войти") && t.contains("парол") { return true }
+        if t.contains("framework7") { return true }
+        if t == "лента" || t == "уведомление" { return true }
+        return false
     }
 }
 

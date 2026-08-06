@@ -78,7 +78,7 @@ struct SettingsHubView: View {
                 Section {
                     if let user = auth.user {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(user.fio ?? user.userName ?? "Читатель")
+                            Text(user.fio ?? user.resolvedUserName ?? "Читатель")
                                 .font(AppTheme.headlineFont)
                             if let email = user.email {
                                 Text(email)
@@ -111,7 +111,7 @@ struct SettingsHubView: View {
                 Section("О приложении") {
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
-                    if let user = auth.user?.userName {
+                    if let user = auth.user?.resolvedUserName ?? auth.resolvedUserName {
                         LabeledContent("Профиль", value: "/u/\(user)/library")
                     }
                     if offline.lastSyncCount > 0 {

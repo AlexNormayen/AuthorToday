@@ -13,6 +13,7 @@ final class AuthService: ObservableObject {
 
     private let tokenKey = "at.auth.token"
     private let userIdKey = "at.auth.userId"
+    private let userNameKey = "at.auth.userName"
 
     private init() {
         if let token = KeychainStore.get(tokenKey), !token.isEmpty, token != "guest" {
@@ -22,6 +23,14 @@ final class AuthService: ObservableObject {
                 await refreshProfile()
             }
         }
+    }
+
+    /// Username for /u/{user}/library — from profile or last successful sync.
+    var resolvedUserName: String? {
+        if let name = user?.resolvedUserName { return name }
+        let saved = UserDefaults.standard.string(forKey: userNameKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (saved?.isEmpty == false) ? saved : nil
     }
 
     var storedToken: String? {
@@ -53,7 +62,11 @@ final class AuthService: ObservableObject {
                 await APIClient.shared.setToken(token)
                 try? await APIClient.shared.establishWebSession(token: token)
             }
-            user = try await APIClient.shared.currentUser()
+            let profile = try await APIClient.shared.currentUser()
+            user = profile
+            if let name = profile.resolvedUserName {
+                UserDefaults.standard.set(name, forKey: userNameKey)
+            }
         } catch {
             if case APIError.unauthorized = error {
                 logout()
@@ -64,6 +77,7 @@ final class AuthService: ObservableObject {
     func logout() {
         KeychainStore.delete(tokenKey)
         UserDefaults.standard.removeObject(forKey: userIdKey)
+        UserDefaults.standard.removeObject(forKey: userNameKey)
         Task { await APIClient.shared.setToken("guest") }
         user = nil
         isAuthenticated = false

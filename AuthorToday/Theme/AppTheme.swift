@@ -84,13 +84,24 @@ enum HTMLText {
         for (a, b) in replacements {
             s = s.replacingOccurrences(of: a, with: b, options: .caseInsensitive)
         }
-        // Numeric entities &#1234;
+        // Numeric entities &#1234; and &#x1F4A;
         while let match = s.range(of: #"&#(\d+);"#, options: .regularExpression) {
             let token = String(s[match])
             let digits = token
                 .replacingOccurrences(of: "&#", with: "")
                 .replacingOccurrences(of: ";", with: "")
             if let value = UInt32(digits), let scalar = UnicodeScalar(value) {
+                s.replaceSubrange(match, with: String(Character(scalar)))
+            } else {
+                break
+            }
+        }
+        while let match = s.range(of: #"&#x([0-9a-fA-F]+);"#, options: .regularExpression) {
+            let token = String(s[match])
+            let hex = token
+                .replacingOccurrences(of: "&#x", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: ";", with: "")
+            if let value = UInt32(hex, radix: 16), let scalar = UnicodeScalar(value) {
                 s.replaceSubrange(match, with: String(Character(scalar)))
             } else {
                 break

@@ -92,7 +92,10 @@ struct LibraryView: View {
                 }
             }
             .task {
-                await offline.syncLibrary(force: true)
+                // RootView already syncs after profile refresh — only sync here if empty
+                if offline.library.isEmpty, !offline.isSyncing {
+                    await offline.syncLibrary(force: true)
+                }
             }
         }
     }
@@ -102,10 +105,10 @@ struct LibraryView: View {
             return "Синхронизация с author.today…"
         }
         if let err = offline.lastSyncError {
-            return "Ошибка синхронизации: \(err)\nПотяните вниз или нажмите обновить.\nНужен доступ к /u/\(AuthService.shared.user?.userName ?? "…")/library"
+            return "Ошибка синхронизации: \(err)\nПотяните вниз или нажмите обновить.\nНужен доступ к /u/\(AuthService.shared.resolvedUserName ?? "…")/library"
         }
         if downloads.online {
-            return "На сайте в библиотеке пока пусто, либо синхронизация не нашла книги.\nПрофиль: \(AuthService.shared.user?.userName ?? "не загружен"). Нажмите обновить."
+            return "На сайте в библиотеке пока пусто, либо синхронизация не нашла книги.\nПрофиль: \(AuthService.shared.resolvedUserName ?? "не загружен"). Нажмите обновить."
         }
         return "Нет сети. Когда появится интернет — обновите библиотеку."
     }

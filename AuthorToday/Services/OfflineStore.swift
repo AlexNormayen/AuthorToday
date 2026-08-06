@@ -20,7 +20,27 @@ final class OfflineStore: ObservableObject {
 
     func attach(context: ModelContext) {
         modelContext = context
+        purgeBadChapterCacheIfNeeded()
         reloadLibrary()
+    }
+
+    /// One-shot wipe of chapters cached by older builds that used the wrong decrypt key.
+    private func purgeBadChapterCacheIfNeeded() {
+        let key = "at.chapterCacheVersion"
+        let current = 2
+        let stored = UserDefaults.standard.integer(forKey: key)
+        guard stored < current, let modelContext else {
+            if stored < current { UserDefaults.standard.set(current, forKey: key) }
+            return
+        }
+        let descriptor = FetchDescriptor<CachedChapter>()
+        if let items = try? modelContext.fetch(descriptor) {
+            for item in items where !ChapterDecryptor.looksLikePlaintext(item.htmlText) {
+                modelContext.delete(item)
+            }
+            try? modelContext.save()
+        }
+        UserDefaults.standard.set(current, forKey: key)
     }
 
     func reloadLibrary() {
@@ -46,6 +66,7 @@ final class OfflineStore: ObservableObject {
 
     func syncLibrary(force: Bool = false) async {
         guard let modelContext else { return }
+        if isSyncing { return }
         if !force, let last = lastLibrarySync, Date().timeIntervalSince(last) < 15 {
             reloadLibrary()
             return
@@ -57,41 +78,62 @@ final class OfflineStore: ObservableObject {
         do {
             try? await APIClient.shared.establishWebSession()
 
-            // Ensure we know the profile username (needed for /u/{user}/library)
-            if AuthService.shared.user?.userName == nil {
+            // Ensure profile username is known before scraping /u/{user}/library
+            if AuthService.shared.user?.userName == nil || AuthService.shared.user?.userName?.isEmpty == true {
                 await AuthService.shared.refreshProfile()
             }
 
             var collected: [WorkMeta] = []
             var errors: [String] = []
+            var byID: [Int: WorkMeta] = [:]
 
-            // Primary: full public profile library — this is what the site shows at
-            // https://author.today/u/{user}/library (e.g. dark_tarkhan)
-            if let username = AuthService.shared.user?.userName, !username.isEmpty {
+            func merge(_ items: [WorkMeta]) {
+                for item in items {
+                    byID[item.id] = item
+                }
+            }
+
+            // Primary: full profile shelf HTML (what the site shows)
+            let username = AuthService.shared.resolvedUserName
+            if let username, !username.isEmpty {
                 do {
-                    collected = try await APIClient.shared.libraryFromProfile(username: username, maxPages: 60)
+                    let profileItems = try await APIClient.shared.libraryFromProfile(username: username, maxPages: 60)
+                    merge(profileItems)
                 } catch {
                     errors.append("profile: \(error.localizedDescription)")
                 }
             } else {
-                errors.append("profile: нет userName")
+                errors.append("profile: нет userName — обновите профиль в «Ещё»")
             }
 
-            // Supplement / fallback: official API (often incomplete vs the site shelf)
-            if collected.isEmpty {
+            // Always also pull API library and merge (covers private shelf + progress)
+            do {
                 var page = 1
-                do {
-                    while true {
-                        let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
-                        collected.append(contentsOf: items)
-                        if items.isEmpty || items.count < 50 { break }
-                        page += 1
-                        if page > 40 { break }
+                while true {
+                    let items = try await APIClient.shared.userLibrary(page: page, pageSize: 50)
+                    for item in items {
+                        let state = (item.resolvedLibraryState ?? "").lowercased()
+                        if let existing = byID[item.id] {
+                            // Prefer richer meta, keep non-None shelf state
+                            let existingState = (existing.resolvedLibraryState ?? "").lowercased()
+                            if existingState == "none" || existingState.isEmpty {
+                                byID[item.id] = item
+                            } else if state != "none" {
+                                byID[item.id] = item.withLibraryState(existing.resolvedLibraryState ?? "Reading")
+                            }
+                        } else if state != "none" {
+                            byID[item.id] = item
+                        }
                     }
-                } catch {
-                    errors.append("api: \(error.localizedDescription)")
+                    if items.isEmpty || items.count < 50 { break }
+                    page += 1
+                    if page > 40 { break }
                 }
+            } catch {
+                errors.append("api: \(error.localizedDescription)")
             }
+
+            collected = Array(byID.values)
 
             guard !collected.isEmpty else {
                 lastSyncError = errors.isEmpty
@@ -112,7 +154,6 @@ final class OfflineStore: ObservableObject {
                 for work in existing where !syncedIDs.contains(work.workId) {
                     let state = (work.libraryState ?? "").lowercased()
                     if state == "localonly" || work.isFullyDownloaded == false && work.chaptersJSON == nil {
-                        // keep offline downloads even if removed remotely
                         if !work.isFullyDownloaded {
                             modelContext.delete(work)
                         } else {
@@ -174,9 +215,13 @@ final class OfflineStore: ObservableObject {
             predicate: #Predicate { $0.workId == id }
         )
         let existing = try? ctx.fetch(descriptor).first
-        let state = markFromSite
+        var state = markFromSite
             ? (meta.resolvedLibraryState ?? "Reading")
             : (meta.resolvedLibraryState ?? existing?.libraryState)
+        // Never persist guest "None" for shelf sync — it hides books from the library tab
+        if markFromSite, (state ?? "").lowercased() == "none" {
+            state = "Reading"
+        }
         if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
