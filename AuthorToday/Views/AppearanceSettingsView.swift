@@ -19,23 +19,33 @@ struct AppearanceSettingsView: View {
                         ForEach(AppThemePreset.allCases) { preset in
                             Button {
                                 appearance.themePreset = preset
+                                if preset.prefersDark, appearance.colorMode == .system {
+                                    appearance.colorMode = .dark
+                                }
                             } label: {
                                 VStack(spacing: 6) {
-                                    Circle()
-                                        .fill(preset == .custom
-                                              ? (Color(hex: appearance.customAccentHex) ?? preset.accent)
-                                              : preset.accent)
-                                        .frame(width: 36, height: 36)
-                                        .overlay {
-                                            if appearance.themePreset == preset {
-                                                Image(systemName: "checkmark")
-                                                    .font(.caption.bold())
-                                                    .foregroundStyle(.white)
+                                    ZStack {
+                                        Circle()
+                                            .fill(preset.prefersDark ? Color.black : Color(.systemGray5))
+                                            .frame(width: 40, height: 40)
+                                        Circle()
+                                            .fill(preset == .custom
+                                                  ? (Color(hex: appearance.customAccentHex) ?? preset.accent)
+                                                  : preset.accent)
+                                            .frame(width: 28, height: 28)
+                                            .overlay {
+                                                if appearance.themePreset == preset {
+                                                    Image(systemName: "checkmark")
+                                                        .font(.caption2.bold())
+                                                        .foregroundStyle(.white)
+                                                }
                                             }
-                                        }
+                                    }
                                     Text(preset.title)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .frame(width: 72)
                                 }
                             }
                             .buttonStyle(.plain)

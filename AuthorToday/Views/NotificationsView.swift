@@ -1,8 +1,15 @@
 import SwiftUI
+import WebKit
+
+enum FeedRoute: Hashable {
+    case work(Int)
+    case post(Int)
+}
 
 struct NotificationsView: View {
     @EnvironmentObject private var notifications: NotificationPoller
     @State private var path = NavigationPath()
+    @State private var expandedIds: Set<String> = []
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -19,35 +26,12 @@ struct NotificationsView: View {
                 } else {
                     List {
                         ForEach(notifications.items, id: \.stableId) { item in
-                            Button {
-                                if let workId = item.resolvedWorkId {
-                                    path.append(workId)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    if let category = item.category, !category.isEmpty {
-                                        Text(category)
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(item.displayText)
-                                        .font(.body)
-                                        .foregroundStyle((item.isRead ?? false) ? .secondary : Color.primary)
-                                        .multilineTextAlignment(.leading)
-                                        .lineLimit(8)
-                                    if let time = item.creationTime {
-                                        Text(Self.formatTime(time))
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
+                            feedRow(item)
+                                .onAppear {
+                                    if item.stableId == notifications.items.last?.stableId {
+                                        Task { await notifications.loadMore() }
                                     }
                                 }
-                                .padding(.vertical, 4)
-                            }
-                            .onAppear {
-                                if item.stableId == notifications.items.last?.stableId {
-                                    Task { await notifications.loadMore() }
-                                }
-                            }
                         }
 
                         if notifications.isLoadingMore {
@@ -79,13 +63,103 @@ struct NotificationsView: View {
             .refreshable {
                 await notifications.refresh(announceNew: false)
             }
-            .navigationDestination(for: Int.self) { workId in
-                BookDetailView(workId: workId)
+            .navigationDestination(for: FeedRoute.self) { route in
+                switch route {
+                case .work(let workId):
+                    BookDetailView(workId: workId)
+                case .post(let postId):
+                    FeedPostDetailView(postId: postId)
+                }
             }
             .task {
                 await notifications.refresh(announceNew: false)
                 await notifications.markFeedSeen()
             }
+        }
+    }
+
+    private func feedRow(_ item: NotificationItem) -> some View {
+        let expanded = expandedIds.contains(item.stableId)
+        return Button {
+            openOrExpand(item)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                if let cover = item.coverURL {
+                    CoverImage(urlString: cover, corner: 8)
+                        .frame(width: 52, height: 52)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        if let category = item.category, !category.isEmpty {
+                            Text(category)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        if item.isBlogPost {
+                            Text("Пост")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AppTheme.moss)
+                        }
+                        Spacer(minLength: 0)
+                        if let time = item.creationTime {
+                            Text(Self.formatTime(time))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let author = item.authorName, !author.isEmpty {
+                        Text(author)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.primary.opacity(0.75))
+                    }
+                    if let title = item.displayTitle {
+                        Text(title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(expanded ? nil : 3)
+                    }
+                    Text(item.displayText)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(expanded ? nil : 6)
+                        .opacity((item.isRead ?? false) ? 0.88 : 1)
+
+                    if !expanded && item.displayText.count > 220 {
+                        Text("Показать полностью")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.moss)
+                    } else if item.isBlogPost || item.resolvedWorkId != nil {
+                        Text(item.isBlogPost ? "Открыть пост" : "Открыть книгу")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.moss)
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openOrExpand(_ item: NotificationItem) {
+        if let postId = item.postId {
+            path.append(FeedRoute.post(postId))
+            return
+        }
+        if item.isBlogPost, let id = item.id {
+            path.append(FeedRoute.post(id))
+            return
+        }
+        if let workId = item.resolvedWorkId {
+            path.append(FeedRoute.work(workId))
+            return
+        }
+        if expandedIds.contains(item.stableId) {
+            expandedIds.remove(item.stableId)
+        } else {
+            expandedIds.insert(item.stableId)
         }
     }
 

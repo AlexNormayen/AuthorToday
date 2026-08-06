@@ -470,7 +470,7 @@ private struct BookTOCSheet: View {
     }
 }
 
-private struct BookCommentsSection: View {
+struct BookCommentsSection: View {
     let comments: [WorkComment]
     let commentsLoading: Bool
     let commentsError: String?

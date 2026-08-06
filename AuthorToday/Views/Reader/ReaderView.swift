@@ -57,13 +57,15 @@ struct ReaderView: View {
             }
 
             if showChrome || error != nil {
-                VStack {
+                VStack(spacing: 0) {
                     topBar
+                        .padding(.top, 4)
                     Spacer()
                     if error == nil {
                         bottomBar
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.opacity)
             }
         }
@@ -119,17 +121,21 @@ struct ReaderView: View {
     // MARK: - Layers
 
     private var readerBackground: some View {
-        ZStack {
-            settings.solidBackground.ignoresSafeArea()
-            if let image = settings.backgroundImage {
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .opacity(settings.backgroundImageOpacity)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
+        GeometryReader { geo in
+            ZStack {
+                settings.solidBackground
+                if let image = settings.backgroundImage {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .opacity(settings.backgroundImageOpacity)
+                }
             }
         }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder

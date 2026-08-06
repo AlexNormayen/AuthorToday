@@ -31,6 +31,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     case wine
     case graphite
     case sand
+    // Futuristic
+    case neon
+    case plasma
+    case orbit
+    case hologram
+    case ion
+    // Daredevil / Сорвиголова
+    case daredevil
+    case hellsKitchen
+    case murdock
     case custom
 
     var id: String { rawValue }
@@ -42,6 +52,14 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .wine: return "Вино"
         case .graphite: return "Графит"
         case .sand: return "Песок"
+        case .neon: return "Неон"
+        case .plasma: return "Плазма"
+        case .orbit: return "Орбита"
+        case .hologram: return "Голограмма"
+        case .ion: return "Ион"
+        case .daredevil: return "Сорвиголова"
+        case .hellsKitchen: return "Адская кухня"
+        case .murdock: return "Мёрдок"
         case .custom: return "Свой цвет"
         }
     }
@@ -53,6 +71,14 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .wine: return Color(red: 0.55, green: 0.18, blue: 0.28)
         case .graphite: return Color(red: 0.35, green: 0.38, blue: 0.42)
         case .sand: return Color(red: 0.62, green: 0.48, blue: 0.30)
+        case .neon: return Color(red: 0.00, green: 0.90, blue: 0.95)
+        case .plasma: return Color(red: 0.55, green: 0.20, blue: 1.00)
+        case .orbit: return Color(red: 0.20, green: 0.45, blue: 1.00)
+        case .hologram: return Color(red: 0.25, green: 0.95, blue: 0.75)
+        case .ion: return Color(red: 0.70, green: 0.85, blue: 1.00)
+        case .daredevil: return Color(red: 0.78, green: 0.09, blue: 0.14)
+        case .hellsKitchen: return Color(red: 0.55, green: 0.05, blue: 0.08)
+        case .murdock: return Color(red: 0.90, green: 0.22, blue: 0.18)
         case .custom: return Color(red: 0.18, green: 0.42, blue: 0.36)
         }
     }
@@ -64,12 +90,33 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .wine: return Color(red: 0.97, green: 0.93, blue: 0.94)
         case .graphite: return Color(red: 0.94, green: 0.94, blue: 0.95)
         case .sand: return Color(red: 0.96, green: 0.94, blue: 0.90)
+        case .neon, .plasma, .orbit, .hologram, .ion:
+            return Color(red: 0.07, green: 0.09, blue: 0.12)
+        case .daredevil, .hellsKitchen, .murdock:
+            return Color(red: 0.08, green: 0.06, blue: 0.06)
         case .custom: return Color(red: 0.94, green: 0.94, blue: 0.94)
         }
     }
 
     var mistDark: Color {
-        Color(red: 0.10, green: 0.11, blue: 0.12)
+        switch self {
+        case .daredevil, .hellsKitchen, .murdock:
+            return Color(red: 0.06, green: 0.04, blue: 0.04)
+        case .neon, .plasma, .orbit, .hologram, .ion:
+            return Color(red: 0.05, green: 0.06, blue: 0.09)
+        default:
+            return Color(red: 0.10, green: 0.11, blue: 0.12)
+        }
+    }
+
+    /// Themes that look best with dark UI chrome.
+    var prefersDark: Bool {
+        switch self {
+        case .neon, .plasma, .orbit, .hologram, .ion, .daredevil, .hellsKitchen, .murdock:
+            return true
+        default:
+            return false
+        }
     }
 }
 
@@ -79,7 +126,12 @@ final class AppAppearanceStore: ObservableObject {
         didSet { defaults.set(colorMode.rawValue, forKey: "aa.colorMode") }
     }
     @Published var themePreset: AppThemePreset {
-        didSet { defaults.set(themePreset.rawValue, forKey: "aa.theme") }
+        didSet {
+            defaults.set(themePreset.rawValue, forKey: "aa.theme")
+            if themePreset.prefersDark, colorMode == .system {
+                // Soft nudge: keep system, but preferredColorScheme will darken.
+            }
+        }
     }
     @Published var customAccentHex: String {
         didSet { defaults.set(customAccentHex, forKey: "aa.accentHex") }
@@ -101,11 +153,11 @@ final class AppAppearanceStore: ObservableObject {
     }
 
     var mist: Color {
-        // Resolved roughly; views can still use semantic colors.
         themePreset.mistLight
     }
 
     var preferredColorScheme: ColorScheme? {
-        colorMode.colorScheme
+        if let forced = colorMode.colorScheme { return forced }
+        return themePreset.prefersDark ? .dark : nil
     }
 }

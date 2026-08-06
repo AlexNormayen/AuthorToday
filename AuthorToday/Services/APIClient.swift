@@ -389,7 +389,12 @@ actor APIClient {
                     url: workId.map { "https://author.today/work/\($0)" },
                     link: nil,
                     category: "feed",
-                    notificationId: nil
+                    notificationId: nil,
+                    feedType: nil,
+                    postId: nil,
+                    authorName: nil,
+                    authorUserName: nil,
+                    coverURL: nil
                 )
                 if !item.isJunk { items.append(item) }
             }
@@ -430,7 +435,12 @@ actor APIClient {
                 url: "https://author.today/work/\(id)",
                 link: nil,
                 category: "feed",
-                notificationId: nil
+                notificationId: nil,
+                feedType: nil,
+                postId: nil,
+                authorName: nil,
+                authorUserName: nil,
+                coverURL: nil
             )
             if !item.isJunk { items.append(item) }
         }
@@ -740,12 +750,27 @@ actor APIClient {
 
     // MARK: - Comments (site web API)
 
+    /// Work comments: rootType = 1. Blog posts: rootType = 2.
     func loadWorkComments(workId: Int, page: Int = 1, sorting: String = "reverse") async throws -> CommentLoadPage {
+        try await loadComments(rootId: workId, rootType: 1, pagePath: "/work/\(workId)", page: page, sorting: sorting)
+    }
+
+    func loadPostComments(postId: Int, page: Int = 1, sorting: String = "reverse") async throws -> CommentLoadPage {
+        try await loadComments(rootId: postId, rootType: 2, pagePath: "/post/\(postId)", page: page, sorting: sorting)
+    }
+
+    func loadComments(
+        rootId: Int,
+        rootType: Int,
+        pagePath: String,
+        page: Int = 1,
+        sorting: String = "reverse"
+    ) async throws -> CommentLoadPage {
         try? await establishWebSession()
-        _ = try? await fetchWebHTML(path: "/work/\(workId)")
+        _ = try? await fetchWebHTML(path: pagePath)
         let (data, _) = try await webJSONGet(path: "/comment/load", query: [
-            "rootId": "\(workId)",
-            "rootType": "1",
+            "rootId": "\(rootId)",
+            "rootType": "\(rootType)",
             "c": "",
             "th": "",
             "page": page <= 1 ? "" : "\(page)",
@@ -775,19 +800,53 @@ actor APIClient {
         threadId: Int? = nil,
         level: Int = 0
     ) async throws {
-        // Need LoginCookie + CSRF cookie from the work page (same as site AjaxUtils.post).
+        try await submitComment(
+            rootId: workId,
+            rootType: 1,
+            pagePath: "/work/\(workId)",
+            text: text,
+            parentId: parentId,
+            threadId: threadId,
+            level: level
+        )
+    }
+
+    func submitPostComment(
+        postId: Int,
+        text: String,
+        parentId: Int? = nil,
+        threadId: Int? = nil,
+        level: Int = 0
+    ) async throws {
+        try await submitComment(
+            rootId: postId,
+            rootType: 2,
+            pagePath: "/post/\(postId)",
+            text: text,
+            parentId: parentId,
+            threadId: threadId,
+            level: level
+        )
+    }
+
+    func submitComment(
+        rootId: Int,
+        rootType: Int,
+        pagePath: String,
+        text: String,
+        parentId: Int? = nil,
+        threadId: Int? = nil,
+        level: Int = 0
+    ) async throws {
         try await establishWebSession()
-        let workPath = "/work/\(workId)"
-        let html = try await fetchWebHTML(path: workPath)
+        let html = try await fetchWebHTML(path: pagePath)
         guard let verificationToken = Self.extractRequestVerificationToken(from: html) else {
             throw APIError.message("Не удалось получить токен для комментария")
         }
 
-        // Top-level comments: only rootId/rootType/text/isPinned (see CommentFormV1 on author.today).
-        // Replies also send parentId/threadId/level.
         var payload: [String: Any] = [
-            "rootId": workId,
-            "rootType": 1,
+            "rootId": rootId,
+            "rootType": rootType,
             "text": text,
             "isPinned": false
         ]
@@ -803,8 +862,69 @@ actor APIClient {
             path: "/comment/submit",
             body: payload,
             verificationToken: verificationToken,
-            refererPath: workPath
+            refererPath: pagePath
         )
+    }
+
+    // MARK: - Blog posts
+
+    func postDetails(id: Int) async throws -> PostDetails {
+        try? await establishWebSession()
+        let html = try await fetchWebHTML(path: "/post/\(id)")
+        return Self.parsePostHTML(id: id, html: html)
+    }
+
+    private static func parsePostHTML(id: Int, html: String) -> PostDetails {
+        let title = firstMatch(#"<h1[^>]*>([\s\S]*?)</h1>"#, in: html)
+            .map { HTMLText.plain(from: $0) }
+            ?? firstMatch(#"<title>([^<]+)</title>"#, in: html).map { HTMLText.plain(from: $0) }
+            ?? "Пост"
+
+        let authorUser = firstMatch(#"href="/u/([^"/]+)"[^>]*>\s*(?:<[^>]+>\s*)*[^<]*"#, in: html)
+            ?? firstMatch(#"href="/u/([^"/]+)""#, in: html)
+        let authorName = firstMatch(#"class="[^"]*user-name[^"]*"[^>]*>([^<]+)<"#, in: html)
+            ?? authorUser
+
+        let bodyHTML = firstMatch(#"(?s)class="[^"]*fr-view[^"]*"[^>]*>([\s\S]*?)</div>\s*</div>"#, in: html)
+            ?? firstMatch(#"(?s)class="[^"]*rich-content[^"]*"[^>]*>([\s\S]*?)</div>"#, in: html)
+            ?? ""
+
+        var imageURLs: [URL] = []
+        var seen = Set<String>()
+        for raw in matches(#"<img[^>]+src="([^"]+)""#, in: bodyHTML) {
+            let normalized = normalizeMediaURL(raw)
+            guard let url = URL(string: normalized), seen.insert(normalized).inserted else { continue }
+            if normalized.contains("emoji") || normalized.contains("smiley") { continue }
+            imageURLs.append(url)
+        }
+
+        var videoURLs: [URL] = []
+        for raw in matches(#"<iframe[^>]+src="([^"]+)""#, in: bodyHTML)
+            + matches(#"<video[^>]+src="([^"]+)""#, in: bodyHTML)
+        {
+            let normalized = normalizeMediaURL(raw)
+            guard let url = URL(string: normalized), seen.insert(normalized).inserted else { continue }
+            videoURLs.append(url)
+        }
+
+        return PostDetails(
+            id: id,
+            title: title,
+            authorName: authorName.map { HTMLText.plain(from: $0) },
+            authorUserName: authorUser,
+            html: bodyHTML,
+            plainText: HTMLText.plain(from: bodyHTML),
+            imageURLs: imageURLs,
+            videoEmbedURLs: videoURLs
+        )
+    }
+
+    private static func normalizeMediaURL(_ raw: String) -> String {
+        var value = raw
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("//") { value = "https:" + value }
+        return value
     }
 
     // MARK: - Author profile
@@ -822,19 +942,17 @@ actor APIClient {
             ?? Self.firstMatch(#"<h1[^>]*>([^<]+)</h1>"#, in: profileHTML)
             ?? displayNameHint
             ?? user
-        let avatar = Self.firstMatch(#"aside-profile[\s\S]{0,800}?src=\"(https://[^\"]+)\""#, in: profileHTML)
-            ?? Self.firstMatch(#"class=\"[^\"]*avatar[^\"]*\"[^>]*src=\"(https://[^\"]+)\""#, in: profileHTML)
-        let about = Self.firstMatch(#"class=\"[^\"]*about[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: profileHTML)
+        let avatar = Self.extractAuthorAvatar(from: profileHTML, userName: user)
+        let about = Self.firstMatch(#"class="[^"]*about[^"]*"[^>]*>([\s\S]*?)</div>"#, in: profileHTML)
             .map { HTMLText.plain(from: $0) }
 
         // Collect work ids + series from works page
         var orderedIDs: [Int] = []
         var seen = Set<Int>()
-        for idStr in matches(#"href=\"/work/(\d+)\""#, in: worksHTML) {
+        for idStr in matches(#"href="/work/(\d+)""#, in: worksHTML) {
             guard let id = Int(idStr), seen.insert(id).inserted else { continue }
             orderedIDs.append(id)
         }
-        // series map: workId -> (seriesId, title) from nearby markup is hard; enrich via meta
         var metas: [WorkMeta] = []
         for chunkStart in stride(from: 0, to: orderedIDs.count, by: 40) {
             let end = min(chunkStart + 40, orderedIDs.count)
@@ -879,6 +997,36 @@ actor APIClient {
             works: metas,
             series: series
         )
+    }
+
+    private static func extractAuthorAvatar(from html: String, userName: String) -> String? {
+        let lower = userName.lowercased()
+        // Prefer the main profile avatar block (not header/current-user chips).
+        if let fromBlock = firstMatch(
+            #"(?s)class="[^"]*profile-avatar[^"]*"[\s\S]{0,500}?src="(https://[^"]+)""#,
+            in: html
+        ) {
+            return decodeHTMLEntities(fromBlock)
+        }
+        let all = matches(#"src="(https://cm\.author\.today/[^"]+)""#, in: html)
+            .map(decodeHTMLEntities)
+        if let named = all.first(where: {
+            let u = $0.lowercased()
+            return u.contains("/u/\(lower)") || u.contains("\(lower)_") || u.contains("/\(lower).")
+        }) {
+            return named
+        }
+        // Larger profile image often has width=500 in query.
+        if let large = all.first(where: { $0.contains("width=500") || $0.contains("data-width") }) {
+            return large
+        }
+        return nil
+    }
+
+    private static func decodeHTMLEntities(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
     }
 
     private func fetchWebHTML(path: String) async throws -> String {
@@ -1066,13 +1214,17 @@ actor APIClient {
         return String(text[r])
     }
 
-    private func matches(_ pattern: String, in text: String) -> [String] {
+    private static func matches(_ pattern: String, in text: String) -> [String] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.matches(in: text, range: range).compactMap { m in
             guard m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: text) else { return nil }
             return String(text[r])
         }
+    }
+
+    private func matches(_ pattern: String, in text: String) -> [String] {
+        Self.matches(pattern, in: text)
     }
 
     // MARK: - Notifications

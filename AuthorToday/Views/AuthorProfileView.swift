@@ -99,7 +99,7 @@ struct AuthorProfileView: View {
 
     private func authorAvatar(_ url: String?) -> some View {
         Group {
-            if let url, let u = URL(string: url) {
+            if let url, let u = URL(string: Self.preferLargeAvatar(url)) {
                 AsyncImage(url: u) { phase in
                     switch phase {
                     case .success(let image):
@@ -118,6 +118,16 @@ struct AuthorProfileView: View {
         }
         .frame(width: 64, height: 64)
         .clipShape(Circle())
+    }
+
+    private static func preferLargeAvatar(_ url: String) -> String {
+        // Profile pages often ship 70x70 crop; request a larger crop when possible.
+        if url.contains("width=") {
+            return url
+                .replacingOccurrences(of: "width=70", with: "width=200")
+                .replacingOccurrences(of: "height=70", with: "height=200")
+        }
+        return url
     }
 
     private func load() async {

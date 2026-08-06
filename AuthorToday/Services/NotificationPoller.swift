@@ -134,7 +134,12 @@ final class NotificationPoller: ObservableObject {
                 url: item.url,
                 link: item.link,
                 category: item.category,
-                notificationId: item.notificationId
+                notificationId: item.notificationId,
+                feedType: item.feedType,
+                postId: item.postId,
+                authorName: item.authorName,
+                authorUserName: item.authorUserName,
+                coverURL: item.coverURL
             )
         }
         await applyAppBadge()

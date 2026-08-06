@@ -421,13 +421,31 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
     let category: String?
     /// Stable server id (UUID string from feed).
     let notificationId: String?
+    /// API type: NewPost, WorkUpdate, NewChapter, …
+    let feedType: String?
+    let postId: Int?
+    let authorName: String?
+    let authorUserName: String?
+    let coverURL: String?
 
     var resolvedWorkId: Int? { workId ?? workID }
 
+    var isBlogPost: Bool {
+        if postId != nil { return true }
+        let t = (feedType ?? category ?? "").lowercased()
+        return t.contains("post") || t == "newpost"
+    }
+
     var stableId: String {
         if let notificationId, !notificationId.isEmpty { return notificationId }
+        if let postId { return "post-\(postId)" }
         if let id { return String(id) }
         return "\(creationTime ?? "")-\(displayText)"
+    }
+
+    var displayTitle: String? {
+        let t = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? nil : t
     }
 
     var displayText: String {
@@ -472,6 +490,10 @@ struct FeedEntry: Codable, Sendable {
     let chapterTitle: String?
     let chapterId: Int?
     let authorFIO: String?
+    let authorUserName: String?
+    let coverUrl: String?
+    let imageUrl: String?
+    let images: [String]?
     let category: FeedCategory?
 
     struct FeedCategory: Codable, Sendable {
@@ -482,11 +504,15 @@ struct FeedEntry: Codable, Sendable {
     func asNotificationItem() -> NotificationItem {
         let workRelated = ["WorkUpdate", "NewChapter", "DiscountStart", "DiscountEnd", "PriceChange"]
         let typeName = type ?? actionType ?? ""
+        let isPost = ["NewPost", "Post", "BlogPost", "DiscussionPost"].contains(typeName)
+            || (category?.code?.lowercased().contains("post") == true)
+
+        let resolvedPost: Int? = isPost ? (itemId ?? id) : nil
         let resolvedWork: Int? = {
+            if resolvedPost != nil { return nil }
             if workRelated.contains(typeName) || workRelated.contains(actionType ?? "") {
                 return id
             }
-            // Work updates often use numeric work id in `id`
             if chapterId != nil || chapterTitle != nil { return id }
             return nil
         }()
@@ -501,10 +527,16 @@ struct FeedEntry: Codable, Sendable {
         } else if let text, !text.isEmpty {
             lines.append(text)
         }
-        if let authorFIO, !authorFIO.isEmpty, typeName == "NewPost" {
+        if let authorFIO, !authorFIO.isEmpty, isPost {
             lines.insert(authorFIO, at: min(1, lines.count))
         }
         let combined = lines.joined(separator: "\n")
+        let cover = WorkMeta.normalizeCover(coverUrl ?? imageUrl ?? images?.first)
+        let deepLink: String? = {
+            if let resolvedPost { return "https://author.today/post/\(resolvedPost)" }
+            if let resolvedWork { return "https://author.today/work/\(resolvedWork)" }
+            return nil
+        }()
 
         return NotificationItem(
             id: itemId ?? id,
@@ -513,17 +545,33 @@ struct FeedEntry: Codable, Sendable {
             message: previewText ?? text,
             content: previewText,
             body: nil,
-            html: nil,
+            html: text,
             creationTime: creationTime ?? publishTime,
             isRead: isRead,
             workId: resolvedWork,
             workID: nil,
-            url: resolvedWork.map { "https://author.today/work/\($0)" },
+            url: deepLink,
             link: nil,
             category: category?.title ?? typeName,
-            notificationId: notificationId
+            notificationId: notificationId,
+            feedType: typeName,
+            postId: resolvedPost,
+            authorName: authorFIO,
+            authorUserName: authorUserName,
+            coverURL: cover
         )
     }
+}
+
+struct PostDetails: Sendable {
+    let id: Int
+    let title: String
+    let authorName: String?
+    let authorUserName: String?
+    let html: String
+    let plainText: String
+    let imageURLs: [URL]
+    let videoEmbedURLs: [URL]
 }
 
 struct NotificationList: Codable, Sendable {
