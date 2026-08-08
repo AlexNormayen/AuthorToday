@@ -105,13 +105,27 @@ final class ReadingSessionStore: ObservableObject {
         offsetY: Double,
         fraction: Double,
         charOffset: Int,
-        pageIndex: Int
+        pageIndex: Int,
+        allowZeroOverwrite: Bool = false
     ) {
+        let clampedFraction = min(max(fraction, 0), 1)
+        // Guard against transient UITextView resets (offset 0 right after load/reflow)
+        // overwriting a meaningful same-chapter checkpoint.
+        if !allowZeroOverwrite,
+           clampedFraction < 0.01,
+           pageIndex == 0,
+           offsetY < 8,
+           let existing = checkpoints[Self.key(workId)],
+           existing.chapterId == chapterId,
+           existing.fraction > 0.05,
+           Date().timeIntervalSince(existing.updatedAt) < 2 {
+            return
+        }
         let cp = Checkpoint(
             workId: workId,
             chapterId: chapterId,
             offsetY: offsetY,
-            fraction: min(max(fraction, 0), 1),
+            fraction: clampedFraction,
             charOffset: max(charOffset, 0),
             pageIndex: max(pageIndex, 0),
             updatedAt: .now

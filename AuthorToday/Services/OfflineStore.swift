@@ -655,19 +655,40 @@ final class OfflineStore: ObservableObject {
         }
     }
 
-    func saveProgress(workId: Int, chapterId: Int, offsetY: Double, pageIndex: Int) {
+    func saveProgress(
+        workId: Int,
+        chapterId: Int,
+        offsetY: Double,
+        pageIndex: Int,
+        fraction: Double = 0
+    ) {
         guard let modelContext else { return }
+        let clampedFraction = min(max(fraction, 0), 1)
         let descriptor = FetchDescriptor<ReadingProgress>(
             predicate: #Predicate { $0.workId == workId }
         )
         if let existing = try? modelContext.fetch(descriptor).first {
+            // Don't let a transient zero wipe a good in-chapter position.
+            let isSpuriousZero = clampedFraction < 0.01 && pageIndex == 0 && offsetY < 8
+            if isSpuriousZero,
+               existing.chapterId == chapterId,
+               existing.fraction > 0.05 {
+                return
+            }
             existing.chapterId = chapterId
             existing.offsetY = offsetY
+            existing.fraction = clampedFraction
             existing.pageIndex = pageIndex
             existing.updatedAt = .now
         } else {
             modelContext.insert(
-                ReadingProgress(workId: workId, chapterId: chapterId, offsetY: offsetY, pageIndex: pageIndex)
+                ReadingProgress(
+                    workId: workId,
+                    chapterId: chapterId,
+                    offsetY: offsetY,
+                    fraction: clampedFraction,
+                    pageIndex: pageIndex
+                )
             )
         }
 

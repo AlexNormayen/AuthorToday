@@ -151,6 +151,14 @@ struct SettingsHubView: View {
                     }
                 }
 
+                Section("Общение") {
+                    NavigationLink {
+                        MessagesView()
+                    } label: {
+                        Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
+                    }
+                }
+
                 Section("Оформление") {
                     NavigationLink("Тема приложения и тёмный режим") {
                         AppearanceSettingsView()
@@ -170,6 +178,8 @@ struct SettingsHubView: View {
                 }
 
                 Section("О приложении") {
+                    LabeledContent("Приложение", value: "Читальня")
+                    LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)")
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
                     if let user = auth.user?.resolvedUserName ?? auth.resolvedUserName {
@@ -178,9 +188,14 @@ struct SettingsHubView: View {
                     if offline.lastSyncCount > 0 {
                         LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)")
                     }
-                    Text("Покупка книг открывает оплату на author.today. Пуш через Apple Push недоступен без платного Developer — используются локальные оповещения.")
+                }
+
+                Section {
+                    Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                } header: {
+                    Text("Важно")
                 }
             }
             .navigationTitle("Ещё")

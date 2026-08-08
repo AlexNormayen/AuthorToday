@@ -13,6 +13,29 @@ struct AuthTokenResponse: Codable, Sendable {
 struct LoginRequest: Codable, Sendable {
     let login: String
     let password: String
+    /// Email / 2FA confirmation code from Author.Today.
+    let code: String?
+    /// Stable per-install device key required by login-by-password when 2FA is enabled.
+    let secretKey: String?
+
+    init(login: String, password: String, code: String? = nil, secretKey: String? = nil) {
+        self.login = login
+        self.password = password
+        self.code = code
+        self.secretKey = secretKey
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(login, forKey: .login)
+        try c.encode(password, forKey: .password)
+        try c.encodeIfPresent(code, forKey: .code)
+        try c.encodeIfPresent(secretKey, forKey: .secretKey)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case login, password, code, secretKey
+    }
 }
 
 struct CurrentUser: Codable, Identifiable, Sendable {
@@ -344,10 +367,32 @@ struct CommentLoadPage: Sendable {
 struct AuthorProfile: Sendable {
     let userName: String
     let displayName: String
+    let userId: Int?
     let avatarURL: String?
     let about: String?
     let works: [WorkMeta]
     let series: [AuthorSeriesGroup]
+}
+
+// MARK: - Private messages (author.today/pm)
+
+struct PMChat: Identifiable, Hashable, Sendable {
+    let id: Int
+    let title: String
+    let preview: String?
+    let avatarURL: String?
+    let peerUserId: Int?
+    let peerUserName: String?
+    let unreadCount: Int
+    let updatedAt: String?
+}
+
+struct PMMessage: Identifiable, Hashable, Sendable {
+    let id: Int
+    let text: String
+    let isMine: Bool
+    let senderName: String?
+    let createdAt: String?
 }
 
 struct AuthorSeriesGroup: Identifiable, Hashable, Sendable {
@@ -734,13 +779,23 @@ final class ReadingProgress {
     @Attribute(.unique) var workId: Int
     var chapterId: Int
     var offsetY: Double
+    /// 0...1 position within the chapter (preferred over raw offsetY after reflow).
+    var fraction: Double
     var pageIndex: Int
     var updatedAt: Date
 
-    init(workId: Int, chapterId: Int, offsetY: Double = 0, pageIndex: Int = 0, updatedAt: Date = .now) {
+    init(
+        workId: Int,
+        chapterId: Int,
+        offsetY: Double = 0,
+        fraction: Double = 0,
+        pageIndex: Int = 0,
+        updatedAt: Date = .now
+    ) {
         self.workId = workId
         self.chapterId = chapterId
         self.offsetY = offsetY
+        self.fraction = min(max(fraction, 0), 1)
         self.pageIndex = pageIndex
         self.updatedAt = updatedAt
     }

@@ -46,7 +46,18 @@ struct ReaderTextScrollView: UIViewRepresentable {
         let contentChanged = tv.attributedText?.string != text
             || abs((tv.font?.pointSize ?? 0) - font.pointSize) > 0.1
         if contentChanged {
+            // Preserve place in chapter across text/font reflow. Setting attributedText
+            // resets offset to 0 and would otherwise wipe saved progress via scroll callbacks.
+            let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
+            let preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
+            context.coordinator.isProgrammaticScroll = true
             applyContent(to: tv)
+            context.coordinator.isProgrammaticScroll = false
+            let target = restoreFraction > 0.005 ? restoreFraction : preservedFraction
+            if target > 0.005 {
+                context.coordinator.pendingFraction = target
+                context.coordinator.scheduleRestore(on: tv)
+            }
         } else {
             tv.textContainerInset = contentInset
         }

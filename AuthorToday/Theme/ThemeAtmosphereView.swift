@@ -2,10 +2,13 @@ import SwiftUI
 import UIKit
 
 /// Full-screen living theme backdrop using real background images.
+/// Uses a slow autoreversing animation (not TimelineView) so taps stay responsive.
 struct ThemeAtmosphereView: View {
     let preset: AppThemePreset
     var intensity: Double = 1
     var animated: Bool = true
+
+    @State private var drift = false
 
     var body: some View {
         GeometryReader { geo in
@@ -13,20 +16,20 @@ struct ThemeAtmosphereView: View {
                 preset.atmosphereBase
 
                 if let name = preset.backgroundImageName, UIImage(named: name) != nil {
-                    TimelineView(.animation(minimumInterval: animated ? 1.0 / 30.0 : 3600, paused: !animated)) { context in
-                        let t = context.date.timeIntervalSinceReferenceDate
-                        let scale = 1.08 + 0.04 * sin(t * 0.12)
-                        let dx = geo.size.width * 0.03 * sin(t * 0.08)
-                        let dy = geo.size.height * 0.02 * cos(t * 0.1)
-                        Image(name)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geo.size.width * scale, height: geo.size.height * scale)
-                            .offset(x: dx, y: dy)
-                            .opacity(intensity)
-                    }
+                    Image(name)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: geo.size.width * 1.14,
+                            height: geo.size.height * 1.14
+                        )
+                        .scaleEffect(animated && drift ? 1.12 : 1.07)
+                        .offset(
+                            x: animated && drift ? geo.size.width * 0.028 : -geo.size.width * 0.02,
+                            y: animated && drift ? -geo.size.height * 0.018 : geo.size.height * 0.014
+                        )
+                        .opacity(intensity)
                 } else {
-                    // Fallback wash if asset missing
                     LinearGradient(
                         colors: [preset.accent.opacity(0.35), preset.atmosphereBase],
                         startPoint: .topLeading,
@@ -34,7 +37,6 @@ struct ThemeAtmosphereView: View {
                     )
                 }
 
-                // Readability scrim so lists stay legible over busy photos.
                 LinearGradient(
                     colors: [
                         Color.black.opacity(preset.prefersDark ? 0.35 * intensity : 0.12 * intensity),
@@ -50,6 +52,25 @@ struct ThemeAtmosphereView: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear { startDriftIfNeeded() }
+        .onChange(of: animated) { _, _ in startDriftIfNeeded() }
+        .onChange(of: preset) { _, _ in
+            drift = false
+            startDriftIfNeeded()
+        }
+    }
+
+    private func startDriftIfNeeded() {
+        guard animated else {
+            drift = false
+            return
+        }
+        // Delay so the first frame is static and the first tap isn't fighting layout.
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 16).repeatForever(autoreverses: true)) {
+                drift = true
+            }
+        }
     }
 }
 
@@ -85,5 +106,12 @@ extension View {
                 .fill(.ultraThinMaterial.opacity(0.92))
                 .padding(.vertical, 2)
         )
+    }
+
+    /// Reliable tap target for plain buttons (esp. inside ScrollView).
+    func tappableRow() -> some View {
+        self
+            .contentShape(Rectangle())
+            .buttonStyle(.borderless)
     }
 }

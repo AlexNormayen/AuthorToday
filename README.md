@@ -1,10 +1,17 @@
-# AuthorToday
+# Читальня
 
-Неофициальный iOS-клиент для [author.today](https://author.today): библиотека, читалка, офлайн и оповещения.
+**Клиент Author.Today (неофициальный).** Независимый iOS-клиент для [author.today](https://author.today): библиотека, читалка, офлайн и оповещения.
 
-Целевое устройство: **iPhone 15 Pro Max** (iOS 17+). Стек: **SwiftUI**.
+Приложение **не является официальным** продуктом Author.Today и не связано с порталом. Author.Today не отвечает за работу Читальни. Книги и оплата — на author.today.
 
-Репозиторий: https://github.com/AlexNormayn/AuthorToday
+Author.Today (август 2026) разрешил использование публичного API и распространение при обязательном предупреждении о неофициальности — см. [docs/app-store.md](docs/app-store.md).
+
+Целевое устройство: **iPhone** (iOS 17+). Стек: **SwiftUI**.
+
+- Репозиторий: https://github.com/AlexNormayn/AuthorToday  
+- Bundle ID: `ru.chitalnya.reader`  
+- Политика конфиденциальности: [docs/privacy.html](docs/privacy.html)  
+- Чеклист App Store: [docs/app-store.md](docs/app-store.md)
 
 ## Сборка IPA без Mac — Codemagic
 
@@ -29,9 +36,11 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 ### 3. Запустить сборку
 
 1. Откройте приложение AuthorToday в Codemagic  
-2. Workflow: **AuthorToday iOS IPA (unsigned)**  
+2. Workflow: **AuthorToday iOS IPA (unsigned)** — для Sideloadly  
 3. **Start new build** → ветка `main`  
 4. Дождитесь успеха (обычно 10–20 мин)
+
+Для App Store / TestFlight (после Apple Developer + Team ID): workflow **Читальня App Store (signed)** — см. `docs/app-store.md`.
 
 ### 4. Скачать IPA
 
@@ -46,11 +55,11 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 
 Подпись ~7 дней, потом переподпись тем же IPA.
 
-> Платный Apple Developer не нужен для личного устройства.
+> Платный Apple Developer не нужен для личного устройства. Для App Store — нужен (~$99/год).
 
 ## Что умеет
 
-- Вход по email/паролю (API author.today)
+- Вход по email/паролю (API author.today), код подтверждения устройства с почты
 - Библиотека + синхронизация
 - Поиск / свежие книги
 - Читалка: скролл, свайп, тап по зонам, тап+свайп, перелистывание
@@ -65,7 +74,9 @@ AuthorToday/
   Models/          — DTO + SwiftData
   Services/        — API, auth, offline, download, notifications
   Views/           — Login, Library, Search, Notifications, Reader
-codemagic.yaml     — облачная сборка IPA
+  PrivacyInfo.xcprivacy
+docs/              — privacy.html, app-store.md
+codemagic.yaml     — unsigned IPA + signed App Store workflow
 .github/workflows/ — запасной workflow (если Actions разблокируют)
 ```
 
@@ -74,5 +85,5 @@ API: `https://api.author.today`
 
 ## Если билд упал в Codemagic
 
-- Откройте лог шага **Build without code signing**
+- Откройте лог шага **Build without code signing** (или signed-шага)
 - Пришлите ошибку — поправим код и запушим снова

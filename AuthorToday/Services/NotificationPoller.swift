@@ -158,7 +158,7 @@ final class NotificationPoller: ObservableObject {
     private func postLocal(_ item: NotificationItem) async {
         guard isAuthorized else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Author.Today"
+        content.title = "Читальня"
         content.body = item.displayText
         content.sound = .default
         if let workId = item.resolvedWorkId {

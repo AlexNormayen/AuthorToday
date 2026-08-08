@@ -44,6 +44,17 @@ struct AuthorProfileView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
+
+                        NavigationLink {
+                            ChatThreadView(
+                                chatId: nil,
+                                title: profile.displayName,
+                                peerUserId: profile.userId,
+                                peerUserName: profile.userName
+                            )
+                        } label: {
+                            Label("Написать сообщение", systemImage: "envelope")
+                        }
                     }
 
                     ForEach(profile.series) { group in

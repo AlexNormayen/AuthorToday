@@ -46,10 +46,11 @@ struct AppearanceSettingsView: View {
                             } label: {
                                 VStack(spacing: 6) {
                                     ZStack {
+                                        // Static preview only — animated atmospheres inside ScrollView steal taps.
                                         ThemeAtmosphereView(
                                             preset: preset,
                                             intensity: 0.9,
-                                            animated: appearance.themePreset == preset
+                                            animated: false
                                         )
                                         .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -70,14 +71,18 @@ struct AppearanceSettingsView: View {
                                             .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                                             .offset(x: 16, y: 16)
                                     }
+                                    .frame(width: 56, height: 56)
+                                    .contentShape(Rectangle())
+
                                     Text(preset.title)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .frame(width: 72)
                                 }
+                                .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderless)
                         }
                     }
                     .padding(.vertical, 4)

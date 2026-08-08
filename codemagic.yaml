@@ -69,3 +69,92 @@ workflows:
       - AuthorToday.ipa
       - DerivedData/**/*.app
       - /tmp/xcodebuild_logs/*.log
+
+  # Activate after Apple Developer enrollment:
+  # 1) Set DEVELOPMENT_TEAM (Team ID) in Codemagic env / below
+  # 2) Add App Store Connect API key integration in Codemagic UI
+  # 3) Create app in Connect with bundle id ru.chitalnya.reader
+  ios-app-store-signed:
+    name: Читальня App Store (signed)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: ru.chitalnya.reader
+      vars:
+        XCODE_PROJECT: AuthorToday.xcodeproj
+        XCODE_SCHEME: AuthorToday
+        # Replace after enrollment (Membership → Team ID), or set in Codemagic UI:
+        DEVELOPMENT_TEAM: ""
+        APP_STORE_APPLE_ID: "" # numeric App Store Connect app id, optional for upload
+      # Uncomment when API key is configured in Codemagic:
+      # app_store_connect: <your_codemagic_asc_integration_name>
+    scripts:
+      - name: Set up code signing
+        script: |
+          set -euo pipefail
+          xcode-project use-profiles
+
+      - name: Build signed archive
+        script: |
+          set -euo pipefail
+          if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
+            echo "DEVELOPMENT_TEAM is empty. Set Team ID after Apple Developer enrollment."
+            echo "See docs/app-store.md"
+            exit 1
+          fi
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
+            -destination "generic/platform=iOS" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            PRODUCT_BUNDLE_IDENTIFIER=ru.chitalnya.reader \
+            archive
+
+      - name: Export IPA
+        script: |
+          set -euo pipefail
+          cat > "$CM_BUILD_DIR/ExportOptions.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          # Strip leading spaces from indented heredoc so plist is valid
+          sed -i '' 's/^[[:space:]]*//' "$CM_BUILD_DIR/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
+            -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist" \
+            -exportPath "$CM_BUILD_DIR/export"
+          cp "$CM_BUILD_DIR"/export/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
+          ls -lh "$CM_BUILD_DIR/Chitalnya.ipa"
+
+      - name: Upload to TestFlight (optional)
+        script: |
+          set -euo pipefail
+          if [ -z "${APP_STORE_CONNECT_ISSUER_ID:-}${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] && [ -z "${APP_STORE_APPLE_ID:-}" ]; then
+            echo "Skipping TestFlight upload — configure App Store Connect API key in Codemagic,"
+            echo "then enable publishing below or upload Chitalnya.ipa via Transporter."
+            exit 0
+          fi
+          app-store-connect publish \
+            --path "$CM_BUILD_DIR/Chitalnya.ipa" \
+            --beta-build-localizations="locale=ru-RU,whatsNew=Читальня: подготовка к Review" || \
+          echo "Publish skipped/failed — upload IPA manually with Transporter."
+
+    artifacts:
+      - Chitalnya.ipa
+      - Chitalnya.xcarchive

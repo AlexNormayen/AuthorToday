@@ -7,6 +7,12 @@ enum APIError: LocalizedError {
     case decoding(Error)
     case emptyBody
     case message(String)
+    /// Password ok / challenge started — user must enter the email confirmation code.
+    case twoFactorRequired(message: String?, secretKey: String?)
+    /// Wrong confirmation code.
+    case twoFactorInvalid(String?)
+    /// App version rejected for 2FA — client should bump UA and retry.
+    case twoFactorVersionUnsupported(String?)
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +22,21 @@ enum APIError: LocalizedError {
         case .decoding(let e): return "Ошибка разбора ответа: \(e.localizedDescription)"
         case .emptyBody: return "Пустой ответ сервера"
         case .message(let m): return m
+        case .twoFactorRequired(let m, _):
+            return m ?? "На почту отправлен код подтверждения. Введите его для входа."
+        case .twoFactorInvalid(let m):
+            return m ?? "Неверный код подтверждения."
+        case .twoFactorVersionUnsupported(let m):
+            return m ?? "Двухфакторный вход не поддерживается этой версией клиента."
+        }
+    }
+
+    var apiCode: String? {
+        switch self {
+        case .twoFactorRequired: return "TwoFactorRequired"
+        case .twoFactorInvalid: return "CodeNotValid"
+        case .twoFactorVersionUnsupported: return "VersionIsUnsupported"
+        default: return nil
         }
     }
 }
@@ -24,6 +45,25 @@ struct APIErrorBody: Codable {
     let code: String?
     let message: String?
     let invalidFields: [String: [String]]?
+    let secretKey: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case code, message, invalidFields, secretKey, data
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = try c.decodeIfPresent(String.self, forKey: .code)
+        message = try c.decodeIfPresent(String.self, forKey: .message)
+        invalidFields = try c.decodeIfPresent([String: [String]].self, forKey: .invalidFields)
+        if let direct = try c.decodeIfPresent(String.self, forKey: .secretKey) {
+            secretKey = direct
+        } else if let data = try? c.nestedContainer(keyedBy: CodingKeys.self, forKey: .data) {
+            secretKey = try data.decodeIfPresent(String.self, forKey: .secretKey)
+        } else {
+            secretKey = nil
+        }
+    }
 }
 
 actor APIClient {
@@ -64,8 +104,21 @@ actor APIClient {
 
     // MARK: - Auth
 
-    func login(email: String, password: String) async throws -> AuthTokenResponse {
-        let body = LoginRequest(login: email, password: password)
+    /// Login with email/password. Pass `code` after Author.Today emails a device confirmation code.
+    /// Always send a stable `secretKey` (per install) — required when 2FA / device confirmation is on.
+    func login(
+        email: String,
+        password: String,
+        code: String? = nil,
+        secretKey: String? = nil
+    ) async throws -> AuthTokenResponse {
+        let trimmedCode = code?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = LoginRequest(
+            login: email,
+            password: password,
+            code: (trimmedCode?.isEmpty == false) ? trimmedCode : nil,
+            secretKey: secretKey
+        )
         let response: AuthTokenResponse = try await post(
             path: "/v1/account/login-by-password",
             body: body,
@@ -1018,6 +1071,133 @@ actor APIClient {
         MediaURL.normalize(raw)
     }
 
+    // MARK: - Private messages (web /pm)
+
+    func pmRecentChats(page: Int = 1, onlyUnread: Bool = false) async throws -> [PMChat] {
+        try await establishWebSession()
+        _ = try? await fetchWebHTML(path: "/pm")
+        let (data, _) = try await webJSONGet(path: "/pm/recentChats", query: [
+            "page": "\(max(page, 1))",
+            "onlyUnread": onlyUnread ? "true" : "false",
+            "_": "\(Int(Date().timeIntervalSince1970 * 1000))"
+        ])
+        if let chats = Self.parsePMChats(from: data), !chats.isEmpty {
+            return chats
+        }
+        // Fallback: scrape /pm HTML
+        let html = (try? await fetchWebHTML(path: "/pm")) ?? ""
+        return Self.parsePMChatsHTML(html)
+    }
+
+    func pmMessages(chatId: Int) async throws -> [PMMessage] {
+        try await establishWebSession()
+        _ = try? await fetchWebHTML(path: "/pm")
+        let (data, _) = try await webJSONGet(path: "/pm/messages", query: [
+            "id": "\(chatId)",
+            "_": "\(Int(Date().timeIntervalSince1970 * 1000))"
+        ])
+        let myId = Int(userId)
+        if let messages = Self.parsePMMessages(from: data, myUserId: myId), !messages.isEmpty {
+            return messages
+        }
+        if let html = Self.pmHTML(from: data) {
+            return Self.parsePMMessagesHTML(html, myUserId: myId)
+        }
+        return []
+    }
+
+    func pmMarkAsRead(chatId: Int) async throws {
+        try await establishWebSession()
+        let html = try await fetchWebHTML(path: "/pm")
+        let token = Self.extractRequestVerificationToken(from: html) ?? ""
+        _ = try? await webJSONPostResult(
+            path: "/pm/markAsRead",
+            body: ["chatId": chatId],
+            verificationToken: token,
+            refererPath: "/pm",
+            requireSuccess: false
+        )
+    }
+
+    func pmSendMessage(chatId: Int?, userId: Int?, text: String) async throws -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw APIError.message("Пустое сообщение") }
+        guard chatId != nil || userId != nil else {
+            throw APIError.message("Не выбран чат или получатель")
+        }
+        try await establishWebSession()
+        let html = try await fetchWebHTML(path: "/pm")
+        guard let token = Self.extractRequestVerificationToken(from: html) else {
+            throw APIError.message("Не удалось получить токен для сообщения")
+        }
+        var body: [String: Any] = ["text": " \(trimmed) "]
+        if let chatId { body["chatId"] = chatId }
+        if let userId { body["userId"] = userId }
+
+        let obj = try await webJSONPostResult(
+            path: "/pm/sendMessage",
+            body: body,
+            verificationToken: token,
+            refererPath: "/pm",
+            requireSuccess: true
+        )
+        return Self.intValue(obj["chatId"])
+            ?? Self.intValue((obj["data"] as? [String: Any])?["chatId"])
+            ?? Self.intValue((obj["data"] as? [String: Any])?["id"])
+            ?? chatId
+    }
+
+    /// Resolve or create a chat with a user (by id and/or username).
+    func pmEnsureChat(userId: Int?, userName: String?, displayName: String?) async throws -> PMChat {
+        let chats = try await pmRecentChats(page: 1)
+        if let userId, let found = chats.first(where: { $0.peerUserId == userId }) {
+            return found
+        }
+        let lower = userName?.lowercased()
+        if let lower, let found = chats.first(where: {
+            $0.peerUserName?.lowercased() == lower
+                || $0.title.lowercased().contains(lower)
+        }) {
+            return found
+        }
+
+        if let userId {
+            try await establishWebSession()
+            // Some builds open a thread via messages?userId=
+            if let (data, _) = try? await webJSONGet(path: "/pm/messages", query: [
+                "userId": "\(userId)",
+                "_": "\(Int(Date().timeIntervalSince1970 * 1000))"
+            ]) {
+                if let chats = Self.parsePMChats(from: data), let first = chats.first {
+                    return first
+                }
+                if let chatId = Self.pmChatId(from: data) {
+                    return PMChat(
+                        id: chatId,
+                        title: displayName ?? userName ?? "Диалог",
+                        preview: nil,
+                        avatarURL: nil,
+                        peerUserId: userId,
+                        peerUserName: userName,
+                        unreadCount: 0,
+                        updatedAt: nil
+                    )
+                }
+            }
+            return PMChat(
+                id: 0,
+                title: displayName ?? userName ?? "Диалог",
+                preview: nil,
+                avatarURL: nil,
+                peerUserId: userId,
+                peerUserName: userName,
+                unreadCount: 0,
+                updatedAt: nil
+            )
+        }
+        throw APIError.message("Не удалось открыть переписку. Напишите пользователю с сайта или из списка сообщений.")
+    }
+
     // MARK: - Author profile
 
     func authorProfile(userName: String, displayNameHint: String? = nil) async throws -> AuthorProfile {
@@ -1033,6 +1213,7 @@ actor APIClient {
             ?? Self.firstMatch(#"<h1[^>]*>([^<]+)</h1>"#, in: profileHTML)
             ?? displayNameHint
             ?? user
+        let profileUserId = Self.extractProfileUserId(from: profileHTML)
         let avatar = Self.extractAuthorAvatar(from: profileHTML, userName: user)
         let about = Self.firstMatch(#"class="[^"]*about[^"]*"[^>]*>([\s\S]*?)</div>"#, in: profileHTML)
             .map { HTMLText.plain(from: $0) }
@@ -1083,11 +1264,29 @@ actor APIClient {
         return AuthorProfile(
             userName: user,
             displayName: HTMLText.plain(from: displayName),
+            userId: profileUserId,
             avatarURL: avatar,
             about: about,
             works: metas,
             series: series
         )
+    }
+
+    private static func extractProfileUserId(from html: String) -> Int? {
+        let patterns = [
+            #"data-user-id=["'](\d+)["']"#,
+            #"data-userid=["'](\d+)["']"#,
+            #"data-id=["'](\d+)["'][^>]*data-action=["'][^\"']*message"#,
+            #"/pm/[^\"']*[?&]userId=(\d+)"#,
+            #"userId["']?\s*[:=]\s*(\d+)"#,
+            #"href=["']/pm/conversation/(\d+)["']"#,
+            #"/subscription/[^\"']*userId=(\d+)"#,
+            #"cm\.author\.today/[^\"']*?/(\d{3,})/"#
+        ]
+        for pattern in patterns {
+            if let s = firstMatch(pattern, in: html), let id = Int(s), id > 0 { return id }
+        }
+        return nil
     }
 
     private static func extractAuthorAvatar(from html: String, userName: String) -> String? {
@@ -1173,6 +1372,23 @@ actor APIClient {
         verificationToken: String,
         refererPath: String
     ) async throws {
+        _ = try await webJSONPostResult(
+            path: path,
+            body: body,
+            verificationToken: verificationToken,
+            refererPath: refererPath,
+            requireSuccess: true
+        )
+    }
+
+    @discardableResult
+    private func webJSONPostResult(
+        path: String,
+        body: [String: Any],
+        verificationToken: String,
+        refererPath: String,
+        requireSuccess: Bool
+    ) async throws -> [String: Any] {
         let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
@@ -1180,26 +1396,283 @@ actor APIClient {
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-        request.setValue(verificationToken, forHTTPHeaderField: "RequestVerificationToken")
+        if !verificationToken.isEmpty {
+            request.setValue(verificationToken, forHTTPHeaderField: "RequestVerificationToken")
+        }
         request.setValue("https://author.today", forHTTPHeaderField: "Origin")
         request.setValue(base + refererPath, forHTTPHeaderField: "Referer")
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
             forHTTPHeaderField: "User-Agent"
         )
-        // Site AjaxUtils uses cookies (LoginCookie + CSRFToken), not Bearer.
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
+        if data.isEmpty { return [:] }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             let snippet = String(data: data, encoding: .utf8)?.prefix(160) ?? ""
-            throw APIError.message("Сервер вернул неожиданный ответ при отправке комментария\(snippet.isEmpty ? "" : ": \(snippet)")")
+            throw APIError.message("Сервер вернул неожиданный ответ\(snippet.isEmpty ? "" : ": \(snippet)")")
         }
-        let ok = obj["isSuccessful"] as? Bool
-        guard ok == true else {
-            throw APIError.message(Self.messageFromAPIResult(obj) ?? "Не удалось отправить комментарий")
+        if requireSuccess {
+            let ok = obj["isSuccessful"] as? Bool
+            guard ok != false else {
+                throw APIError.message(Self.messageFromAPIResult(obj) ?? "Не удалось выполнить запрос")
+            }
+            // Some endpoints omit isSuccessful but still succeed.
+            if ok == nil, let err = Self.messageFromAPIResult(obj),
+               (obj["data"] == nil && obj["chatId"] == nil) {
+                throw APIError.message(err)
+            }
         }
+        return obj
+    }
+
+    private static func intValue(_ any: Any?) -> Int? {
+        if let i = any as? Int { return i }
+        if let n = any as? NSNumber { return n.intValue }
+        if let s = any as? String { return Int(s) }
+        return nil
+    }
+
+    private static func stringValue(_ any: Any?) -> String? {
+        if let s = any as? String { return s }
+        if let i = any as? Int { return String(i) }
+        return nil
+    }
+
+    private static func pmHTML(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return String(data: data, encoding: .utf8)
+        }
+        if let dataObj = obj["data"] as? [String: Any], let html = dataObj["html"] as? String {
+            return html
+        }
+        if let html = obj["html"] as? String { return html }
+        if let dataObj = obj["data"] as? String, dataObj.contains("<") { return dataObj }
+        return nil
+    }
+
+    private static func pmChatId(from data: Data) -> Int? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let id = intValue(obj["chatId"]) ?? intValue(obj["id"]) { return id }
+        if let dataObj = obj["data"] as? [String: Any] {
+            return intValue(dataObj["chatId"]) ?? intValue(dataObj["id"])
+        }
+        return nil
+    }
+
+    private static func parsePMChats(from data: Data) -> [PMChat]? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        var arrays: [[Any]] = []
+        if let arr = root as? [Any] { arrays.append(arr) }
+        if let obj = root as? [String: Any] {
+            if let arr = obj["data"] as? [Any] { arrays.append(arr) }
+            if let dataObj = obj["data"] as? [String: Any] {
+                for key in ["chats", "items", "list", "recentChats"] {
+                    if let arr = dataObj[key] as? [Any] { arrays.append(arr) }
+                }
+            }
+            for key in ["chats", "items", "list"] {
+                if let arr = obj[key] as? [Any] { arrays.append(arr) }
+            }
+            if let html = pmHTML(from: data) {
+                let parsed = parsePMChatsHTML(html)
+                if !parsed.isEmpty { return parsed }
+            }
+        }
+        for arr in arrays {
+            let chats = arr.compactMap { parsePMChatItem($0) }
+            if !chats.isEmpty { return chats }
+        }
+        return nil
+    }
+
+    private static func parsePMChatItem(_ any: Any) -> PMChat? {
+        guard let obj = any as? [String: Any] else { return nil }
+        let id = intValue(obj["id"])
+            ?? intValue(obj["chatId"])
+            ?? intValue(obj["ChatId"])
+        guard let id else { return nil }
+        let peer = obj["user"] as? [String: Any]
+            ?? obj["companion"] as? [String: Any]
+            ?? obj["interlocutor"] as? [String: Any]
+            ?? obj["participant"] as? [String: Any]
+        let title = stringValue(obj["title"])
+            ?? stringValue(obj["name"])
+            ?? stringValue(obj["fio"])
+            ?? stringValue(peer?["fio"])
+            ?? stringValue(peer?["userName"])
+            ?? stringValue(peer?["username"])
+            ?? "Диалог"
+        let preview = stringValue(obj["lastMessage"])
+            ?? stringValue(obj["preview"])
+            ?? stringValue(obj["text"])
+            ?? stringValue((obj["lastMessage"] as? [String: Any])?["text"])
+        let avatar = stringValue(obj["avatarUrl"])
+            ?? stringValue(obj["avatar"])
+            ?? stringValue(peer?["avatarUrl"])
+            ?? stringValue(peer?["avatar"])
+        let peerId = intValue(obj["userId"])
+            ?? intValue(obj["companionId"])
+            ?? intValue(peer?["id"])
+            ?? intValue(peer?["userId"])
+        let peerName = stringValue(obj["userName"])
+            ?? stringValue(obj["username"])
+            ?? stringValue(peer?["userName"])
+            ?? stringValue(peer?["username"])
+        let unread = intValue(obj["unreadCount"])
+            ?? intValue(obj["unread"])
+            ?? intValue(obj["newMessagesCount"])
+            ?? 0
+        let updated = stringValue(obj["updatedAt"])
+            ?? stringValue(obj["lastMessageDate"])
+            ?? stringValue(obj["date"])
+        return PMChat(
+            id: id,
+            title: title,
+            preview: preview.map { HTMLText.plain(from: $0) },
+            avatarURL: avatar.map(MediaURL.normalize),
+            peerUserId: peerId,
+            peerUserName: peerName,
+            unreadCount: unread,
+            updatedAt: updated
+        )
+    }
+
+    private static func parsePMChatsHTML(_ html: String) -> [PMChat] {
+        var result: [PMChat] = []
+        var seen = Set<Int>()
+        // Typical row: href="/pm/messages?id=123" or data-chat-id
+        let patterns = [
+            #"(?is)<a[^>]+href=["']/pm/(?:messages\?id=|conversation/)(\d+)["'][^>]*>([\s\S]*?)</a>"#,
+            #"(?is)data-chat-id=["'](\d+)["']([\s\S]{0,400})"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            for match in regex.matches(in: html, range: range) {
+                guard match.numberOfRanges > 1,
+                      let idRange = Range(match.range(at: 1), in: html),
+                      let id = Int(html[idRange]),
+                      seen.insert(id).inserted else { continue }
+                let chunk: String
+                if match.numberOfRanges > 2, let c = Range(match.range(at: 2), in: html) {
+                    chunk = String(html[c])
+                } else {
+                    chunk = ""
+                }
+                let title = HTMLText.plain(from: chunk)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let preview = firstMatch(#"class=["'][^\"']*preview[^\"']*["'][^>]*>([\s\S]*?)<"#, in: chunk)
+                    .map { HTMLText.plain(from: $0) }
+                result.append(
+                    PMChat(
+                        id: id,
+                        title: title.isEmpty ? "Диалог #\(id)" : String(title.prefix(80)),
+                        preview: preview,
+                        avatarURL: firstMatch(#"src=["'](https://[^\"']+)["']"#, in: chunk).map(decodeHTMLEntities),
+                        peerUserId: nil,
+                        peerUserName: firstMatch(#"/u/([^\"/]+)"#, in: chunk),
+                        unreadCount: chunk.localizedCaseInsensitiveContains("unread") ? 1 : 0,
+                        updatedAt: nil
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    private static func parsePMMessages(from data: Data, myUserId: Int?) -> [PMMessage]? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        var arrays: [[Any]] = []
+        if let arr = root as? [Any] { arrays.append(arr) }
+        if let obj = root as? [String: Any] {
+            if let arr = obj["data"] as? [Any] { arrays.append(arr) }
+            if let dataObj = obj["data"] as? [String: Any] {
+                for key in ["messages", "items", "list"] {
+                    if let arr = dataObj[key] as? [Any] { arrays.append(arr) }
+                }
+            }
+            for key in ["messages", "items", "list"] {
+                if let arr = obj[key] as? [Any] { arrays.append(arr) }
+            }
+        }
+        for arr in arrays {
+            let messages = arr.enumerated().compactMap { idx, item in
+                parsePMMessageItem(item, fallbackId: idx, myUserId: myUserId)
+            }
+            if !messages.isEmpty { return messages }
+        }
+        return nil
+    }
+
+    private static func parsePMMessageItem(_ any: Any, fallbackId: Int, myUserId: Int?) -> PMMessage? {
+        guard let obj = any as? [String: Any] else { return nil }
+        let id = intValue(obj["id"]) ?? fallbackId
+        let textRaw = stringValue(obj["text"])
+            ?? stringValue(obj["message"])
+            ?? stringValue(obj["body"])
+            ?? ""
+        let text = HTMLText.plain(from: textRaw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let senderId = intValue(obj["userId"])
+            ?? intValue(obj["senderId"])
+            ?? intValue((obj["user"] as? [String: Any])?["id"])
+        let isMineFlag = obj["isMine"] as? Bool
+            ?? obj["isOwn"] as? Bool
+            ?? obj["own"] as? Bool
+        let isMine: Bool
+        if let isMineFlag {
+            isMine = isMineFlag
+        } else if let senderId, let myUserId, myUserId > 0 {
+            isMine = senderId == myUserId
+        } else {
+            isMine = (obj["direction"] as? String)?.lowercased() == "out"
+                || (obj["type"] as? String)?.lowercased() == "out"
+        }
+        let senderName = stringValue(obj["fio"])
+            ?? stringValue(obj["userName"])
+            ?? stringValue((obj["user"] as? [String: Any])?["fio"])
+            ?? stringValue((obj["user"] as? [String: Any])?["userName"])
+        let created = stringValue(obj["createdAt"])
+            ?? stringValue(obj["date"])
+            ?? stringValue(obj["sentAt"])
+        return PMMessage(
+            id: id,
+            text: text,
+            isMine: isMine,
+            senderName: senderName,
+            createdAt: created
+        )
+    }
+
+    private static func parsePMMessagesHTML(_ html: String, myUserId: Int?) -> [PMMessage] {
+        _ = myUserId
+        var result: [PMMessage] = []
+        let pattern = #"(?is)<(?:div|li)[^>]*(?:pm-message|message-item|chat-message)[^>]*>([\s\S]*?)</(?:div|li)>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        for (idx, match) in regex.matches(in: html, range: range).enumerated() {
+            guard let r = Range(match.range(at: 1), in: html) else { continue }
+            let chunk = String(html[r])
+            let text = HTMLText.plain(from: chunk).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.count >= 1 else { continue }
+            let isMine = chunk.localizedCaseInsensitiveContains("own")
+                || chunk.localizedCaseInsensitiveContains("mine")
+                || chunk.localizedCaseInsensitiveContains("outgoing")
+                || chunk.localizedCaseInsensitiveContains("message-out")
+            result.append(
+                PMMessage(
+                    id: idx + 1,
+                    text: text,
+                    isMine: isMine,
+                    senderName: nil,
+                    createdAt: firstMatch(#"datetime=["']([^\"']+)["']"#, in: chunk)
+                )
+            )
+        }
+        return result
     }
 
     private static func messageFromAPIResult(_ obj: [String: Any]) -> String? {
@@ -1407,10 +1880,13 @@ actor APIClient {
     private func applyHeaders(_ request: inout URLRequest, authed: Bool) {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Version high enough that login-by-password accepts 2FA / device email codes
+        // (older UAs get VersionIsUnsupported when confirmation is enabled on the account).
         request.setValue(
-            "AuthorToday/ios_1.0 (iPhone15,3; iOS 17) AuthorTodayReader",
+            "AuthorToday/ios_7.2.0 (iPhone15,3; iOS 17.0) AuthorTodayReader",
             forHTTPHeaderField: "User-Agent"
         )
+        request.setValue("7.2.0", forHTTPHeaderField: "App-Version")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         _ = authed
     }
@@ -1420,9 +1896,49 @@ actor APIClient {
         if (200..<300).contains(http.statusCode) { return }
         let body = try? decoder.decode(APIErrorBody.self, from: data)
         let message = body?.message
+        let apiCode = body?.code ?? ""
+
         if http.statusCode == 401 {
             throw APIError.unauthorized(message)
         }
+
+        switch apiCode {
+        case "CodeNotValid":
+            throw APIError.twoFactorInvalid(message)
+        case "VersionIsUnsupported":
+            throw APIError.twoFactorVersionUnsupported(message)
+        case "SecretKeyNotFound":
+            throw APIError.twoFactorRequired(
+                message: message ?? "Нужен ключ устройства. Повторите вход.",
+                secretKey: body?.secretKey
+            )
+        case "TwoFactorRequired",
+             "TwoFactorCodeRequired",
+             "ConfirmationRequired",
+             "DeviceConfirmationRequired",
+             "CodeRequired",
+             "NeedTwoFactorCode":
+            throw APIError.twoFactorRequired(message: message, secretKey: body?.secretKey)
+        default:
+            break
+        }
+
+        // Heuristic: Russian message about confirmation / 2FA code.
+        let lower = (message ?? "").lowercased()
+        if lower.contains("код подтверждения")
+            || lower.contains("двухфактор")
+            || lower.contains("введите код")
+            || lower.contains("код из письма")
+            || lower.contains("новое устройство")
+            || lower.contains("подтвердите вход") {
+            throw APIError.twoFactorRequired(message: message, secretKey: body?.secretKey)
+        }
+
+        // InvalidFields may mention code.
+        if let fields = body?.invalidFields, fields.keys.contains(where: { $0.lowercased().contains("code") }) {
+            throw APIError.twoFactorRequired(message: message, secretKey: body?.secretKey)
+        }
+
         throw APIError.http(http.statusCode, message)
     }
 

@@ -70,8 +70,7 @@ struct ReaderView: View {
             if showChrome || error != nil {
                 VStack(spacing: 0) {
                     topBar
-                        .padding(.top, 4)
-                    Spacer()
+                    Spacer(minLength: 0)
                     if error == nil {
                         bottomBar
                     }
@@ -81,7 +80,13 @@ struct ReaderView: View {
             }
         }
         .navigationBarHidden(true)
+        // Show status bar with chrome; force scheme so time/battery stay readable.
         .statusBarHidden(!showChrome && error == nil)
+        .preferredColorScheme(
+            (showChrome || error != nil)
+                ? (chromePrefersDark ? .dark : .light)
+                : nil
+        )
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(edges: (showChrome || error != nil) ? [] : .all)
@@ -200,12 +205,18 @@ struct ReaderView: View {
     }
 
     private func handleScroll(offsetY: Double, fraction: Double, charOffset: Int) {
+        // UITextView reports y=0 while content is loading / reflowing. Never persist that
+        // while a restore is pending — it would wipe a good checkpoint on disk.
+        if pendingRestore {
+            if fraction <= 0.01 {
+                return
+            }
+            pendingRestore = false
+        }
+
         scrollOffset = offsetY
         scrollFraction = fraction
         self.charOffset = charOffset
-        if pendingRestore, fraction > 0.005 {
-            pendingRestore = false
-        }
         considerLibraryAdd(chapterProgress: fraction)
         if let chapter = currentChapter {
             session.saveCheckpoint(
@@ -300,8 +311,27 @@ struct ReaderView: View {
         }
     }
 
+    /// Dark chrome → light status-bar icons; light chrome → dark icons.
+    private var chromePrefersDark: Bool {
+        if let scheme = settings.appColorScheme { return scheme == .dark }
+        // Custom / image themes: light reader text usually means a dark page.
+        let ui = UIColor(settings.textColor)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return luminance > 0.55
+    }
+
+    private var chromeForeground: Color {
+        chromePrefersDark ? .white : .primary
+    }
+
+    private var chromeSecondary: Color {
+        chromePrefersDark ? .white.opacity(0.7) : .secondary
+    }
+
     private var topBar: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button {
                 persistProgress()
                 session.endReading()
@@ -309,63 +339,140 @@ struct ReaderView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.body.weight(.semibold))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.borderless)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(details?.displayTitle ?? "Чтение")
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Text(chapterTitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(chromeSecondary)
                     .lineLimit(1)
             }
-            Spacer()
+
+            Spacer(minLength: 8)
+
             Button { showTOC = true } label: {
                 Image(systemName: "list.bullet")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.borderless)
+
             Button { showSettings = true } label: {
                 Image(systemName: "textformat.size")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.borderless)
         }
-        .foregroundStyle(settings.textColor)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial.opacity(0.92))
+        .foregroundStyle(chromeForeground)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background {
+            ZStack {
+                (chromePrefersDark ? Color.black : Color.white)
+                    .opacity(0.94)
+                Rectangle().fill(.ultraThinMaterial)
+            }
+            .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var bottomBar: some View {
-        HStack {
-            Button {
-                if let prev = nearestReadableIndex(from: chapterIndex, direction: -1) {
-                    Task { await openChapter(at: prev) }
+        let paged = settings.pageTurnMode != .verticalScroll
+        let canPrevChapter = nearestReadableIndex(from: chapterIndex, direction: -1) != nil
+        let canNextChapter = nearestReadableIndex(from: chapterIndex, direction: 1) != nil
+        let canPrevPage = paged && pageIndex > 0
+        let canNextPage = paged && pageIndex + 1 < pageCountForChapter
+        let canGoBack = paged ? (canPrevPage || canPrevChapter) : canPrevChapter
+        let canGoForward = paged ? (canNextPage || canNextChapter) : canNextChapter
+
+        return VStack(spacing: 10) {
+            Text(bottomProgressLabel(paged: paged))
+                .font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(chromeSecondary)
+
+            HStack(spacing: 12) {
+                Button {
+                    navigateReader(direction: -1, paged: paged)
+                } label: {
+                    Label(
+                        paged ? "Назад" : "Пред. глава",
+                        systemImage: "chevron.left"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .contentShape(Rectangle())
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(chromeForeground.opacity(chromePrefersDark ? 0.14 : 0.08))
+                    )
                 }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .frame(width: 44, height: 44)
-            }
-            .disabled(nearestReadableIndex(from: chapterIndex, direction: -1) == nil)
+                .buttonStyle(.borderless)
+                .disabled(!canGoBack)
+                .opacity(canGoBack ? 1 : 0.35)
 
-            Spacer()
-
-            Text("\(chapterIndex + 1) / \(max(chapters.count, 1))")
-                .font(.caption.monospacedDigit())
-
-            Spacer()
-
-            Button {
-                if let next = nearestReadableIndex(from: chapterIndex, direction: 1) {
-                    Task { await openChapter(at: next) }
+                Button {
+                    navigateReader(direction: 1, paged: paged)
+                } label: {
+                    Label(
+                        paged ? "Вперёд" : "След. глава",
+                        systemImage: "chevron.right"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .contentShape(Rectangle())
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(chromeForeground.opacity(chromePrefersDark ? 0.14 : 0.08))
+                    )
                 }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .frame(width: 44, height: 44)
+                .buttonStyle(.borderless)
+                .disabled(!canGoForward)
+                .opacity(canGoForward ? 1 : 0.35)
             }
-            .disabled(nearestReadableIndex(from: chapterIndex, direction: 1) == nil)
         }
-        .foregroundStyle(settings.textColor)
-        .padding(.horizontal, 12)
-        .background(.ultraThinMaterial.opacity(0.92))
+        .foregroundStyle(chromeForeground)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .background {
+            ZStack {
+                (chromePrefersDark ? Color.black : Color.white)
+                    .opacity(0.94)
+                Rectangle().fill(.ultraThinMaterial)
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func bottomProgressLabel(paged: Bool) -> String {
+        let chapterPart = "Глава \(chapterIndex + 1)/\(max(chapters.count, 1))"
+        if paged {
+            return "\(chapterPart)  ·  стр. \(pageIndex + 1)/\(max(pageCountForChapter, 1))"
+        }
+        let pct = Int((scrollFraction * 100).rounded())
+        return "\(chapterPart)  ·  \(pct)%"
+    }
+
+    private func navigateReader(direction: Int, paged: Bool) {
+        if paged {
+            turnPage(by: direction, pageCount: pageCountForChapter)
+            return
+        }
+        if let idx = nearestReadableIndex(from: chapterIndex, direction: direction) {
+            Task { await openChapter(at: idx) }
+        }
     }
 
     private func tocRow(idx: Int, chapter: ChapterMeta) -> some View {
@@ -651,7 +758,8 @@ struct ReaderView: View {
             workId: workId,
             chapterId: chapter.id,
             offsetY: offset,
-            pageIndex: page
+            pageIndex: page,
+            fraction: fraction
         )
         session.updateActiveChapter(chapter.id)
     }
@@ -678,7 +786,10 @@ struct ReaderView: View {
             )
         }
         if let p = offline.progress(for: workId), p.chapterId == chapterId {
-            let fraction = p.offsetY > 8 ? min(p.offsetY / 4000.0, 0.95) : 0
+            var fraction = p.fraction
+            if fraction < 0.005, p.offsetY > 8 {
+                fraction = min(p.offsetY / 4000.0, 0.95)
+            }
             return ChapterPosition(
                 chapterId: p.chapterId,
                 offsetY: p.offsetY,
@@ -735,7 +846,8 @@ struct ReaderView: View {
                             workId: workId,
                             chapterId: chapter.id,
                             offsetY: scrollOffset,
-                            pageIndex: pageIndex
+                            pageIndex: pageIndex,
+                            fraction: scrollFraction
                         )
                     }
                 }
