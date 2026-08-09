@@ -58,7 +58,7 @@ struct ReaderTextScrollView: UIViewRepresentable {
             // resets offset to 0 and would otherwise wipe saved progress via scroll callbacks.
             let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
             let preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
-            let preservedChar = context.coordinator.approximateCharOffset(in: tv)
+            let preservedChar = context.coordinator.approximateCharOffset(in: tv) ?? 0
             context.coordinator.isProgrammaticScroll = true
             applyContent(to: tv)
             context.coordinator.isProgrammaticScroll = false
@@ -77,7 +77,7 @@ struct ReaderTextScrollView: UIViewRepresentable {
             // Chrome show/hide changes insets and maxY — keep the same reading place.
             let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
             let preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
-            let preservedChar = context.coordinator.approximateCharOffset(in: tv)
+            let preservedChar = context.coordinator.approximateCharOffset(in: tv) ?? 0
             tv.textContainerInset = contentInset
             context.coordinator.lastInset = contentInset
             let targetFraction = max(preservedFraction, restoreFraction > 0.005 ? restoreFraction : 0)
