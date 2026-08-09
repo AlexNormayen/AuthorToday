@@ -476,7 +476,7 @@ struct RecentReadsView: View {
                     ContentUnavailableView(
                         "Пока пусто",
                         systemImage: "clock",
-                        description: Text("Здесь появятся книги после того, как вы начнёте чтение. Сортировка — по дате последнего открытия.")
+                        description: Text("Здесь появятся книги после чтения в приложении. Сортировка — по дате последнего открытия в читалке.")
                     )
                 } else {
                     ScrollView {
@@ -487,7 +487,7 @@ struct RecentReadsView: View {
                                 } label: {
                                     VStack(alignment: .leading, spacing: 0) {
                                         LibraryRow(work: work)
-                                        if let date = work.lastReadAt ?? (work.progress > 0 || work.lastReadChapterId != nil ? work.updatedAt : nil) {
+                                        if let date = work.lastReadAt {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
                                                 .foregroundStyle(.tertiary)

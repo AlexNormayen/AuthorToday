@@ -40,6 +40,7 @@ final class OfflineStore: ObservableObject {
         modelContext = context
         purgeBadChapterCacheIfNeeded()
         backfillLastReadAtIfNeeded()
+        repairLastReadAtFromLocalProgressIfNeeded()
         normalizeStoredProgressIfNeeded()
         reloadLibrary()
     }
@@ -58,6 +59,26 @@ final class OfflineStore: ObservableObject {
             } else if work.lastReadChapterId != nil || work.progress > 0.001 {
                 // Site sync already had reading markers without a local timestamp.
                 work.lastReadAt = work.updatedAt
+            }
+        }
+        try? modelContext.save()
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
+    /// Older builds set lastReadAt from work lastUpdateTime / library sync time — not user reading.
+    /// Re-anchor to local ReadingProgress and drop invented timestamps.
+    private func repairLastReadAtFromLocalProgressIfNeeded() {
+        let key = "at.lastReadAtRepair.v3"
+        guard !UserDefaults.standard.bool(forKey: key), let modelContext else { return }
+        let works = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
+        let progressRows = (try? modelContext.fetch(FetchDescriptor<ReadingProgress>())) ?? []
+        let byWork = Dictionary(uniqueKeysWithValues: progressRows.map { ($0.workId, $0) })
+        for work in works {
+            if let p = byWork[work.workId] {
+                work.lastReadAt = p.updatedAt
+                work.lastReadChapterId = work.lastReadChapterId ?? p.chapterId
+            } else {
+                work.lastReadAt = nil
             }
         }
         try? modelContext.save()
@@ -109,20 +130,17 @@ final class OfflineStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Books opened recently (in app or with reading progress from site), newest first.
+    /// Books opened in the app recently, newest first.
+    /// Sorted only by lastReadAt (set when the reader saves progress) — never by library sync time.
     var recentlyRead: [CachedWork] {
         guard let modelContext else { return [] }
         let descriptor = FetchDescriptor<CachedWork>()
         let all = (try? modelContext.fetch(descriptor)) ?? []
         return all
-            .filter { work in
-                work.lastReadAt != nil
-                    || work.lastReadChapterId != nil
-                    || work.progress > 0.001
-            }
+            .filter { $0.lastReadAt != nil }
             .sorted {
-                let lhs = $0.lastReadAt ?? $0.updatedAt
-                let rhs = $1.lastReadAt ?? $1.updatedAt
+                let lhs = $0.lastReadAt ?? .distantPast
+                let rhs = $1.lastReadAt ?? .distantPast
                 return lhs > rhs
             }
     }
@@ -155,8 +173,8 @@ final class OfflineStore: ObservableObject {
             }
         case .recentlyRead:
             return mapped.sorted {
-                let l = $0.works.compactMap(\.lastReadAt).max() ?? $0.works.map(\.updatedAt).max() ?? .distantPast
-                let r = $1.works.compactMap(\.lastReadAt).max() ?? $1.works.map(\.updatedAt).max() ?? .distantPast
+                let l = $0.works.compactMap(\.lastReadAt).max() ?? .distantPast
+                let r = $1.works.compactMap(\.lastReadAt).max() ?? .distantPast
                 if l != r { return l > r }
                 return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
             }
@@ -439,8 +457,7 @@ final class OfflineStore: ObservableObject {
         if markFromSite, (state ?? "").lowercased() == "none" {
             state = "Reading"
         }
-            if let existing {
-            let previousChapter = existing.lastReadChapterId
+        if let existing {
             existing.title = meta.displayTitle
             existing.author = meta.displayAuthor
             if let uname = meta.authorUserName, !uname.isEmpty {
@@ -472,13 +489,8 @@ final class OfflineStore: ObservableObject {
             if let seriesOrder = meta.seriesOrder {
                 existing.seriesOrder = seriesOrder
             }
-            // Bring site reading activity into "Recent"
-            applySiteReadingActivity(
-                to: existing,
-                meta: meta,
-                previousChapterId: previousChapter
-            )
-            existing.updatedAt = .now
+            // Do not touch lastReadAt / updatedAt here — lastUpdateTime is the book's
+            // publication update on the site, not when the user last read.
         } else {
             let work = CachedWork(
                 workId: meta.id,
@@ -496,52 +508,8 @@ final class OfflineStore: ObservableObject {
                 likeCount: meta.likeCount,
                 viewsCount: meta.viewsCount ?? meta.viewCount
             )
-            applySiteReadingActivity(to: work, meta: meta, previousChapterId: nil)
             ctx.insert(work)
         }
-    }
-
-    /// Maps site progress / last-read chapter into lastReadAt so "Недавние" works after web reading.
-    private func applySiteReadingActivity(
-        to work: CachedWork,
-        meta: WorkMeta,
-        previousChapterId: Int?
-    ) {
-        let hasSiteProgress = meta.lastReadChapterId != nil || meta.resolvedProgress > 0.001
-        guard hasSiteProgress else { return }
-
-        let remoteDate = Self.parseAPIDate(meta.lastUpdateTime)
-        let chapterChanged = meta.lastReadChapterId != nil
-            && meta.lastReadChapterId != previousChapterId
-
-        if let remoteDate {
-            if work.lastReadAt == nil || remoteDate > work.lastReadAt! || chapterChanged {
-                work.lastReadAt = max(work.lastReadAt ?? .distantPast, remoteDate)
-            }
-        } else if work.lastReadAt == nil || chapterChanged {
-            // No timestamp from API — still surface the book in Recent.
-            work.lastReadAt = work.lastReadAt ?? .now
-            if chapterChanged {
-                work.lastReadAt = .now
-            }
-        }
-    }
-
-    private static func parseAPIDate(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: raw) { return d }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: raw) { return d }
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(secondsFromGMT: 0)
-        for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy HH:mm"] {
-            df.dateFormat = format
-            if let d = df.date(from: raw) { return d }
-        }
-        return nil
     }
 
     /// Updates chapter list / cover for a book without adding it to the site library shelf.
@@ -660,7 +628,8 @@ final class OfflineStore: ObservableObject {
         chapterId: Int,
         offsetY: Double,
         pageIndex: Int,
-        fraction: Double = 0
+        fraction: Double = 0,
+        bookProgress: Double? = nil
     ) {
         guard let modelContext else { return }
         let clampedFraction = min(max(fraction, 0), 1)
@@ -673,6 +642,14 @@ final class OfflineStore: ObservableObject {
             if isSpuriousZero,
                existing.chapterId == chapterId,
                existing.fraction > 0.05 {
+                return
+            }
+            // Don't let a same-chapter regression overwrite a stronger position
+            // (reflow / chrome flicker can report ~0.3 right after a 1.0 save).
+            if existing.chapterId == chapterId,
+               clampedFraction + 0.02 < existing.fraction,
+               existing.fraction > 0.2,
+               Date().timeIntervalSince(existing.updatedAt) < 3 {
                 return
             }
             existing.chapterId = chapterId
@@ -699,7 +676,24 @@ final class OfflineStore: ObservableObject {
             work.lastReadChapterId = chapterId
             work.lastReadAt = .now
             work.updatedAt = .now
+            if let bookProgress {
+                let clamped = min(max(bookProgress, 0), 1)
+                // Never decrease book % from a transient early-chapter report.
+                work.progress = max(work.progress, clamped)
+            }
         }
+        try? modelContext.save()
+    }
+
+    /// Site / computed book-level progress (0…1) for library %.
+    func updateBookProgress(workId: Int, progress: Double) {
+        guard let modelContext else { return }
+        let clamped = min(max(progress, 0), 1)
+        let workDesc = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        guard let work = try? modelContext.fetch(workDesc).first else { return }
+        work.progress = max(work.progress, clamped)
         try? modelContext.save()
     }
 

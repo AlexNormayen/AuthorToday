@@ -1602,7 +1602,50 @@ actor APIClient {
             let messages = arr.enumerated().compactMap { idx, item in
                 parsePMMessageItem(item, fallbackId: idx, myUserId: myUserId)
             }
-            if !messages.isEmpty { return messages }
+            if !messages.isEmpty {
+                // Site PM API returns newest-first; chat UI expects oldest → newest (bottom).
+                return chronologicalPMMessages(messages)
+            }
+        }
+        return nil
+    }
+
+    /// Oldest first so the latest bubble sits at the bottom of the thread.
+    private static func chronologicalPMMessages(_ messages: [PMMessage]) -> [PMMessage] {
+        guard messages.count > 1 else { return messages }
+        let dated = messages.compactMap { msg -> (PMMessage, Date)? in
+            guard let raw = msg.createdAt, let date = parsePMDate(raw) else { return nil }
+            return (msg, date)
+        }
+        if dated.count == messages.count {
+            return dated.sorted { $0.1 < $1.1 }.map(\.0)
+        }
+        // Message ids usually increase over time; site JSON is often newest-first.
+        if messages.contains(where: { $0.id > 0 }) {
+            return messages.sorted { $0.id < $1.id }
+        }
+        return messages.reversed()
+    }
+
+    private static func parsePMDate(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: trimmed) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: trimmed) { return d }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        for format in [
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "dd.MM.yyyy HH:mm",
+            "dd.MM.yyyy HH:mm:ss",
+            "dd.MM.yy HH:mm"
+        ] {
+            df.dateFormat = format
+            if let d = df.date(from: trimmed) { return d }
         }
         return nil
     }
@@ -1672,7 +1715,7 @@ actor APIClient {
                 )
             )
         }
-        return result
+        return chronologicalPMMessages(result)
     }
 
     private static func messageFromAPIResult(_ obj: [String: Any]) -> String? {

@@ -111,15 +111,24 @@ final class ReadingSessionStore: ObservableObject {
         let clampedFraction = min(max(fraction, 0), 1)
         // Guard against transient UITextView resets (offset 0 right after load/reflow)
         // overwriting a meaningful same-chapter checkpoint.
-        if !allowZeroOverwrite,
-           clampedFraction < 0.01,
-           pageIndex == 0,
-           offsetY < 8,
-           let existing = checkpoints[Self.key(workId)],
-           existing.chapterId == chapterId,
-           existing.fraction > 0.05,
-           Date().timeIntervalSince(existing.updatedAt) < 2 {
-            return
+        if let existing = checkpoints[Self.key(workId)], existing.chapterId == chapterId {
+            // Transient UITextView reset to top right after load/reflow.
+            if !allowZeroOverwrite,
+               clampedFraction < 0.01,
+               pageIndex == 0,
+               offsetY < 8,
+               existing.fraction > 0.05,
+               Date().timeIntervalSince(existing.updatedAt) < 2 {
+                return
+            }
+            // Don't regress a strong in-chapter position within a few seconds
+            // (reflow can briefly report ~30% after the user reached ~100%).
+            if !allowZeroOverwrite,
+               clampedFraction + 0.02 < existing.fraction,
+               existing.fraction > 0.2,
+               Date().timeIntervalSince(existing.updatedAt) < 3 {
+                return
+            }
         }
         let cp = Checkpoint(
             workId: workId,

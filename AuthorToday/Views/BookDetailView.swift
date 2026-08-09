@@ -209,10 +209,9 @@ struct BookDetailView: View {
                     if !offline.isInLibrary(workId) {
                         try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
                     }
-                    startChapterId = ReadingSessionStore.shared.checkpoint(for: workId)?.chapterId
-                        ?? offline.progress(for: workId)?.chapterId
-                        ?? offline.library.first(where: { $0.workId == workId })?.lastReadChapterId
-                        ?? details.availableChapters.first?.id
+                    // Pass nil when we only know "first chapter" — DownloadManager will
+                    // resolve portal lastReadChapterId. Passing chapter 1 blocked resume.
+                    startChapterId = await resolveStartChapterId()
                     openReader = true
                 }
             } label: {
@@ -292,6 +291,29 @@ struct BookDetailView: View {
             || offline.progress(for: workId) != nil
             || offline.library.contains(where: { $0.workId == workId && $0.lastReadChapterId != nil })
         return canContinue ? "Продолжить чтение" : "Читать"
+    }
+
+    /// Nil means "let DownloadManager pick" (portal last-read / local checkpoint).
+    private func resolveStartChapterId() async -> Int? {
+        if let cp = ReadingSessionStore.shared.checkpoint(for: workId), cp.hasInChapterProgress {
+            return cp.chapterId
+        }
+        if let p = offline.progress(for: workId), p.fraction > 0.01 || p.pageIndex > 0 || p.offsetY > 8 {
+            return p.chapterId
+        }
+        if let local = offline.cachedWork(workId: workId)?.lastReadChapterId {
+            return local
+        }
+        if downloads.online, let meta = try? await APIClient.shared.workMeta(id: workId) {
+            if offline.isInLibrary(workId) {
+                offline.upsertWork(from: meta, markFromSite: true)
+            }
+            if let remote = meta.lastReadChapterId {
+                return remote
+            }
+        }
+        // Do not return first chapter — that blocked portal resume inside openAndCache.
+        return nil
     }
 
     private var downloadButtonTitle: String {

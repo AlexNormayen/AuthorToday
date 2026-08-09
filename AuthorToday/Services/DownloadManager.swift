@@ -55,16 +55,15 @@ final class DownloadManager: ObservableObject {
                 store.upsertWork(from: meta, markFromSite: true)
             }
             remoteChapterId = meta.lastReadChapterId
+            // Keep site book-% for library display until local reading updates it.
+            if meta.resolvedProgress > 0 {
+                store.updateBookProgress(workId: workId, progress: meta.resolvedProgress)
+            }
         }
 
-        let preferred = preferredChapterId
-            ?? ReadingSessionStore.shared.checkpoint(for: workId)?.chapterId
-            ?? store.progress(for: workId)?.chapterId
-            ?? remoteChapterId
-            ?? store.cachedWork(workId: workId)?.lastReadChapterId
-
-        let startId = pickStartChapterId(
-            preferred: preferred,
+        let startId = resolveStartChapterId(
+            preferredChapterId: preferredChapterId,
+            remoteChapterId: remoteChapterId,
             chapters: chapters,
             workId: workId,
             store: store,
@@ -79,17 +78,66 @@ final class DownloadManager: ObservableObject {
             store: store
         )
 
+        // Mark reader session on the site, but do NOT call update-progress here —
+        // sending chapter 1 with nil progress was wiping the portal's last-read chapter.
         if isOnline {
             try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
-            try? await APIClient.shared.updateProgress(
-                workId: workId,
-                chapterId: chapterMeta.id,
-                progress: nil,
-                location: nil
-            )
         }
 
         return (details, chapterMeta.id, html, title)
+    }
+
+    /// Explicit UI chapter first; else furthest known position (local + portal).
+    private func resolveStartChapterId(
+        preferredChapterId: Int?,
+        remoteChapterId: Int?,
+        chapters: [ChapterMeta],
+        workId: Int,
+        store: OfflineStore,
+        online: Bool
+    ) -> Int {
+        func usable(_ id: Int?) -> Int? {
+            guard let id, chapters.contains(where: { $0.id == id }) else { return nil }
+            if online || store.isChapterCached(workId: workId, chapterId: id) { return id }
+            return nil
+        }
+
+        // TOC / deep link — always honor.
+        if let id = usable(preferredChapterId) {
+            return id
+        }
+
+        // Pick the furthest chapter among local + portal signals.
+        var bestId: Int?
+        var bestScore = -1.0
+        func consider(_ id: Int?, fraction: Double) {
+            guard let id = usable(id),
+                  let idx = chapters.firstIndex(where: { $0.id == id }) else { return }
+            let score = Double(idx) + min(max(fraction, 0), 0.999)
+            if score > bestScore {
+                bestScore = score
+                bestId = id
+            }
+        }
+
+        if let cp = ReadingSessionStore.shared.checkpoint(for: workId) {
+            consider(cp.chapterId, fraction: cp.fraction)
+        }
+        if let p = store.progress(for: workId) {
+            consider(p.chapterId, fraction: p.fraction)
+        }
+        consider(remoteChapterId, fraction: 0)
+        consider(store.cachedWork(workId: workId)?.lastReadChapterId, fraction: 0)
+
+        if let bestId { return bestId }
+
+        return pickStartChapterId(
+            preferred: remoteChapterId,
+            chapters: chapters,
+            workId: workId,
+            store: store,
+            online: online
+        )
     }
 
     /// Offline: rebuild TOC from chaptersJSON or from already cached chapter rows.

@@ -37,6 +37,7 @@ struct ReaderView: View {
     @State private var restoreGeneration = 0
     @State private var persistScrollTask: Task<Void, Never>?
     @State private var didStartSession = false
+    @State private var chapterContentFits = false
 
     private var currentChapter: ChapterMeta? {
         chapters.indices.contains(chapterIndex) ? chapters[chapterIndex] : nil
@@ -65,6 +66,16 @@ struct ReaderView: View {
                 .padding(24)
             } else {
                 readerContent
+            }
+
+            // End-of-chapter CTA — visible without tapping chrome.
+            if error == nil, !isLoading, !showChrome, showEndOfChapterCTA {
+                VStack {
+                    Spacer(minLength: 0)
+                    endOfChapterBar
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: showEndOfChapterCTA)
             }
 
             if showChrome || error != nil {
@@ -199,6 +210,9 @@ struct ReaderView: View {
             onScroll: { offsetY, fraction, char in
                 handleScroll(offsetY: offsetY, fraction: fraction, charOffset: char)
             },
+            onContentFits: { fits in
+                chapterContentFits = fits
+            },
             onTap: { toggleChrome() }
         )
         .ignoresSafeArea(edges: showChrome ? [] : .bottom)
@@ -216,6 +230,12 @@ struct ReaderView: View {
 
         scrollOffset = offsetY
         scrollFraction = fraction
+        // Keep restoreFraction in sync with live reading so a later text reflow
+        // does not snap back to the position from when the chapter was opened.
+        if fraction > 0.005 {
+            restoreFraction = fraction
+            restoreOffsetY = offsetY
+        }
         self.charOffset = charOffset
         considerLibraryAdd(chapterProgress: fraction)
         if let chapter = currentChapter {
@@ -384,6 +404,58 @@ struct ReaderView: View {
         }
     }
 
+    /// Near the end of the current chapter (scroll or last page).
+    private var isAtChapterEnd: Bool {
+        guard !pendingRestore, !plainText.isEmpty else { return false }
+        if settings.pageTurnMode == .verticalScroll {
+            // Scrolled near bottom, or chapter fits on one screen.
+            return scrollFraction >= 0.90 || chapterContentFits
+        }
+        return pageCountForChapter > 0 && pageIndex + 1 >= pageCountForChapter
+    }
+
+    private var showEndOfChapterCTA: Bool {
+        isAtChapterEnd && nearestReadableIndex(from: chapterIndex, direction: 1) != nil
+    }
+
+    private var endOfChapterBar: some View {
+        Button {
+            if let next = nearestReadableIndex(from: chapterIndex, direction: 1) {
+                Task { await openChapter(at: next) }
+            }
+        } label: {
+            Label("Следующая глава", systemImage: "chevron.right")
+                .font(.subheadline.weight(.semibold))
+                .labelStyle(.titleAndIcon)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 52)
+                .contentShape(Rectangle())
+                .foregroundStyle(settings.textColor)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(settings.textColor.opacity(0.12))
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(settings.solidBackground.opacity(0.92))
+                        )
+                )
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 16)
+        .padding(.top, 8)
+        .background(
+            LinearGradient(
+                colors: [settings.solidBackground.opacity(0), settings.solidBackground.opacity(0.95)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 88)
+            .allowsHitTesting(false),
+            alignment: .bottom
+        )
+    }
+
     private var bottomBar: some View {
         let paged = settings.pageTurnMode != .verticalScroll
         let canPrevChapter = nearestReadableIndex(from: chapterIndex, direction: -1) != nil
@@ -461,8 +533,9 @@ struct ReaderView: View {
         if paged {
             return "\(chapterPart)  ·  стр. \(pageIndex + 1)/\(max(pageCountForChapter, 1))"
         }
+        // Percent inside the current chapter (not whole-book library %).
         let pct = Int((scrollFraction * 100).rounded())
-        return "\(chapterPart)  ·  \(pct)%"
+        return "\(chapterPart)  ·  \(pct)% главы"
     }
 
     private func navigateReader(direction: Int, paged: Bool) {
@@ -579,6 +652,7 @@ struct ReaderView: View {
                 restoreOffsetY = 0
                 restoreFraction = 0
             }
+            chapterContentFits = false
             didAddToLibrary = offline.isInLibrary(workId)
             // Opening a book to read → ensure it appears in the library.
             if !didAddToLibrary, downloads.online {
@@ -620,10 +694,21 @@ struct ReaderView: View {
             scrollOffset = 0
             scrollFraction = 0
             charOffset = 0
+            chapterContentFits = false
             pendingRestore = false
             restoreOffsetY = 0
             restoreFraction = 0
             restorePageIndex = 0
+            // New chapter starts at 0 — allow overwriting previous chapter's checkpoint.
+            session.saveCheckpoint(
+                workId: workId,
+                chapterId: chapter.id,
+                offsetY: 0,
+                fraction: 0,
+                charOffset: 0,
+                pageIndex: 0,
+                allowZeroOverwrite: true
+            )
             persistProgress()
             syncProgressRemote()
             session.updateActiveChapter(chapter.id)
@@ -754,12 +839,19 @@ struct ReaderView: View {
             charOffset: char,
             pageIndex: page
         )
+        let bookProgress: Double? = {
+            guard !chapters.isEmpty else { return nil }
+            // Whole-book %: finished chapters + position inside current one.
+            let value = (Double(chapterIndex) + min(max(fraction, 0), 1)) / Double(chapters.count)
+            return min(max(value, 0), 1)
+        }()
         offline.saveProgress(
             workId: workId,
             chapterId: chapter.id,
             offsetY: offset,
             pageIndex: page,
-            fraction: fraction
+            fraction: fraction,
+            bookProgress: bookProgress
         )
         session.updateActiveChapter(chapter.id)
     }
@@ -803,10 +895,14 @@ struct ReaderView: View {
 
     private func syncProgressRemote() {
         guard downloads.online, let chapter = currentChapter else { return }
-        let progress = chapters.isEmpty ? 0.0 : Double(chapterIndex + 1) / Double(chapters.count)
-        let offset = Int(scrollOffset)
-        let page = pageIndex
-        let fraction = scrollFraction
+        // Book-level progress for the portal (0…1), not "chapter finished" alone.
+        let fraction = max(scrollFraction, restoreFraction)
+        let progress: Double = {
+            guard !chapters.isEmpty else { return 0 }
+            return min(max((Double(chapterIndex) + fraction) / Double(chapters.count), 0), 1)
+        }()
+        let offset = Int(max(scrollOffset, restoreOffsetY))
+        let page = max(pageIndex, restorePageIndex)
         Task {
             try? await APIClient.shared.updateProgress(
                 workId: workId,
