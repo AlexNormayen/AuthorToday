@@ -170,6 +170,7 @@ struct LocalReaderView: View {
                     right: settings.marginHorizontal
                 ),
                 restoreFraction: restoreFraction,
+                restoreCharOffset: charOffset,
                 restoreGeneration: restoreGeneration,
                 onScroll: { offsetY, fraction, char in
                     handleScroll(offsetY: offsetY, fraction: fraction, charOffset: char)
@@ -504,7 +505,9 @@ struct LocalReaderView: View {
 
     private func handleScroll(offsetY: Double, fraction: Double, charOffset: Int) {
         if pendingRestore {
-            if fraction <= 0.01 { return }
+            let target = restoreFraction
+            let closeEnough = target <= 0.01 || fraction + 0.03 >= target
+            if fraction <= 0.01 || !closeEnough { return }
             pendingRestore = false
         }
         scrollOffset = offsetY
@@ -513,7 +516,9 @@ struct LocalReaderView: View {
             restoreFraction = fraction
             restoreOffsetY = offsetY
         }
-        self.charOffset = charOffset
+        if charOffset > 0 {
+            self.charOffset = charOffset
+        }
         schedulePersistScroll()
     }
 

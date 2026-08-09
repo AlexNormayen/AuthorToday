@@ -109,24 +109,27 @@ final class ReadingSessionStore: ObservableObject {
         allowZeroOverwrite: Bool = false
     ) {
         let clampedFraction = min(max(fraction, 0), 1)
-        // Guard against transient UITextView resets (offset 0 right after load/reflow)
-        // overwriting a meaningful same-chapter checkpoint.
-        if let existing = checkpoints[Self.key(workId)], existing.chapterId == chapterId {
-            // Transient UITextView reset to top right after load/reflow.
-            if !allowZeroOverwrite,
-               clampedFraction < 0.01,
-               pageIndex == 0,
-               offsetY < 8,
-               existing.fraction > 0.05,
-               Date().timeIntervalSince(existing.updatedAt) < 2 {
-                return
-            }
-            // Don't regress a strong in-chapter position within a few seconds
-            // (reflow can briefly report ~30% after the user reached ~100%).
-            if !allowZeroOverwrite,
-               clampedFraction + 0.02 < existing.fraction,
-               existing.fraction > 0.2,
-               Date().timeIntervalSince(existing.updatedAt) < 3 {
+        let isSpuriousZero = clampedFraction < 0.01 && pageIndex == 0 && offsetY < 8 && charOffset <= 40
+        if let existing = checkpoints[Self.key(workId)] {
+            // Guard against transient UITextView resets (offset 0 right after load/reflow)
+            // overwriting a meaningful same-chapter checkpoint.
+            if existing.chapterId == chapterId {
+                if !allowZeroOverwrite,
+                   isSpuriousZero,
+                   existing.fraction > 0.05,
+                   Date().timeIntervalSince(existing.updatedAt) < 2 {
+                    return
+                }
+                // Don't regress a strong in-chapter position for a few seconds after a better
+                // save (reflow / early restore can report ~30% after the user reached ~45%+).
+                if !allowZeroOverwrite,
+                   clampedFraction + 0.04 < existing.fraction,
+                   existing.fraction > 0.15,
+                   Date().timeIntervalSince(existing.updatedAt) < 4 {
+                    return
+                }
+            } else if !allowZeroOverwrite, isSpuriousZero, existing.hasInChapterProgress {
+                // Don't jump to another chapter at offset 0 and erase a real resume point.
                 return
             }
         }

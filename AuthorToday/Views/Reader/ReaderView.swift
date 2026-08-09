@@ -209,6 +209,7 @@ struct ReaderView: View {
                 right: settings.marginHorizontal
             ),
             restoreFraction: restoreFraction,
+            restoreCharOffset: charOffset,
             restoreGeneration: restoreGeneration,
             onScroll: { offsetY, fraction, char in
                 handleScroll(offsetY: offsetY, fraction: fraction, charOffset: char)
@@ -222,10 +223,15 @@ struct ReaderView: View {
     }
 
     private func handleScroll(offsetY: Double, fraction: Double, charOffset: Int) {
-        // UITextView reports y=0 while content is loading / reflowing. Never persist that
-        // while a restore is pending — it would wipe a good checkpoint on disk.
+        // While restoring, ignore intermediate layout fractions (e.g. 30% before
+        // content height settles) — otherwise they overwrite a good 45% checkpoint.
         if pendingRestore {
-            if fraction <= 0.01 {
+            let target = restoreFraction
+            let closeEnough = target <= 0.01
+                || fraction + 0.03 >= target
+                || (charOffset > 40 && self.charOffset > 40
+                    && charOffset + max(plainText.count / 40, 80) >= self.charOffset)
+            if fraction <= 0.01 || !closeEnough {
                 return
             }
             pendingRestore = false
@@ -239,7 +245,9 @@ struct ReaderView: View {
             restoreFraction = fraction
             restoreOffsetY = offsetY
         }
-        self.charOffset = charOffset
+        if charOffset > 0 {
+            self.charOffset = charOffset
+        }
         considerLibraryAdd(chapterProgress: fraction)
         if let chapter = currentChapter {
             session.saveCheckpoint(
@@ -247,7 +255,7 @@ struct ReaderView: View {
                 chapterId: chapter.id,
                 offsetY: offsetY,
                 fraction: fraction,
-                charOffset: charOffset,
+                charOffset: charOffset > 0 ? charOffset : self.charOffset,
                 pageIndex: pageIndex
             )
         }
@@ -632,21 +640,26 @@ struct ReaderView: View {
             }
             if let progress = bestCheckpoint(for: result.chapterId) {
                 var frac = progress.fraction
-                if frac < 0.005, progress.charOffset > 40, plainText.count > 0 {
-                    frac = min(Double(progress.charOffset) / Double(plainText.count), 0.95)
+                var chars = progress.charOffset
+                if frac < 0.005, chars > 40, plainText.count > 0 {
+                    frac = min(Double(chars) / Double(plainText.count), 0.95)
                 }
                 if frac < 0.005, progress.offsetY > 8 {
                     frac = min(progress.offsetY / 4000.0, 0.95)
+                }
+                if chars <= 40, frac > 0.01, plainText.count > 0 {
+                    chars = Int((Double(plainText.count) * frac).rounded())
                 }
                 restorePageIndex = progress.pageIndex
                 restoreOffsetY = progress.offsetY
                 restoreFraction = frac
                 scrollOffset = progress.offsetY
                 scrollFraction = frac
-                charOffset = progress.charOffset
+                charOffset = chars
                 pageIndex = progress.pageIndex
-                pendingRestore = frac > 0.01 || progress.pageIndex > 0 || progress.offsetY > 8
-                if settings.pageTurnMode == .verticalScroll, frac > 0.005 {
+                pendingRestore = frac > 0.01 || progress.pageIndex > 0
+                    || progress.offsetY > 8 || chars > 40
+                if settings.pageTurnMode == .verticalScroll, frac > 0.005 || chars > 40 {
                     restoreGeneration += 1
                 }
             } else {
@@ -662,7 +675,8 @@ struct ReaderView: View {
                 considerLibraryAdd(chapterProgress: 1)
             }
             session.beginReading(workId: workId, chapterId: result.chapterId)
-            persistProgress()
+            // Do not persistProgress() here: a wrong start chapter at offset 0 would
+            // overwrite a further last-read position before the user scrolls.
             prefetchNeighborChapters()
         } catch {
             self.error = error.localizedDescription
@@ -712,7 +726,7 @@ struct ReaderView: View {
                 pageIndex: 0,
                 allowZeroOverwrite: true
             )
-            persistProgress()
+            persistProgress(forceChapter: true)
             syncProgressRemote()
             session.updateActiveChapter(chapter.id)
             considerLibraryAdd(chapterProgress: 0.55)
@@ -828,7 +842,7 @@ struct ReaderView: View {
         persistProgress()
     }
 
-    private func persistProgress() {
+    private func persistProgress(forceChapter: Bool = false) {
         guard let chapter = currentChapter else { return }
         let fraction: Double
         let offset: Double
@@ -845,14 +859,17 @@ struct ReaderView: View {
             char = charOffset
             page = pageIndex
         }
-        session.saveCheckpoint(
-            workId: workId,
-            chapterId: chapter.id,
-            offsetY: offset,
-            fraction: fraction,
-            charOffset: char,
-            pageIndex: page
-        )
+        if forceChapter || fraction > 0.01 || page > 0 || offset > 8 || char > 40 {
+            session.saveCheckpoint(
+                workId: workId,
+                chapterId: chapter.id,
+                offsetY: offset,
+                fraction: fraction,
+                charOffset: char,
+                pageIndex: page,
+                allowZeroOverwrite: forceChapter
+            )
+        }
         let bookProgress: Double? = {
             guard !chapters.isEmpty else { return nil }
             // Whole-book %: finished chapters + position inside current one.
@@ -865,7 +882,8 @@ struct ReaderView: View {
             offsetY: offset,
             pageIndex: page,
             fraction: fraction,
-            bookProgress: bookProgress
+            bookProgress: bookProgress,
+            forceChapter: forceChapter
         )
         session.updateActiveChapter(chapter.id)
     }

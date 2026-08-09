@@ -731,27 +731,44 @@ final class OfflineStore: ObservableObject {
         offsetY: Double,
         pageIndex: Int,
         fraction: Double = 0,
-        bookProgress: Double? = nil
+        bookProgress: Double? = nil,
+        forceChapter: Bool = false
     ) {
         guard let modelContext else { return }
         let clampedFraction = min(max(fraction, 0), 1)
+        let isSpuriousZero = clampedFraction < 0.01 && pageIndex == 0 && offsetY < 8
         let descriptor = FetchDescriptor<ReadingProgress>(
             predicate: #Predicate { $0.workId == workId }
         )
+        let workDesc = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        let work = try? modelContext.fetch(workDesc).first
+
+        // Opening the wrong chapter at offset 0 must not erase a further resume point
+        // (e.g. feed → book card → reader briefly landing on chapter 1).
+        if !forceChapter, isSpuriousZero, let bookProgress, let work,
+           bookProgress + 0.03 < work.progress {
+            return
+        }
+
         if let existing = try? modelContext.fetch(descriptor).first {
             // Don't let a transient zero wipe a good in-chapter position.
-            let isSpuriousZero = clampedFraction < 0.01 && pageIndex == 0 && offsetY < 8
             if isSpuriousZero,
                existing.chapterId == chapterId,
                existing.fraction > 0.05 {
                 return
             }
             // Don't let a same-chapter regression overwrite a stronger position
-            // (reflow / chrome flicker can report ~0.3 right after a 1.0 save).
+            // (reflow / early restore can report ~0.3 after a ~0.45+ save).
             if existing.chapterId == chapterId,
-               clampedFraction + 0.02 < existing.fraction,
-               existing.fraction > 0.2,
-               Date().timeIntervalSince(existing.updatedAt) < 3 {
+               clampedFraction + 0.04 < existing.fraction,
+               existing.fraction > 0.15,
+               Date().timeIntervalSince(existing.updatedAt) < 4 {
+                return
+            }
+            if !forceChapter, isSpuriousZero, existing.chapterId != chapterId,
+               existing.fraction > 0.05 || existing.pageIndex > 0 || existing.offsetY > 8 {
                 return
             }
             existing.chapterId = chapterId
@@ -771,10 +788,7 @@ final class OfflineStore: ObservableObject {
             )
         }
 
-        let workDesc = FetchDescriptor<CachedWork>(
-            predicate: #Predicate { $0.workId == workId }
-        )
-        if let work = try? modelContext.fetch(workDesc).first {
+        if let work {
             work.lastReadChapterId = chapterId
             work.lastReadAt = .now
             work.updatedAt = .now
