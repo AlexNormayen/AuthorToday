@@ -36,6 +36,7 @@ struct ReaderView: View {
     @State private var restoreFraction: Double = 0
     @State private var restoreGeneration = 0
     @State private var persistScrollTask: Task<Void, Never>?
+    @State private var remoteSyncTask: Task<Void, Never>?
     @State private var didStartSession = false
     @State private var chapterContentFits = false
 
@@ -147,6 +148,7 @@ struct ReaderView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .inactive || phase == .background {
                 persistScrollTask?.cancel()
+                remoteSyncTask?.cancel()
                 persistProgress()
                 syncProgressRemote()
             }
@@ -154,6 +156,7 @@ struct ReaderView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             persistScrollTask?.cancel()
+            remoteSyncTask?.cancel()
             persistProgress()
             syncProgressRemote()
             // Only clear "was reading" when user navigates away while app is active.
@@ -799,6 +802,17 @@ struct ReaderView: View {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             persistProgress()
+            scheduleRemoteSync()
+        }
+    }
+
+    /// Debounced push of chapter/progress to author.today so portal «Недавние» stays in sync.
+    private func scheduleRemoteSync() {
+        remoteSyncTask?.cancel()
+        remoteSyncTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            syncProgressRemote()
         }
     }
 

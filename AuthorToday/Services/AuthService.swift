@@ -15,6 +15,7 @@ final class AuthService: ObservableObject {
     private let tokenKey = "at.auth.token"
     private let userIdKey = "at.auth.userId"
     private let userNameKey = "at.auth.userName"
+    private let loginEmailKey = "at.auth.loginEmail"
     private let deviceSecretKeyKey = "at.auth.deviceSecretKey"
 
     private var pendingEmail = ""
@@ -76,6 +77,7 @@ final class AuthService: ObservableObject {
                 code: codeToSend,
                 secretKey: secret
             )
+            UserDefaults.standard.set(trimmedEmail, forKey: loginEmailKey)
             await applySuccessfulLogin(response)
             pendingEmail = ""
             pendingPassword = ""
@@ -184,6 +186,11 @@ final class AuthService: ObservableObject {
                 UserDefaults.standard.set(name, forKey: userNameKey)
             }
             UserDefaults.standard.set(profile.id, forKey: userIdKey)
+            let loginEmail = UserDefaults.standard.string(forKey: loginEmailKey)
+            ProEntitlementStore.shared.applyAccount(
+                email: profile.email ?? loginEmail,
+                userName: profile.resolvedUserName
+            )
         } catch {
             if case APIError.unauthorized = error {
                 logout()
@@ -195,6 +202,7 @@ final class AuthService: ObservableObject {
         KeychainStore.delete(tokenKey)
         UserDefaults.standard.removeObject(forKey: userIdKey)
         UserDefaults.standard.removeObject(forKey: userNameKey)
+        UserDefaults.standard.removeObject(forKey: loginEmailKey)
         awaitingTwoFactor = false
         pendingEmail = ""
         pendingPassword = ""
@@ -204,6 +212,7 @@ final class AuthService: ObservableObject {
         }
         user = nil
         isAuthenticated = false
+        ProEntitlementStore.shared.applyAccount(nil)
     }
 }
 

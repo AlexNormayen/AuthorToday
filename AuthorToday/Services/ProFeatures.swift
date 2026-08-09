@@ -1,0 +1,92 @@
+import Foundation
+
+/// Free vs Pro catalog for «Читальня Pro».
+/// Pro sells client convenience — never Author.Today book content.
+enum ProFeatures {
+    /// Fully offline books (all chapters) allowed without Pro.
+    static let freeFullDownloadLimit = 2
+
+    /// Always-Pro accounts (no StoreKit). Matched case-insensitively.
+    /// Add emails and/or Author.Today usernames here.
+    static let complimentaryEmails: Set<String> = [
+        "fowl_348@mail.ru",
+    ]
+
+    static let complimentaryUserNames: Set<String> = [
+        "dark_tarkhan",
+    ]
+
+    /// Owner can open temporary Pro grants admin (sideload).
+    static func isOwnerAccount(email: String?, userName: String?) -> Bool {
+        if let email = normalize(email), complimentaryEmails.contains(email) {
+            return true
+        }
+        if let userName = normalize(userName), complimentaryUserNames.contains(userName) {
+            return true
+        }
+        return false
+    }
+
+    static func isComplimentaryAccount(email: String?, userName: String?) -> Bool {
+        if isOwnerAccount(email: email, userName: userName) {
+            return true
+        }
+        // Runtime grants (UserDefaults) — checked from ProEntitlementStore / ProGrantStore.
+        return false
+    }
+
+    static func normalize(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    static func requiresPro(_ preset: AppThemePreset) -> Bool {
+        preset.isFuturisticFamily || preset.isDaredevilFamily || preset == .custom
+    }
+
+    static func requiresPro(_ mode: PageTurnMode) -> Bool {
+        mode == .curlStyle
+    }
+
+    static func requiresPro(_ theme: ReaderThemePreset) -> Bool {
+        theme == .customColor || theme == .customImage
+    }
+
+    static var freeAppThemePresets: [AppThemePreset] {
+        AppThemePreset.allCases.filter { !requiresPro($0) }
+    }
+
+    /// Temporary invite codes for sideload friends (same in every install until you change & rebuild).
+    static let sideloadInviteCodes: Set<String> = [
+        "CHITALNYA-FRIENDS",
+    ]
+
+    /// Local file shelf (TXT/EPUB) — Pro only.
+    static let localLibraryRequiresPro = true
+
+    /// Temporary SBP payment (sideload). Remove / replace with Apple IAP for App Store.
+    enum ManualPayment {
+        static let phoneDisplay = "+7 906 015-50-40"
+        static let phoneE164 = "+79060155040"
+        static let bank = "Райффайзенбанк"
+        static let transferNote = "Читальня"
+        static let instruction: String = """
+        Оплата временно через СБП на Райффайзенбанк.
+        Телефон: +7 906 015-50-40
+        Тарифы: неделя 149 ₽ · месяц 349 ₽ · год 1 990 ₽.
+        В комментарии к переводу укажите «Читальня», срок и куда выслать код — Max или Telegram (@ник).
+        После оплаты пришлём код активации.
+        """
+    }
+
+    static var paywallBullets: [String] {
+        [
+            "Все темы оформления (неон, фото-фоны и свой цвет)",
+            "Скачивание книг целиком без лимита (\(freeFullDownloadLimit) книги бесплатно)",
+            "«Мои книги»: свои TXT и EPUB на устройстве",
+            "Режим «Перелистывание» как у бумажной книги",
+            "Свой цвет и картинка фона в читалке"
+        ]
+    }
+}

@@ -1,0 +1,119 @@
+{
+  "identifier" : "ChitalnyaPro",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2490",
+      "familyShareable" : false,
+      "internalID" : "LIFETIME001",
+      "localizations" : [
+        {
+          "description" : "Все Pro-удобства клиента навсегда. Не относится к книгам Author.Today.",
+          "displayName" : "Читальня Pro навсегда",
+          "locale" : "ru_RU"
+        },
+        {
+          "description" : "Lifetime client features forever. Not for Author.Today books.",
+          "displayName" : "Chitalnya Pro Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ru.chitalnya.reader.pro.lifetime",
+      "referenceName" : "Pro Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "CHITALNYAPRO",
+      "localizations" : [
+        {
+          "description" : "Удобства клиента Читальня",
+          "displayName" : "Читальня Pro",
+          "locale" : "ru_RU"
+        }
+      ],
+      "name" : "Chitalnya Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "199",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "MONTHLY001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Темы, офлайн без лимита, режимы читалки. Книги — на author.today.",
+              "displayName" : "Pro на месяц",
+              "locale" : "ru_RU"
+            },
+            {
+              "description" : "Themes, unlimited offline, reader modes.",
+              "displayName" : "Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ru.chitalnya.reader.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "CHITALNYAPRO",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1190",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "YEARLY001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Год Pro со скидкой. Не даёт скидок на книги Author.Today.",
+              "displayName" : "Pro на год",
+              "locale" : "ru_RU"
+            },
+            {
+              "description" : "Year of Pro at a discount.",
+              "displayName" : "Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ru.chitalnya.reader.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro Yearly",
+          "subscriptionGroupID" : "CHITALNYAPRO",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

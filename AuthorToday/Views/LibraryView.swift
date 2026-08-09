@@ -232,7 +232,8 @@ struct LibraryView: View {
         case .name, .bookCount:
             return count
         case .recentlyRead:
-            if let date = group.works.compactMap(\.lastReadAt).max() {
+            let date = group.works.map { offline.effectiveLastReadAt($0) }.max() ?? .distantPast
+            if date > .distantPast {
                 let f = RelativeDateTimeFormatter()
                 f.locale = Locale(identifier: "ru_RU")
                 f.unitsStyle = .short
@@ -463,7 +464,7 @@ struct AuthorSeriesBooksView: View {
     }
 }
 
-/// Tab: books sorted by last open/read time in the app.
+/// Tab: books sorted by last read time (app + portal).
 struct RecentReadsView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var appearance: AppAppearanceStore
@@ -476,7 +477,7 @@ struct RecentReadsView: View {
                     ContentUnavailableView(
                         "Пока пусто",
                         systemImage: "clock",
-                        description: Text("Здесь появятся книги после чтения в приложении. Сортировка — по дате последнего открытия в читалке.")
+                        description: Text("Здесь появятся книги после чтения в приложении или на сайте. Потяните вниз, чтобы обновить порядок с портала.")
                     )
                 } else {
                     ScrollView {
@@ -487,7 +488,8 @@ struct RecentReadsView: View {
                                 } label: {
                                     VStack(alignment: .leading, spacing: 0) {
                                         LibraryRow(work: work)
-                                        if let date = work.lastReadAt {
+                                        let date = offline.effectiveLastReadAt(work)
+                                        if date > .distantPast {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
                                                 .foregroundStyle(.tertiary)
@@ -508,6 +510,9 @@ struct RecentReadsView: View {
             }
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
+            }
+            .refreshable {
+                await offline.syncLibrary(force: true)
             }
             .navigationTitle("Недавние")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

@@ -208,6 +208,13 @@ actor APIClient {
         throw lastError ?? APIError.message("Повтор запроса не удался")
     }
 
+    /// Ordered work IDs from the profile shelf sorted by last read (`sorting=lr`).
+    /// Index 0 = most recently read on the portal.
+    func libraryLastReadIDs(username: String, maxPages: Int = 5) async throws -> [Int] {
+        let scraped = try await scrapeProfileLibrary(username: username, maxPages: maxPages)
+        return scraped.map(\.id)
+    }
+
     /// Public (or cookie-authenticated) profile library pages, e.g. /u/dark_tarkhan/library
     /// - Parameter enrichMissingOnly: if true, skip meta-info for IDs already known (avoids 429).
     func libraryFromProfile(
@@ -216,34 +223,7 @@ actor APIClient {
         enrichMissingOnly: Bool = false,
         knownIDs: Set<Int> = []
     ) async throws -> [WorkMeta] {
-        let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !user.isEmpty else { return [] }
-        try? await establishWebSession()
-
-        var scraped: [ScrapedShelfItem] = []
-        var seen = Set<Int>()
-        for page in 1...maxPages {
-            let encoded = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
-            let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard let url = URL(string: "\(base)/u/\(encoded)/library?sorting=lr&page=\(page)") else { continue }
-            var request = URLRequest(url: url)
-            request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-            request.setValue(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                forHTTPHeaderField: "User-Agent"
-            )
-            if token != "guest" {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-            let (data, response) = try await session.data(for: request)
-            try validate(response: response, data: data)
-            guard let html = String(data: data, encoding: .utf8) else { break }
-            let pageItems = extractShelfItems(from: html)
-            let fresh = pageItems.filter { seen.insert($0.id).inserted }
-            if fresh.isEmpty { break }
-            scraped.append(contentsOf: fresh)
-            try? await Task.sleep(nanoseconds: 150_000_000)
-        }
+        let scraped = try await scrapeProfileLibrary(username: username, maxPages: maxPages)
         guard !scraped.isEmpty else { return [] }
 
         let needMeta = scraped.map(\.id).filter { !enrichMissingOnly || !knownIDs.contains($0) }
@@ -279,6 +259,39 @@ actor APIClient {
                 libraryState: state
             )
         }
+    }
+
+    /// Scrapes `/u/{user}/library?sorting=lr` — portal order by last reading activity.
+    private func scrapeProfileLibrary(username: String, maxPages: Int) async throws -> [ScrapedShelfItem] {
+        let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty else { return [] }
+        try? await establishWebSession()
+
+        var scraped: [ScrapedShelfItem] = []
+        var seen = Set<Int>()
+        for page in 1...maxPages {
+            let encoded = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+            let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let url = URL(string: "\(base)/u/\(encoded)/library?sorting=lr&page=\(page)") else { continue }
+            var request = URLRequest(url: url)
+            request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+            request.setValue(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                forHTTPHeaderField: "User-Agent"
+            )
+            if token != "guest" {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+            guard let html = String(data: data, encoding: .utf8) else { break }
+            let pageItems = extractShelfItems(from: html)
+            let fresh = pageItems.filter { seen.insert($0.id).inserted }
+            if fresh.isEmpty { break }
+            scraped.append(contentsOf: fresh)
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        return scraped
     }
 
     private struct ScrapedShelfItem {

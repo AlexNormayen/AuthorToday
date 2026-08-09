@@ -4,7 +4,11 @@ import UIKit
 
 struct ReaderSettingsView: View {
     @EnvironmentObject private var settings: ReaderSettingsStore
+    @EnvironmentObject private var pro: ProEntitlementStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var photoItem: PhotosPickerItem?
+    @State private var showPaywall = false
+    @State private var paywallReason: String?
 
     var body: some View {
         Form {
@@ -54,7 +58,21 @@ struct ReaderSettingsView: View {
 
             Section {
                 Toggle("Перенос текста", isOn: $settings.textWrap)
-                Toggle("Своя цветовая схема", isOn: $settings.useCustomColors)
+                Toggle(
+                    "Своя цветовая схема",
+                    isOn: Binding(
+                        get: { settings.useCustomColors },
+                        set: { on in
+                            if on, !pro.isProUnlocked {
+                                paywallReason = "Свой цвет фона читалки доступен в Читальня Pro."
+                                showPaywall = true
+                                return
+                            }
+                            settings.useCustomColors = on
+                            if on { settings.theme = .customColor }
+                        }
+                    )
+                )
                 if settings.useCustomColors {
                     ColorPicker("Цвет текста", selection: Binding(
                         get: { Color(hex: settings.customTextHex) ?? .primary },
@@ -105,9 +123,19 @@ struct ReaderSettingsView: View {
                     }
                 }
                 PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label("Свой фон‑картинка", systemImage: "photo")
+                    Label(
+                        pro.isProUnlocked ? "Свой фон‑картинка" : "Свой фон‑картинка (Pro)",
+                        systemImage: pro.isProUnlocked ? "photo" : "lock.fill"
+                    )
                 }
                 .onChange(of: photoItem) { _, item in
+                    guard let item else { return }
+                    if !pro.isProUnlocked {
+                        photoItem = nil
+                        paywallReason = "Своя картинка фона читалки доступна в Читальня Pro."
+                        showPaywall = true
+                        return
+                    }
                     Task { await settings.setCustomBackground(from: item) }
                 }
             }
@@ -115,7 +143,22 @@ struct ReaderSettingsView: View {
             Section("Перелистывание") {
                 Picker("Режим", selection: $settings.pageTurnMode) {
                     ForEach(PageTurnMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                        HStack {
+                            Text(mode.title)
+                            if ProFeatures.requiresPro(mode), !pro.isProUnlocked {
+                                Text("Pro")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(mode)
+                    }
+                }
+                .onChange(of: settings.pageTurnMode) { _, newValue in
+                    if ProFeatures.requiresPro(newValue), !pro.isProUnlocked {
+                        settings.pageTurnMode = .verticalScroll
+                        paywallReason = "Режим «Перелистывание» доступен в Читальня Pro."
+                        showPaywall = true
                     }
                 }
             }
@@ -141,6 +184,11 @@ struct ReaderSettingsView: View {
             if let value {
                 UIScreen.main.brightness = value
             }
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(reason: paywallReason)
+                .environmentObject(pro)
+                .environmentObject(appearance)
         }
     }
 }

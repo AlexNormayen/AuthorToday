@@ -3,6 +3,10 @@ import SwiftUI
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var readerSettings: ReaderSettingsStore
+    @EnvironmentObject private var pro: ProEntitlementStore
+
+    @State private var showPaywall = false
+    @State private var paywallReason: String?
 
     var body: some View {
         Form {
@@ -38,7 +42,13 @@ struct AppearanceSettingsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(AppThemePreset.allCases) { preset in
+                            let locked = ProFeatures.requiresPro(preset) && !pro.isProUnlocked
                             Button {
+                                if locked {
+                                    paywallReason = "Тема «\(preset.title)» доступна в Читальня Pro."
+                                    showPaywall = true
+                                    return
+                                }
                                 appearance.themePreset = preset
                                 if preset.prefersDark {
                                     appearance.colorMode = .dark
@@ -46,7 +56,6 @@ struct AppearanceSettingsView: View {
                             } label: {
                                 VStack(spacing: 6) {
                                     ZStack {
-                                        // Static preview only — animated atmospheres inside ScrollView steal taps.
                                         ThemeAtmosphereView(
                                             preset: preset,
                                             intensity: 0.9,
@@ -63,6 +72,8 @@ struct AppearanceSettingsView: View {
                                                     lineWidth: appearance.themePreset == preset ? 2.5 : 1
                                                 )
                                         }
+                                        .opacity(locked ? 0.55 : 1)
+
                                         Circle()
                                             .fill(preset == .custom
                                                   ? (Color(hex: appearance.customAccentHex) ?? preset.accent)
@@ -70,6 +81,14 @@ struct AppearanceSettingsView: View {
                                             .frame(width: 14, height: 14)
                                             .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                                             .offset(x: 16, y: 16)
+
+                                        if locked {
+                                            Image(systemName: "lock.fill")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.white)
+                                                .padding(6)
+                                                .background(.black.opacity(0.45), in: Circle())
+                                        }
                                     }
                                     .frame(width: 56, height: 56)
                                     .contentShape(Rectangle())
@@ -105,13 +124,28 @@ struct AppearanceSettingsView: View {
                 }
                 Picker("Перелистывание", selection: $readerSettings.pageTurnMode) {
                     ForEach(PageTurnMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                        HStack {
+                            Text(mode.title)
+                            if ProFeatures.requiresPro(mode) {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(mode)
+                    }
+                }
+                .onChange(of: readerSettings.pageTurnMode) { _, newValue in
+                    if ProFeatures.requiresPro(newValue), !pro.isProUnlocked {
+                        readerSettings.pageTurnMode = .verticalScroll
+                        paywallReason = "Режим «Перелистывание» доступен в Читальня Pro."
+                        showPaywall = true
                     }
                 }
             }
 
             Section {
-                Text("Тема задаёт живой фон-сцену на весь интерфейс и цвет акцента. Фон читалки настраивается отдельно.")
+                Text("Бесплатно: классические темы (Мох, Океан, Вино, Графит, Песок). Futuristic, фото-темы и свой цвет — в Pro. Тема задаёт живой фон и акцент; фон читалки настраивается отдельно.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -123,5 +157,10 @@ struct AppearanceSettingsView: View {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(reason: paywallReason)
+                .environmentObject(pro)
+                .environmentObject(appearance)
+        }
     }
 }

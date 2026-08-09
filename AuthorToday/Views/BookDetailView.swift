@@ -7,6 +7,7 @@ struct BookDetailView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var pro: ProEntitlementStore
 
     @State private var details: WorkDetails?
     @State private var error: String?
@@ -16,6 +17,8 @@ struct BookDetailView: View {
     @State private var showPurchase = false
     @State private var showTOC = false
     @State private var openAuthorProfile = false
+    @State private var showPaywall = false
+    @State private var paywallReason: String?
 
     @State private var comments: [WorkComment] = []
     @State private var commentsLoading = false
@@ -67,6 +70,11 @@ struct BookDetailView: View {
             Task { await load() }
         }) {
             purchaseSheet
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(reason: paywallReason)
+                .environmentObject(pro)
+                .environmentObject(appearance)
         }
         .sheet(isPresented: $showTOC) {
             BookTOCSheet(
@@ -258,10 +266,28 @@ struct BookDetailView: View {
     }
 
     private func downloadBlock(_ details: WorkDetails) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let alreadyFull = offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
+        let fullCount = offline.fullyDownloadedCount
+        let allowed = pro.canStartFullDownload(
+            workId: workId,
+            fullyDownloadedCount: fullCount,
+            alreadyFullyDownloaded: alreadyFull
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
             Text("Загрузка")
                 .font(AppTheme.headlineFont)
+            if !pro.isProUnlocked {
+                Text("Бесплатно: до \(ProFeatures.freeFullDownloadLimit) книг целиком. Сейчас: \(fullCount)/\(ProFeatures.freeFullDownloadLimit). Открытые главы кэшируются без лимита.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Button {
+                if !allowed {
+                    paywallReason = "Лимит бесплатного офлайна (\(ProFeatures.freeFullDownloadLimit) книги) исчерпан. Pro снимает ограничение."
+                    showPaywall = true
+                    return
+                }
                 Task {
                     await downloads.downloadEntireBook(details: details, store: offline)
                 }
@@ -273,8 +299,11 @@ struct BookDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else {
-                    Label(downloadButtonTitle, systemImage: "arrow.down.circle")
-                        .frame(maxWidth: .infinity)
+                    Label(
+                        allowed ? downloadButtonTitle : "Скачать все главы (Pro)",
+                        systemImage: allowed ? "arrow.down.circle" : "lock.fill"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.bordered)

@@ -130,19 +130,40 @@ final class OfflineStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Books opened in the app recently, newest first.
-    /// Sorted only by lastReadAt (set when the reader saves progress) — never by library sync time.
+    /// Books read recently in the app or on the portal, newest first.
     var recentlyRead: [CachedWork] {
         guard let modelContext else { return [] }
-        let descriptor = FetchDescriptor<CachedWork>()
-        let all = (try? modelContext.fetch(descriptor)) ?? []
+        let all = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
+        let localDates = localProgressDates()
         return all
-            .filter { $0.lastReadAt != nil }
-            .sorted {
-                let lhs = $0.lastReadAt ?? .distantPast
-                let rhs = $1.lastReadAt ?? .distantPast
-                return lhs > rhs
+            .filter { work in
+                work.lastReadAt != nil
+                    || work.lastReadChapterId != nil
+                    || work.progress > 0.001
+                    || localDates[work.workId] != nil
             }
+            .sorted {
+                effectiveLastReadAt($0, localDates: localDates)
+                    > effectiveLastReadAt($1, localDates: localDates)
+            }
+    }
+
+    /// Prefer real in-app ReadingProgress time; else CachedWork.lastReadAt (incl. portal order).
+    func effectiveLastReadAt(_ work: CachedWork) -> Date {
+        effectiveLastReadAt(work, localDates: localProgressDates())
+    }
+
+    private func effectiveLastReadAt(_ work: CachedWork, localDates: [Int: Date]) -> Date {
+        if let local = localDates[work.workId] {
+            return max(local, work.lastReadAt ?? .distantPast)
+        }
+        return work.lastReadAt ?? .distantPast
+    }
+
+    private func localProgressDates() -> [Int: Date] {
+        guard let modelContext else { return [:] }
+        let rows = (try? modelContext.fetch(FetchDescriptor<ReadingProgress>())) ?? []
+        return Dictionary(uniqueKeysWithValues: rows.map { ($0.workId, $0.updatedAt) })
     }
 
     /// Authors as folders for the library shelf.
@@ -172,9 +193,10 @@ final class OfflineStore: ObservableObject {
                 return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
             }
         case .recentlyRead:
+            let localDates = localProgressDates()
             return mapped.sorted {
-                let l = $0.works.compactMap(\.lastReadAt).max() ?? .distantPast
-                let r = $1.works.compactMap(\.lastReadAt).max() ?? .distantPast
+                let l = $0.works.map { effectiveLastReadAt($0, localDates: localDates) }.max() ?? .distantPast
+                let r = $1.works.map { effectiveLastReadAt($0, localDates: localDates) }.max() ?? .distantPast
                 if l != r { return l > r }
                 return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
             }
@@ -347,6 +369,19 @@ final class OfflineStore: ObservableObject {
                         errors.append("profile: \(error.localizedDescription)")
                     }
                 }
+
+                // Always refresh "Недавние" order from portal last-read shelf.
+                syncStatusText = "Недавние с сайта…"
+                do {
+                    let recentIDs = try await APIClient.shared.libraryLastReadIDs(
+                        username: username,
+                        maxPages: 5
+                    )
+                    applyPortalLastReadOrder(recentIDs, context: modelContext)
+                    try? modelContext.save()
+                } catch {
+                    errors.append("recent: \(error.localizedDescription)")
+                }
             } else if byID.isEmpty {
                 errors.append("profile: нет userName — обновите профиль в «Ещё»")
             }
@@ -489,8 +524,7 @@ final class OfflineStore: ObservableObject {
             if let seriesOrder = meta.seriesOrder {
                 existing.seriesOrder = seriesOrder
             }
-            // Do not touch lastReadAt / updatedAt here — lastUpdateTime is the book's
-            // publication update on the site, not when the user last read.
+            // lastReadAt comes from local reading or portal last-read order — not lastUpdateTime.
         } else {
             let work = CachedWork(
                 workId: meta.id,
@@ -509,6 +543,30 @@ final class OfflineStore: ObservableObject {
                 viewsCount: meta.viewsCount ?? meta.viewCount
             )
             ctx.insert(work)
+        }
+    }
+
+    /// Maps portal shelf order (`sorting=lr`) onto lastReadAt.
+    /// Does not use work lastUpdateTime (author publish time). Local ReadingProgress always wins.
+    func applyPortalLastReadOrder(_ orderedIDs: [Int], context: ModelContext? = nil) {
+        let ctx = context ?? modelContext
+        guard let ctx, !orderedIDs.isEmpty else { return }
+        // Keep very recent in-app reads above portal ranks that haven't caught up yet.
+        let base = Date().addingTimeInterval(-5 * 60)
+        for (index, workId) in orderedIDs.enumerated() {
+            let descriptor = FetchDescriptor<CachedWork>(
+                predicate: #Predicate { $0.workId == workId }
+            )
+            guard let work = try? ctx.fetch(descriptor).first else { continue }
+            if let local = try? ctx.fetch(
+                FetchDescriptor<ReadingProgress>(predicate: #Predicate { $0.workId == workId })
+            ).first {
+                work.lastReadAt = local.updatedAt
+                work.lastReadChapterId = work.lastReadChapterId ?? local.chapterId
+                continue
+            }
+            // Synthetic timestamps preserve portal order; refresh every sync.
+            work.lastReadAt = base.addingTimeInterval(-Double(index) * 120)
         }
     }
 
@@ -711,5 +769,10 @@ final class OfflineStore: ObservableObject {
 
     func isInLibrary(_ workId: Int) -> Bool {
         library.contains(where: { $0.workId == workId })
+    }
+
+    /// Books with all chapters downloaded for offline.
+    var fullyDownloadedCount: Int {
+        library.filter(\.isFullyDownloaded).count
     }
 }

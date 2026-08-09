@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var localLibrary: LocalLibraryStore
     @StateObject private var downloads = DownloadManager.shared
 
     var body: some View {
@@ -24,6 +25,7 @@ struct RootView: View {
         .onAppear { configureTranslucentChrome() }
         .task {
             offline.attach(context: modelContext)
+            localLibrary.attach(context: modelContext)
             downloads.startMonitoring()
             if auth.isAuthenticated {
                 await auth.refreshProfile()
@@ -79,30 +81,36 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
+            LocalLibraryView()
+                .tabItem {
+                    Label("Мои книги", systemImage: "tray.full")
+                }
+                .tag(1)
+
             RecentReadsView()
                 .tabItem {
                     Label("Недавние", systemImage: "clock")
                 }
-                .tag(1)
+                .tag(2)
 
             SearchView()
                 .tabItem {
                     Label("Поиск", systemImage: "magnifyingglass")
                 }
-                .tag(2)
+                .tag(3)
 
             NotificationsView()
                 .tabItem {
                     Label("Лента", systemImage: "bell")
                 }
                 .badge(notifications.unreadCount)
-                .tag(3)
+                .tag(4)
 
             SettingsHubView()
                 .tabItem {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
-                .tag(4)
+                .tag(5)
         }
         .tint(appearance.accent)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
@@ -110,7 +118,8 @@ struct MainTabView: View {
         .onAppear {
             guard !didApplyColdStart else { return }
             didApplyColdStart = true
-            selectedTab = session.selectedTab
+            migrateTabIndexIfNeeded()
+            selectedTab = min(max(session.selectedTab, 0), 5)
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
         }
@@ -125,6 +134,17 @@ struct MainTabView: View {
             }
         }
     }
+
+    /// Old tabs: 0 Library, 1 Recent, 2 Search, 3 Feed, 4 More.
+    /// New tabs insert «Мои книги» at index 1 — bump saved indices ≥ 1 once.
+    private func migrateTabIndexIfNeeded() {
+        let key = "at.tabs.localLibraryInserted.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        if session.selectedTab >= 1 {
+            session.setSelectedTab(session.selectedTab + 1)
+        }
+        UserDefaults.standard.set(true, forKey: key)
+    }
 }
 
 struct SettingsHubView: View {
@@ -132,6 +152,7 @@ struct SettingsHubView: View {
     @EnvironmentObject private var readerSettings: ReaderSettingsStore
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var pro: ProEntitlementStore
 
     var body: some View {
         NavigationStack {
@@ -156,6 +177,54 @@ struct SettingsHubView: View {
                         MessagesView()
                     } label: {
                         Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        ProPaywallView()
+                    } label: {
+                        HStack {
+                            Label(
+                                pro.isProUnlocked ? "Читальня Pro" : "Открыть Читальню Pro",
+                                systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
+                            )
+                            Spacer()
+                            if pro.isComplimentaryPro {
+                                Text("По аккаунту")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else if pro.isProUnlocked {
+                                Text("Активен")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Темы · офлайн · файлы")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Поддержка")
+                } footer: {
+                    Text("Pro улучшает клиент Читальня (темы, офлайн, свои TXT/EPUB). Книги и оплата контента — только на author.today.")
+                }
+
+                if ProFeatures.isOwnerAccount(
+                    email: auth.user?.email,
+                    userName: auth.user?.resolvedUserName ?? auth.resolvedUserName
+                ) {
+                    Section {
+                        NavigationLink {
+                            ProGrantsAdminView()
+                        } label: {
+                            Label("Pro-доступы (временно)", systemImage: "person.badge.key")
+                        }
+                    } header: {
+                        Text("Владелец")
+                    } footer: {
+                        Text("Выдача Pro друзьям до Apple IAP. Перед App Store убрать или заменить.")
                     }
                 }
 

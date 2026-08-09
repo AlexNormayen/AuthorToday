@@ -259,6 +259,17 @@ final class DownloadManager: ObservableObject {
         guard !activeDownloads.contains(workId) else { return }
         guard isOnline else { return }
 
+        let alreadyFull = store.cachedWork(workId: workId)?.isFullyDownloaded == true
+        let allowed = ProEntitlementStore.shared.canStartFullDownload(
+            workId: workId,
+            fullyDownloadedCount: store.fullyDownloadedCount,
+            alreadyFullyDownloaded: alreadyFull
+        )
+        guard allowed else {
+            statusMessage = "Лимит офлайна: нужен Читальня Pro"
+            return
+        }
+
         activeDownloads.insert(workId)
         store.downloadProgress[workId] = 0
         defer {
