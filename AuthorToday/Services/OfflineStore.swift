@@ -213,6 +213,50 @@ final class OfflineStore: ObservableObject {
         }
     }
 
+    /// Flat shelf sorted with the same modes as the authors list.
+    func worksSorted(_ works: [CachedWork], by mode: AuthorSortMode) -> [CachedWork] {
+        switch mode {
+        case .name:
+            return works.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+        case .bookCount:
+            let counts = Dictionary(grouping: library) { work -> String in
+                let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
+                return name.isEmpty ? "Без автора" : name
+            }.mapValues(\.count)
+            return works.sorted { a, b in
+                let ca = counts[authorKey(a)] ?? 0
+                let cb = counts[authorKey(b)] ?? 0
+                if ca != cb { return ca > cb }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        case .recentlyRead:
+            let localDates = localProgressDates()
+            return works.sorted { a, b in
+                let la = effectiveLastReadAt(a, localDates: localDates)
+                let lb = effectiveLastReadAt(b, localDates: localDates)
+                if la != lb { return la > lb }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        case .popularity:
+            return works.sorted { a, b in
+                let la = a.likeCount ?? 0
+                let lb = b.likeCount ?? 0
+                if la != lb { return la > lb }
+                let va = a.viewsCount ?? 0
+                let vb = b.viewsCount ?? 0
+                if va != vb { return va > vb }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        }
+    }
+
+    private func authorKey(_ work: CachedWork) -> String {
+        let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Без автора" : name
+    }
+
     func syncLibraryIfNeeded(force: Bool = false) async {
         if librarySyncIncomplete {
             await syncLibrary(force: true)

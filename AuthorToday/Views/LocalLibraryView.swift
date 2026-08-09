@@ -1,7 +1,24 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Standalone entry (kept for previews / deep links). Main UX embeds `LocalLibraryPane` in `LibraryView`.
 struct LocalLibraryView: View {
+    @EnvironmentObject private var appearance: AppAppearanceStore
+
+    var body: some View {
+        NavigationStack {
+            LocalLibraryPane()
+                .background {
+                    ThemeAtmosphereView(preset: appearance.themePreset)
+                }
+                .navigationTitle("Мои книги")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        }
+    }
+}
+
+struct LocalLibraryPane: View {
     @EnvironmentObject private var localLibrary: LocalLibraryStore
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var appearance: AppAppearanceStore
@@ -15,85 +32,78 @@ struct LocalLibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if !canUseLocalLibrary {
-                    freeGate
-                } else if localLibrary.books.isEmpty {
-                    ContentUnavailableView {
-                        Label("Мои книги", systemImage: "tray.and.arrow.down")
-                    } description: {
-                        Text("Добавьте TXT или EPUB с устройства. Книги хранятся только локально и не синхронизируются с Author.Today.")
-                    } actions: {
-                        Button("Добавить файл") { showImporter = true }
-                            .buttonStyle(.borderedProminent)
-                    }
-                } else {
-                    List {
-                        ForEach(localLibrary.books, id: \.id) { book in
-                            Button {
-                                readerBookId = book.id
-                            } label: {
-                                bookRow(book)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    localLibrary.delete(book)
-                                } label: {
-                                    Label("Удалить", systemImage: "trash")
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
+        Group {
+            if !canUseLocalLibrary {
+                freeGate
+            } else if localLibrary.books.isEmpty {
+                ContentUnavailableView {
+                    Label("Мои книги", systemImage: "tray.and.arrow.down")
+                } description: {
+                    Text("Добавьте TXT или EPUB с устройства. Книги хранятся только локально и не синхронизируются с Author.Today.")
+                } actions: {
+                    Button("Добавить файл") { showImporter = true }
+                        .buttonStyle(.borderedProminent)
                 }
-            }
-            .background {
-                ThemeAtmosphereView(preset: appearance.themePreset)
-            }
-            .navigationTitle("Мои книги")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbar {
-                if canUseLocalLibrary {
-                    ToolbarItem(placement: .topBarTrailing) {
+            } else {
+                List {
+                    ForEach(localLibrary.books, id: \.id) { book in
                         Button {
-                            showImporter = true
+                            readerBookId = book.id
                         } label: {
-                            Image(systemName: "plus")
+                            bookRow(book)
                         }
-                        .disabled(localLibrary.isImporting)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                localLibrary.delete(book)
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
+                        }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .fileImporter(
-                isPresented: $showImporter,
-                allowedContentTypes: [.plainText, .epub],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
-            }
-            .alert("Импорт", isPresented: Binding(
-                get: { importError != nil },
-                set: { if !$0 { importError = nil } }
-            )) {
-                Button("OK", role: .cancel) { importError = nil }
-            } message: {
-                Text(importError ?? "")
-            }
-            .sheet(isPresented: $showPaywall) {
-                ProPaywallView()
-            }
-            .fullScreenCover(item: Binding(
-                get: { readerBookId.map { LocalReaderItem(id: $0) } },
-                set: { readerBookId = $0?.id }
-            )) { item in
-                NavigationStack {
-                    LocalReaderView(bookId: item.id)
+        }
+        .toolbar {
+            if canUseLocalLibrary {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .disabled(localLibrary.isImporting)
                 }
             }
-            .onAppear { localLibrary.reload() }
         }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.plainText, .epub],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImport(result)
+        }
+        .alert("Импорт", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
+        }
+        .fullScreenCover(item: Binding(
+            get: { readerBookId.map { LocalReaderItem(id: $0) } },
+            set: { readerBookId = $0?.id }
+        )) { item in
+            NavigationStack {
+                LocalReaderView(bookId: item.id)
+            }
+        }
+        .onAppear { localLibrary.reload() }
     }
 
     private var freeGate: some View {

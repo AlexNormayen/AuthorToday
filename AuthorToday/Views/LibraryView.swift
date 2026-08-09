@@ -11,10 +11,15 @@ struct LibraryView: View {
 
     private var filteredWorks: [CachedWork] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return offline.library }
-        return offline.library.filter {
-            $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
+        let base: [CachedWork]
+        if q.isEmpty {
+            base = offline.library
+        } else {
+            base = offline.library.filter {
+                $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
+            }
         }
+        return offline.worksSorted(base, by: authorSort)
     }
 
     private var filteredAuthors: [(author: String, works: [CachedWork])] {
@@ -32,43 +37,39 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                if offline.library.isEmpty && offline.isSyncing {
-                    ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
-                } else if offline.library.isEmpty {
-                    ContentUnavailableView(
-                        "Библиотека пуста",
-                        systemImage: "books.vertical",
-                        description: Text(emptyLibraryMessage)
-                    )
-                } else {
-                    VStack(spacing: 0) {
-                        Picker("Вид", selection: $mode) {
-                            ForEach(LibraryBrowseMode.allCases) { item in
-                                Text(item.title).tag(item)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-
-                        if mode == .authors {
-                            Picker("Сортировка", selection: $authorSort) {
-                                ForEach(AuthorSortMode.allCases) { item in
-                                    Text(item.title).tag(item)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            authorsList
-                        } else {
-                            booksList(works: filteredWorks)
-                        }
+            VStack(spacing: 0) {
+                Picker("Вид", selection: $mode) {
+                    ForEach(LibraryBrowseMode.allCases) { item in
+                        Text(item.title).tag(item)
                     }
                 }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+                if mode == .authors || mode == .all {
+                    Picker("Сортировка", selection: $authorSort) {
+                        ForEach(AuthorSortMode.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Group {
+                    switch mode {
+                    case .authors:
+                        authorsContent
+                    case .all:
+                        allBooksContent
+                    case .mine:
+                        LocalLibraryPane()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
@@ -76,22 +77,24 @@ struct LibraryView: View {
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .searchable(text: $query, prompt: "Название или автор")
+            .modifier(LibrarySearchModifier(isEnabled: mode != .mine, query: $query))
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await offline.syncLibrary(force: true) }
-                    } label: {
-                        if offline.isSyncing {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.clockwise")
+                if mode != .mine {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { await offline.syncLibrary(force: true) }
+                        } label: {
+                            if offline.isSyncing {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
                         }
                     }
                 }
             }
             .safeAreaInset(edge: .top) {
-                if offline.isSyncing || offline.lastSyncCount > 0 || !offline.library.isEmpty {
+                if mode != .mine, offline.isSyncing || offline.lastSyncCount > 0 || !offline.library.isEmpty {
                     HStack {
                         Text("\(offline.library.count) книг · \(offline.authorsGrouped.count) авторов")
                             .font(.caption)
@@ -110,7 +113,9 @@ struct LibraryView: View {
                 }
             }
             .refreshable {
-                await offline.syncLibrary(force: true)
+                if mode != .mine {
+                    await offline.syncLibrary(force: true)
+                }
             }
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
@@ -135,7 +140,7 @@ struct LibraryView: View {
                         .background(.ultraThinMaterial)
                         .clipShape(Capsule())
                         .padding(.bottom, 8)
-                } else if let err = offline.lastSyncError {
+                } else if mode != .mine, let err = offline.lastSyncError {
                     Text(err)
                         .font(.caption)
                         .foregroundStyle(.red)
@@ -147,12 +152,41 @@ struct LibraryView: View {
                 }
             }
             .task {
-                // Show SwiftData shelf immediately; sync only if empty
                 offline.reloadLibrary()
                 if offline.library.isEmpty, !offline.isSyncing {
                     await offline.syncLibrary(force: true)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var authorsContent: some View {
+        if offline.library.isEmpty && offline.isSyncing {
+            ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
+        } else if offline.library.isEmpty {
+            ContentUnavailableView(
+                "Библиотека пуста",
+                systemImage: "books.vertical",
+                description: Text(emptyLibraryMessage)
+            )
+        } else {
+            authorsList
+        }
+    }
+
+    @ViewBuilder
+    private var allBooksContent: some View {
+        if offline.library.isEmpty && offline.isSyncing {
+            ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
+        } else if offline.library.isEmpty {
+            ContentUnavailableView(
+                "Библиотека пуста",
+                systemImage: "books.vertical",
+                description: Text(emptyLibraryMessage)
+            )
+        } else {
+            booksList(works: filteredWorks)
         }
     }
 
@@ -261,12 +295,27 @@ struct LibraryView: View {
 enum LibraryBrowseMode: String, CaseIterable, Identifiable {
     case authors
     case all
+    case mine
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .authors: return "Авторы"
         case .all: return "Все книги"
+        case .mine: return "Мои книги"
+        }
+    }
+}
+
+private struct LibrarySearchModifier: ViewModifier {
+    let isEnabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.searchable(text: $query, prompt: "Название или автор")
+        } else {
+            content
         }
     }
 }
@@ -281,7 +330,7 @@ enum AuthorSortMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .name: return "По имени"
+        case .name: return "По алфавиту"
         case .bookCount: return "По числу книг"
         case .recentlyRead: return "По недавнему чтению"
         case .popularity: return "По популярности"

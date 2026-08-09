@@ -81,36 +81,30 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
-            LocalLibraryView()
-                .tabItem {
-                    Label("Мои книги", systemImage: "tray.full")
-                }
-                .tag(1)
-
             RecentReadsView()
                 .tabItem {
                     Label("Недавние", systemImage: "clock")
                 }
-                .tag(2)
+                .tag(1)
 
             SearchView()
                 .tabItem {
                     Label("Поиск", systemImage: "magnifyingglass")
                 }
-                .tag(3)
+                .tag(2)
 
             NotificationsView()
                 .tabItem {
                     Label("Лента", systemImage: "bell")
                 }
                 .badge(notifications.unreadCount)
-                .tag(4)
+                .tag(3)
 
             SettingsHubView()
                 .tabItem {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
-                .tag(5)
+                .tag(4)
         }
         .tint(appearance.accent)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
@@ -119,7 +113,7 @@ struct MainTabView: View {
             guard !didApplyColdStart else { return }
             didApplyColdStart = true
             migrateTabIndexIfNeeded()
-            selectedTab = min(max(session.selectedTab, 0), 5)
+            selectedTab = min(max(session.selectedTab, 0), 4)
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
         }
@@ -135,15 +129,23 @@ struct MainTabView: View {
         }
     }
 
-    /// Old tabs: 0 Library, 1 Recent, 2 Search, 3 Feed, 4 More.
-    /// New tabs insert «Мои книги» at index 1 — bump saved indices ≥ 1 once.
+    /// Tabs with temporary «Мои книги» tab: 0 Library, 1 Local, 2 Recent, 3 Search, 4 Feed, 5 More.
+    /// Current: 0 Library, 1 Recent, 2 Search, 3 Feed, 4 More («Мои книги» inside Library).
     private func migrateTabIndexIfNeeded() {
-        let key = "at.tabs.localLibraryInserted.v1"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        if session.selectedTab >= 1 {
-            session.setSelectedTab(session.selectedTab + 1)
+        let removeKey = "at.tabs.localLibraryRemoved.v1"
+        guard !UserDefaults.standard.bool(forKey: removeKey) else { return }
+
+        // Only remap if the user previously lived on the 6-tab layout.
+        let insertKey = "at.tabs.localLibraryInserted.v1"
+        if UserDefaults.standard.bool(forKey: insertKey) {
+            let tab = session.selectedTab
+            if tab == 1 {
+                session.setSelectedTab(0)
+            } else if tab > 1 {
+                session.setSelectedTab(tab - 1)
+            }
         }
-        UserDefaults.standard.set(true, forKey: key)
+        UserDefaults.standard.set(true, forKey: removeKey)
     }
 }
 
