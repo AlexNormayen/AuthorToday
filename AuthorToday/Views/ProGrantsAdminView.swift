@@ -6,7 +6,7 @@ struct ProGrantsAdminView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var appearance: AppAppearanceStore
-    @ObservedObject private var grants = ProGrantStore.shared
+    @ObservedObject private var grantStore = ProGrantStore.shared
 
     @State private var rawIdentity = ""
     @State private var daysText = "30"
@@ -49,7 +49,7 @@ struct ProGrantsAdminView: View {
             Section {
                 ForEach(ProGrantStore.Plan.allCases) { plan in
                     Button {
-                        let code = grants.generateAccessCode(plan: plan)
+                        let code = grantStore.generateAccessCode(plan: plan)
                         lastGenerated = code
                         UIPasteboard.general.string = code
                         copiedCode = code
@@ -90,9 +90,9 @@ struct ProGrantsAdminView: View {
                 Text("Код одноразовый на устройстве друга. Срок Pro считается с момента активации.")
             }
 
-            if !grants.issuedCodes.isEmpty {
+            if !grantStore.issuedCodes.isEmpty {
                 Section("Недавно созданные") {
-                    ForEach(grants.issuedCodes.prefix(20)) { item in
+                    ForEach(Array(grantStore.issuedCodes.prefix(20)), id: \.id) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.code)
                                 .font(.caption.monospaced())
@@ -130,10 +130,10 @@ struct ProGrantsAdminView: View {
             }
 
             Section {
-                if grants.grants.isEmpty {
+                if grantStore.grants.isEmpty {
                     Text("Пока никого нет").foregroundStyle(.secondary)
                 } else {
-                    ForEach(grants.grants) { grant in
+                    ForEach(grantStore.grants, id: \.id) { grant in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(grant.email).font(.body.weight(.medium))
                             Text(grant.isActive ? expiryLabel(grant.expiresAt) : "Истёк")
@@ -142,7 +142,7 @@ struct ProGrantsAdminView: View {
                         }
                         .swipeActions {
                             Button(role: .destructive) {
-                                grants.revoke(grant.email)
+                                grantStore.revoke(grant.email)
                                 pro.refreshComplimentaryFromGrants()
                             } label: {
                                 Label("Отозвать", systemImage: "trash")
@@ -162,7 +162,7 @@ struct ProGrantsAdminView: View {
 
     private func addGrant() {
         let days = Int(daysText.trimmingCharacters(in: .whitespacesAndNewlines))
-        if let err = grants.grant(raw: rawIdentity, days: days, note: note) {
+        if let err = grantStore.grant(raw: rawIdentity, days: days, note: note) {
             formError = err
             return
         }
