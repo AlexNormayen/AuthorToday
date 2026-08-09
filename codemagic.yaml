@@ -70,10 +70,11 @@ workflows:
       - DerivedData/**/*.app
       - /tmp/xcodebuild_logs/*.log
 
-  # Activate after Apple Developer enrollment:
-  # 1) Set DEVELOPMENT_TEAM (Team ID) in Codemagic env / below
-  # 2) Add App Store Connect API key integration in Codemagic UI
-  # 3) Create app in Connect with bundle id ru.chitalnya.reader
+  # App Store / TestFlight — only after Developer enrollment.
+  # In Codemagic UI → Environment variables (for this workflow) set:
+  #   DEVELOPMENT_TEAM = your Team ID (Membership)
+  # Optional: APP_STORE_APPLE_ID, plus App Store Connect API key integration.
+  # Do NOT put empty strings in yaml — Codemagic rejects the whole file.
   ios-app-store-signed:
     name: Читальня App Store (signed)
     max_build_duration: 90
@@ -86,11 +87,6 @@ workflows:
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
-        # Replace after enrollment (Membership → Team ID), or set in Codemagic UI:
-        DEVELOPMENT_TEAM: ""
-        APP_STORE_APPLE_ID: "" # numeric App Store Connect app id, optional for upload
-      # Uncomment when API key is configured in Codemagic:
-      # app_store_connect: <your_codemagic_asc_integration_name>
     scripts:
       - name: Set up code signing
         script: |
@@ -101,8 +97,10 @@ workflows:
         script: |
           set -euo pipefail
           if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
-            echo "DEVELOPMENT_TEAM is empty. Set Team ID after Apple Developer enrollment."
+            echo "DEVELOPMENT_TEAM is empty."
+            echo "Add it in Codemagic → Environment variables for this workflow (Team ID)."
             echo "See docs/app-store.md"
+            echo "For Sideloadly IPA use workflow: AuthorToday iOS IPA (unsigned)"
             exit 1
           fi
           xcodebuild \
