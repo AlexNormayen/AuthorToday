@@ -122,10 +122,11 @@ struct ReaderSettingsView: View {
                         }
                     }
                 }
+                let unlocked = pro.isProUnlocked
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label(
-                        pro.isProUnlocked ? "Свой фон‑картинка" : "Свой фон‑картинка (Pro)",
-                        systemImage: pro.isProUnlocked ? "photo" : "lock.fill"
+                        unlocked ? "Свой фон‑картинка" : "Свой фон‑картинка (Pro)",
+                        systemImage: unlocked ? "photo" : "lock.fill"
                     )
                 }
                 .onChange(of: photoItem) { _, item in

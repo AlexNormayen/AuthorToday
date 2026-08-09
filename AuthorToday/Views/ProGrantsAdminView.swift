@@ -190,7 +190,7 @@ private struct GrantRow: View {
                 .font(.body.weight(.medium))
             Text(item.isActive ? expiryLabel(item.expiresAt) : "Истёк")
                 .font(.caption)
-                .foregroundStyle(item.isActive ? .secondary : .red)
+                .foregroundStyle(item.isActive ? Color.secondary : Color.red)
         }
         .swipeActions {
             Button(role: .destructive, action: onRevoke) {
