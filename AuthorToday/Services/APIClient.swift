@@ -41,7 +41,7 @@ enum APIError: LocalizedError {
     }
 }
 
-struct APIErrorBody: Codable {
+struct APIErrorBody: Decodable {
     let code: String?
     let message: String?
     let invalidFields: [String: [String]]?
