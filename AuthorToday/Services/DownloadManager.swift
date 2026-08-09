@@ -19,8 +19,9 @@ final class DownloadManager: ObservableObject {
         guard !started else { return }
         started = true
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
-                self?.isOnline = path.status == .satisfied
+            let online = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                self?.isOnline = online
             }
         }
         monitor.start(queue: DispatchQueue(label: "at.net"))

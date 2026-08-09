@@ -43,7 +43,7 @@ final class NotificationPoller: ObservableObject {
         stopPolling()
         Task { await refresh(announceNew: false) }
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 await self?.refresh(announceNew: true)
             }
         }
