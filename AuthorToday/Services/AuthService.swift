@@ -22,12 +22,15 @@ final class AuthService: ObservableObject {
     private var pendingPassword = ""
 
     private init() {
-        if let token = KeychainStore.get(tokenKey), !token.isEmpty, token != "guest" {
+        // Sideload over-installs often lose Keychain (signing/team change) while the
+        // app container survives — restore token from Application Support backup.
+        if let token = loadPersistedToken(), !token.isEmpty, token != "guest" {
+            isAuthenticated = true
             Task {
                 await APIClient.shared.setToken(token)
                 let savedId = UserDefaults.standard.object(forKey: userIdKey) as? Int
+                    ?? SessionFileBackup.load()?.userId
                 await APIClient.shared.setUserId(savedId)
-                isAuthenticated = true
                 await refreshProfile()
             }
         }
@@ -38,26 +41,66 @@ final class AuthService: ObservableObject {
         if let name = user?.resolvedUserName { return name }
         let saved = UserDefaults.standard.string(forKey: userNameKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (saved?.isEmpty == false) ? saved : nil
+        if let saved, !saved.isEmpty { return saved }
+        return SessionFileBackup.load()?.userName
+    }
+
+    /// Last email/login used on this install (survives updates, not full uninstall).
+    var rememberedLogin: String? {
+        let saved = UserDefaults.standard.string(forKey: loginEmailKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let saved, !saved.isEmpty { return saved }
+        return SessionFileBackup.load()?.loginEmail
     }
 
     var storedToken: String? {
-        KeychainStore.get(tokenKey)
+        loadPersistedToken()
     }
 
     /// Stable per-install device id for Author.Today login-by-password (2FA / new device).
     private func deviceSecretKey(preferring serverKey: String? = nil) -> String {
         if let serverKey = serverKey?.trimmingCharacters(in: .whitespacesAndNewlines), !serverKey.isEmpty {
-            KeychainStore.set(serverKey, for: deviceSecretKeyKey)
+            persistDeviceSecret(serverKey)
             return serverKey
         }
         if let existing = KeychainStore.get(deviceSecretKeyKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !existing.isEmpty {
+            SessionFileBackup.update { $0.deviceSecret = existing }
             return existing
         }
+        if let backup = SessionFileBackup.load()?.deviceSecret?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !backup.isEmpty {
+            KeychainStore.set(backup, for: deviceSecretKeyKey)
+            return backup
+        }
         let generated = UUID().uuidString.lowercased()
-        KeychainStore.set(generated, for: deviceSecretKeyKey)
+        persistDeviceSecret(generated)
         return generated
+    }
+
+    private func persistDeviceSecret(_ secret: String) {
+        KeychainStore.set(secret, for: deviceSecretKeyKey)
+        SessionFileBackup.update { $0.deviceSecret = secret }
+    }
+
+    private func loadPersistedToken() -> String? {
+        if let token = KeychainStore.get(tokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !token.isEmpty, token != "guest" {
+            // Keep disk mirror warm for the next sideload update.
+            SessionFileBackup.update { $0.token = token }
+            return token
+        }
+        if let token = SessionFileBackup.load()?.token?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !token.isEmpty, token != "guest" {
+            KeychainStore.set(token, for: tokenKey)
+            return token
+        }
+        return nil
+    }
+
+    private func persistToken(_ token: String) {
+        KeychainStore.set(token, for: tokenKey)
+        SessionFileBackup.update { $0.token = token }
     }
 
     func login(email: String, password: String, code: String? = nil) async {
@@ -78,6 +121,7 @@ final class AuthService: ObservableObject {
                 secretKey: secret
             )
             UserDefaults.standard.set(trimmedEmail, forKey: loginEmailKey)
+            SessionFileBackup.update { $0.loginEmail = trimmedEmail }
             await applySuccessfulLogin(response)
             pendingEmail = ""
             pendingPassword = ""
@@ -120,9 +164,10 @@ final class AuthService: ObservableObject {
     }
 
     private func applySuccessfulLogin(_ response: AuthTokenResponse) async {
-        KeychainStore.set(response.token, for: tokenKey)
+        persistToken(response.token)
         if let userId = response.userId {
             UserDefaults.standard.set(userId, forKey: userIdKey)
+            SessionFileBackup.update { $0.userId = userId }
             await APIClient.shared.setUserId(userId)
         }
         isAuthenticated = true
@@ -175,31 +220,76 @@ final class AuthService: ObservableObject {
 
     func refreshProfile() async {
         do {
-            if let token = KeychainStore.get(tokenKey) {
-                await APIClient.shared.setToken(token)
-                try? await APIClient.shared.establishWebSession(token: token)
-            }
-            let profile = try await APIClient.shared.currentUser()
-            user = profile
-            await APIClient.shared.setUserId(profile.id)
-            if let name = profile.resolvedUserName {
-                UserDefaults.standard.set(name, forKey: userNameKey)
-            }
-            UserDefaults.standard.set(profile.id, forKey: userIdKey)
-            let loginEmail = UserDefaults.standard.string(forKey: loginEmailKey)
-            ProEntitlementStore.shared.applyAccount(
-                email: profile.email ?? loginEmail,
-                userName: profile.resolvedUserName
-            )
+            try await loadProfile()
         } catch {
-            if case APIError.unauthorized = error {
-                logout()
+            guard case APIError.unauthorized = error else { return }
+            // Expired access token after an update — refresh before forcing re-login.
+            if await refreshSessionToken() {
+                do {
+                    try await loadProfile()
+                    return
+                } catch {
+                    if case APIError.unauthorized = error {
+                        logout()
+                    }
+                    return
+                }
             }
+            logout()
+        }
+    }
+
+    private func loadProfile() async throws {
+        if let token = loadPersistedToken() {
+            await APIClient.shared.setToken(token)
+            try? await APIClient.shared.establishWebSession(token: token)
+        }
+        let profile = try await APIClient.shared.currentUser()
+        user = profile
+        await APIClient.shared.setUserId(profile.id)
+        if let name = profile.resolvedUserName {
+            UserDefaults.standard.set(name, forKey: userNameKey)
+        }
+        UserDefaults.standard.set(profile.id, forKey: userIdKey)
+        let loginEmail = UserDefaults.standard.string(forKey: loginEmailKey)
+            ?? SessionFileBackup.load()?.loginEmail
+        SessionFileBackup.update {
+            $0.userId = profile.id
+            $0.userName = profile.resolvedUserName
+            if let loginEmail, !loginEmail.isEmpty {
+                $0.loginEmail = loginEmail
+            }
+            if let token = loadPersistedToken() {
+                $0.token = token
+            }
+        }
+        ProEntitlementStore.shared.applyAccount(
+            email: profile.email ?? loginEmail,
+            userName: profile.resolvedUserName
+        )
+    }
+
+    @discardableResult
+    private func refreshSessionToken() async -> Bool {
+        do {
+            let response = try await APIClient.shared.refreshToken()
+            persistToken(response.token)
+            await APIClient.shared.setToken(response.token)
+            if let userId = response.userId {
+                UserDefaults.standard.set(userId, forKey: userIdKey)
+                SessionFileBackup.update { $0.userId = userId }
+                await APIClient.shared.setUserId(userId)
+            }
+            try? await APIClient.shared.establishWebSession(token: response.token)
+            return true
+        } catch {
+            return false
         }
     }
 
     func logout() {
         KeychainStore.delete(tokenKey)
+        SessionFileBackup.clear()
         UserDefaults.standard.removeObject(forKey: userIdKey)
         UserDefaults.standard.removeObject(forKey: userNameKey)
         UserDefaults.standard.removeObject(forKey: loginEmailKey)
@@ -216,38 +306,103 @@ final class AuthService: ObservableObject {
     }
 }
 
+/// App-container session mirror. Survives over-the-top IPA updates when Keychain
+/// becomes unreachable after a signing/team change (common for sideload builds).
+private enum SessionFileBackup {
+    struct Payload: Codable {
+        var token: String?
+        var deviceSecret: String?
+        var loginEmail: String?
+        var userId: Int?
+        var userName: String?
+    }
+
+    private static var fileURL: URL {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = root.appendingPathComponent("Chitalnya", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("session.v1.json")
+    }
+
+    static func load() -> Payload? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(Payload.self, from: data)
+    }
+
+    static func update(_ mutate: (inout Payload) -> Void) {
+        var payload = load() ?? Payload()
+        mutate(&payload)
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        try? data.write(to: fileURL, options: [.atomic])
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
 enum KeychainStore {
+    private static var service: String {
+        Bundle.main.bundleIdentifier ?? "ru.chitalnya.reader"
+    }
+
     static func set(_ value: String, for key: String) {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
+        // Remove both new and legacy (no-service) rows to avoid duplicates.
+        delete(key)
+        let add: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data,
+            // AfterFirstUnlock (not ThisDeviceOnly): more tolerant across resign/update.
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(add as CFDictionary, nil)
     }
 
     static func get(_ key: String) -> String? {
-        let query: [String: Any] = [
+        if let value = copy(account: key, service: service) {
+            return value
+        }
+        // Migrate items written by older builds without kSecAttrService.
+        if let legacy = copy(account: key, service: nil) {
+            set(legacy, for: key)
+            return legacy
+        }
+        return nil
+    }
+
+    static func delete(_ key: String) {
+        delete(account: key, service: service)
+        delete(account: key, service: nil)
+    }
+
+    private static func copy(account: String, service: String?) -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        if let service {
+            query[kSecAttrService as String] = service
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    static func delete(_ key: String) {
-        let query: [String: Any] = [
+    private static func delete(account: String, service: String?) {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: account
         ]
+        if let service {
+            query[kSecAttrService as String] = service
+        }
         SecItemDelete(query as CFDictionary)
     }
 }

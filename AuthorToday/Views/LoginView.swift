@@ -64,6 +64,11 @@ struct LoginView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            if email.isEmpty, let remembered = auth.rememberedLogin {
+                email = remembered
+            }
+        }
         .onChange(of: auth.awaitingTwoFactor) { _, waiting in
             if waiting {
                 confirmationCode = ""
