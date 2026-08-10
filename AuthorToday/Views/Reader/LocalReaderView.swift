@@ -476,7 +476,7 @@ struct LocalReaderView: View {
         let chapter = chapters[index]
         chapterIndex = index
         chapterTitle = chapter.title
-        plainText = chapter.readerPlain
+        plainText = HTMLText.withChapterHeading(chapter.title, body: chapter.readerPlain)
         pageIndex = 0
         scrollOffset = 0
         scrollFraction = 0

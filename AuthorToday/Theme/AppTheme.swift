@@ -292,6 +292,27 @@ enum HTMLText {
             .joined(separator: "\n\n")
     }
 
+    /// Chapter body for the reader with the author's chapter title at the top.
+    static func readerPlain(title: String?, html: String) -> String {
+        withChapterHeading(title, body: readerPlain(from: html))
+    }
+
+    /// Prepends the chapter name unless the body already starts with it.
+    static func withChapterHeading(_ title: String?, body: String) -> String {
+        let heading = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !heading.isEmpty else { return body }
+        var start = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        while start.hasPrefix("\u{2003}") || start.hasPrefix(" ") || start.hasPrefix("\t") {
+            start.removeFirst()
+        }
+        if start.localizedCaseInsensitiveCompare(heading) == .orderedSame
+            || start.lowercased().hasPrefix(heading.lowercased()) {
+            return body
+        }
+        if body.isEmpty { return heading }
+        return heading + "\n\n" + body
+    }
+
     /// Post body with tappable links (Markdown → AttributedString).
     static func attributedPostBody(from html: String) -> AttributedString {
         var s = html
