@@ -2,11 +2,13 @@ import SwiftUI
 
 struct SearchView: View {
     @State private var query = ""
+    @State private var mode: CatalogSearchMode = .both
     @State private var authors: [AuthorSearchHit] = []
     @State private var results: [WorkMeta] = []
     @State private var isLoading = false
     @State private var error: String?
     @State private var path = NavigationPath()
+    @State private var showingRecent = false
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
 
@@ -21,17 +23,15 @@ struct SearchView: View {
                 if isLoading && results.isEmpty && authors.isEmpty {
                     LoadingStateView(
                         title: "Поиск…",
-                        subtitle: downloads.online ? nil : "Нет сети"
+                        subtitle: downloads.online ? mode.title : "Нет сети"
                     )
                 } else if let error, results.isEmpty && authors.isEmpty {
                     ContentUnavailableView("Ошибка", systemImage: "wifi.exclamationmark", description: Text(error))
                 } else if results.isEmpty && authors.isEmpty {
                     ContentUnavailableView(
-                        "Найдите книгу или автора",
+                        emptyTitle,
                         systemImage: "magnifyingglass",
-                        description: Text(downloads.online
-                            ? "Введите название или автора и нажмите поиск на клавиатуре.\nИли откройте «Свежее»."
-                            : "Поиск недоступен офлайн")
+                        description: Text(emptyDescription)
                     )
                 } else {
                     List {
@@ -65,7 +65,7 @@ struct SearchView: View {
                         }
 
                         if !results.isEmpty {
-                            Section("Произведения") {
+                            Section(showingRecent ? "Свежее" : "Произведения") {
                                 ForEach(results) { work in
                                     Button {
                                         path.append(Route.work(work.id))
@@ -111,8 +111,24 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .searchable(text: $query, prompt: "Название или автор")
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Picker("Режим", selection: $mode) {
+                    ForEach(CatalogSearchMode.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+            }
+            .searchable(text: $query, prompt: mode.prompt)
             .onSubmit(of: .search) {
+                Task { await runSearch() }
+            }
+            .onChange(of: mode) { _, _ in
+                let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !q.isEmpty else { return }
                 Task { await runSearch() }
             }
             .toolbar {
@@ -139,6 +155,28 @@ struct SearchView: View {
         }
     }
 
+    private var emptyTitle: String {
+        switch mode {
+        case .title: return "Найдите книгу"
+        case .author: return "Найдите автора"
+        case .both: return "Найдите книгу или автора"
+        }
+    }
+
+    private var emptyDescription: String {
+        if !downloads.online {
+            return "Поиск недоступен офлайн"
+        }
+        switch mode {
+        case .title:
+            return "Режим «Название» — только произведения, по популярности.\nИли откройте «Свежее»."
+        case .author:
+            return "Режим «Автор» — только авторы, по рейтингу на сайте.\nИли откройте «Свежее»."
+        case .both:
+            return "Режим «Всё» — авторы и книги, по популярности.\nИли откройте «Свежее»."
+        }
+    }
+
     private func runSearch() async {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
@@ -146,15 +184,17 @@ struct SearchView: View {
             error = "Поиск недоступен офлайн"
             authors = []
             results = []
+            showingRecent = false
             return
         }
         isLoading = true
         error = nil
         defer { isLoading = false }
         do {
-            let bundle = try await APIClient.shared.search(query: q)
+            let bundle = try await APIClient.shared.search(query: q, mode: mode)
             authors = bundle.authors
             results = bundle.works
+            showingRecent = false
             if authors.isEmpty && results.isEmpty {
                 error = "Ничего не найдено"
             }
@@ -174,6 +214,7 @@ struct SearchView: View {
         do {
             authors = []
             results = try await APIClient.shared.catalogRecent()
+            showingRecent = true
             if results.isEmpty {
                 error = "Каталог пуст или недоступен"
             }

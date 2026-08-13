@@ -432,11 +432,38 @@ struct AuthorSearchHit: Identifiable, Hashable, Sendable {
     var id: String { userName }
     let userName: String
     let displayName: String
+    /// Site author rating (higher = more popular), when known.
+    var popularityScore: Int = 0
 }
 
 struct CatalogSearchBundle: Sendable {
     var authors: [AuthorSearchHit]
     var works: [WorkMeta]
+}
+
+/// Search scope in the app UI.
+enum CatalogSearchMode: String, CaseIterable, Identifiable, Sendable {
+    case title
+    case author
+    case both
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .title: return "Название"
+        case .author: return "Автор"
+        case .both: return "Всё"
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .title: return "Название книги"
+        case .author: return "Имя или @ник автора"
+        case .both: return "Название или автор"
+        }
+    }
 }
 
 struct ChapterTextPayload: Codable, Sendable {

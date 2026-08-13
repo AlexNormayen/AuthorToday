@@ -559,29 +559,67 @@ actor APIClient {
         return try decodeWorkList(from: data)
     }
 
-    /// Platform search: authors first, then works.
-    func search(query: String, page: Int = 1) async throws -> CatalogSearchBundle {
+    /// Platform search by title / author / both. Results sorted by popularity.
+    func search(query: String, mode: CatalogSearchMode = .both, page: Int = 1) async throws -> CatalogSearchBundle {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return CatalogSearchBundle(authors: [], works: []) }
 
-        if let site = try? await searchSiteBundle(query: trimmed), !site.workIDs.isEmpty || !site.authors.isEmpty {
-            let works: [WorkMeta]
-            if site.workIDs.isEmpty {
-                works = []
-            } else {
-                works = try await workMetas(ids: Array(site.workIDs.prefix(40)))
-            }
-            return CatalogSearchBundle(authors: site.authors, works: works)
+        switch mode {
+        case .title:
+            let works = try await searchWorksPopular(query: trimmed, page: page)
+            return CatalogSearchBundle(authors: [], works: works)
+        case .author:
+            let authors = try await searchAuthorsPopular(query: trimmed)
+            return CatalogSearchBundle(authors: authors, works: [])
+        case .both:
+            async let authorsTask = searchAuthorsPopular(query: trimmed)
+            async let worksTask = searchWorksPopular(query: trimmed, page: page)
+            let (authors, works) = try await (authorsTask, worksTask)
+            return CatalogSearchBundle(authors: authors, works: works)
+        }
+    }
+
+    private func searchWorksPopular(query: String, page: Int) async throws -> [WorkMeta] {
+        if let site = try? await searchSiteBundle(query: query, category: "works"),
+           !site.workIDs.isEmpty {
+            let works = try await workMetas(ids: Array(site.workIDs.prefix(40)))
+            return Self.sortWorksByPopularity(works)
         }
 
-        // Fallback: catalog by tag (works only)
+        // Fallback: catalog tag search (works only), already popularity-sorted by API.
         let tagged: CatalogSearchResult = try await get(path: "/v1/catalog/search", query: [
             "page": "\(page)",
             "ps": "40",
             "sorting": "popular",
-            "tag": trimmed
+            "tag": query
         ])
-        return CatalogSearchBundle(authors: [], works: tagged.items.map { normalize($0) })
+        return Self.sortWorksByPopularity(tagged.items.map { normalize($0) })
+    }
+
+    private func searchAuthorsPopular(query: String) async throws -> [AuthorSearchHit] {
+        let site = try await searchSiteBundle(query: query, category: "authors")
+        return Self.sortAuthorsByPopularity(site.authors)
+    }
+
+    private static func sortWorksByPopularity(_ works: [WorkMeta]) -> [WorkMeta] {
+        works.sorted { a, b in
+            let la = a.likeCount ?? 0
+            let lb = b.likeCount ?? 0
+            if la != lb { return la > lb }
+            let va = a.viewsCount ?? a.viewCount ?? 0
+            let vb = b.viewsCount ?? b.viewCount ?? 0
+            if va != vb { return va > vb }
+            return a.displayTitle.localizedCaseInsensitiveCompare(b.displayTitle) == .orderedAscending
+        }
+    }
+
+    private static func sortAuthorsByPopularity(_ authors: [AuthorSearchHit]) -> [AuthorSearchHit] {
+        authors.sorted { a, b in
+            if a.popularityScore != b.popularityScore {
+                return a.popularityScore > b.popularityScore
+            }
+            return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+        }
     }
 
     func catalogRecent(page: Int = 1) async throws -> [WorkMeta] {
@@ -605,9 +643,13 @@ actor APIClient {
         var workIDs: [Int]
     }
 
-    private func searchSiteBundle(query: String) async throws -> SiteSearchParse {
+    private func searchSiteBundle(query: String, category: String?) async throws -> SiteSearchParse {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://author.today/search?q=\(encoded)") else {
+        var path = "https://author.today/search?q=\(encoded)"
+        if let category, !category.isEmpty {
+            path = "https://author.today/search?category=\(category)&q=\(encoded)"
+        }
+        guard let url = URL(string: path) else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -624,11 +666,17 @@ actor APIClient {
         guard let html = String(data: data, encoding: .utf8) else {
             return SiteSearchParse(authors: [], workIDs: [])
         }
+        let wantAuthors = category == nil || category == "authors"
+        let wantWorks = category == nil || category == "works"
         return SiteSearchParse(
-            authors: Self.parseSearchAuthors(from: html),
-            workIDs: Self.parseSearchWorkIDs(from: html)
+            authors: wantAuthors ? Self.parseSearchAuthors(from: html) : [],
+            workIDs: wantWorks ? Self.parseSearchWorkIDs(from: html) : []
         )
     }
+
+    private static let ignoredSearchUserNames: Set<String> = [
+        "at_collections", "at_support", "admin", "support"
+    ]
 
     private static func parseSearchAuthors(from html: String) -> [AuthorSearchHit] {
         // Prefer the «Авторы» block when present; otherwise collect /u/ links that appear before works.
@@ -638,10 +686,41 @@ actor APIClient {
             if let works = after.range(of: #"Произведения"#, options: [.caseInsensitive]) {
                 authorsSection = String(after[..<works.lowerBound])
             } else {
-                authorsSection = String(after.prefix(12_000))
+                authorsSection = String(after.prefix(80_000))
             }
+        } else if html.contains("category=authors") || html.contains("icon-author-rating") {
+            authorsSection = html
         } else {
             authorsSection = String(html.prefix(20_000))
+        }
+
+        // Card-oriented: /u/link + optional author rating nearby.
+        if let cardRegex = try? NSRegularExpression(
+            pattern: #"(?is)<a[^>]+href=["']/u/([^"'/]+)["'][^>]*>(.*?)</a>(.{0,900})"#
+        ) {
+            let ns = authorsSection as NSString
+            var ordered: [AuthorSearchHit] = []
+            var seen = Set<String>()
+            for match in cardRegex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
+                guard match.numberOfRanges >= 4,
+                      let uRange = Range(match.range(at: 1), in: authorsSection),
+                      let nRange = Range(match.range(at: 2), in: authorsSection),
+                      let tailRange = Range(match.range(at: 3), in: authorsSection) else { continue }
+                let userRaw = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let userKey = userRaw.lowercased()
+                guard !userRaw.isEmpty,
+                      !ignoredSearchUserNames.contains(userKey),
+                      seen.insert(userKey).inserted else { continue }
+                var name = HTMLText.plain(from: String(authorsSection[nRange]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if name.isEmpty { name = userRaw }
+                if name.count > 80 { continue }
+                let tail = String(authorsSection[tailRange])
+                let score = parseAuthorPopularity(from: tail)
+                ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: score))
+                if ordered.count >= 40 { break }
+            }
+            if !ordered.isEmpty { return ordered }
         }
 
         guard let regex = try? NSRegularExpression(
@@ -655,29 +734,67 @@ actor APIClient {
             guard match.numberOfRanges >= 3,
                   let uRange = Range(match.range(at: 1), in: authorsSection),
                   let nRange = Range(match.range(at: 2), in: authorsSection) else { continue }
-            let user = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !user.isEmpty, seen.insert(user).inserted else { continue }
+            let userRaw = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let userKey = userRaw.lowercased()
+            guard !userRaw.isEmpty,
+                  !ignoredSearchUserNames.contains(userKey),
+                  seen.insert(userKey).inserted else { continue }
             var name = HTMLText.plain(from: String(authorsSection[nRange]))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if name.isEmpty { name = user }
+            if name.isEmpty { name = userRaw }
             if name.count > 80 { continue }
-            // Skip pure icon/empty chrome links
-            if name == user, user.count < 2 { continue }
-            ordered.append(AuthorSearchHit(userName: user, displayName: name))
-            if ordered.count >= 20 { break }
+            if name == userRaw, userRaw.count < 2 { continue }
+            ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: 0))
+            if ordered.count >= 40 { break }
         }
         return ordered
     }
 
+    private static func parseAuthorPopularity(from snippet: String) -> Int {
+        // e.g. <i class="icon-author-rating ..."></i> 14 982
+        if let regex = try? NSRegularExpression(
+            pattern: #"icon-author-rating[^>]*>\s*</i>\s*([\d\s\u00a0]+)"#,
+            options: [.caseInsensitive]
+        ) {
+            let ns = snippet as NSString
+            if let match = regex.firstMatch(in: snippet, range: NSRange(location: 0, length: ns.length)),
+               match.numberOfRanges > 1,
+               let r = Range(match.range(at: 1), in: snippet) {
+                let digits = snippet[r].filter(\.isNumber)
+                if let value = Int(digits) { return value }
+            }
+        }
+        if let regex = try? NSRegularExpression(
+            pattern: #"icon-favorite[^>]*>\s*</i>\s*([\d\s\u00a0]+)"#,
+            options: [.caseInsensitive]
+        ) {
+            let ns = snippet as NSString
+            if let match = regex.firstMatch(in: snippet, range: NSRange(location: 0, length: ns.length)),
+               match.numberOfRanges > 1,
+               let r = Range(match.range(at: 1), in: snippet) {
+                let digits = snippet[r].filter(\.isNumber)
+                if let value = Int(digits) { return value }
+            }
+        }
+        return 0
+    }
+
     private static func parseSearchWorkIDs(from html: String) -> [Int] {
+        // Prefer the works section when the page also lists authors.
+        let scope: String
+        if let range = html.range(of: #"Произведения"#, options: [.caseInsensitive]) {
+            scope = String(html[range.lowerBound...])
+        } else {
+            scope = html
+        }
         guard let regex = try? NSRegularExpression(pattern: #"/work/(\d+)"#) else { return [] }
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let range = NSRange(scope.startIndex..<scope.endIndex, in: scope)
         var ordered: [Int] = []
         var seen = Set<Int>()
-        for match in regex.matches(in: html, range: range) {
+        for match in regex.matches(in: scope, range: range) {
             guard match.numberOfRanges > 1,
-                  let idRange = Range(match.range(at: 1), in: html),
-                  let id = Int(html[idRange]),
+                  let idRange = Range(match.range(at: 1), in: scope),
+                  let id = Int(scope[idRange]),
                   seen.insert(id).inserted else { continue }
             ordered.append(id)
         }

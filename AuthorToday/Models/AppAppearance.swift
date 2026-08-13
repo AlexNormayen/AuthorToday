@@ -29,6 +29,10 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     case moss
     /// Official Author.Today site colors (accent #4582af).
     case authorToday
+    /// Calm free themes — flat wash, high contrast for lists.
+    case paper
+    case cloud
+    case stone
     case ocean
     case wine
     case graphite
@@ -84,10 +88,21 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Flat, low-contrast-photo themes meant for comfortable browsing.
+    var isCalmFamily: Bool {
+        switch self {
+        case .paper, .cloud, .stone, .authorToday: return true
+        default: return false
+        }
+    }
+
     var title: String {
         switch self {
         case .moss: return "Мох"
         case .authorToday: return "Author.Today"
+        case .paper: return "Бумага"
+        case .cloud: return "Облако"
+        case .stone: return "Камень"
         case .ocean: return "Океан"
         case .wine: return "Вино"
         case .graphite: return "Графит"
@@ -116,6 +131,9 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .moss: return Color(red: 0.18, green: 0.42, blue: 0.36)
         // Site brand / theme-color tile: #4582af
         case .authorToday: return Color(red: 0.271, green: 0.510, blue: 0.686)
+        case .paper: return Color(red: 0.22, green: 0.25, blue: 0.28) // ink
+        case .cloud: return Color(red: 0.32, green: 0.45, blue: 0.55) // soft steel
+        case .stone: return Color(red: 0.38, green: 0.40, blue: 0.44) // slate
         case .ocean: return Color(red: 0.14, green: 0.35, blue: 0.55)
         case .wine: return Color(red: 0.55, green: 0.18, blue: 0.28)
         case .graphite: return Color(red: 0.35, green: 0.38, blue: 0.42)
@@ -144,6 +162,9 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .moss: return Color(red: 0.93, green: 0.94, blue: 0.93)
         // Site surfaces: #f5f7fa / #fcfcfc
         case .authorToday: return Color(red: 0.961, green: 0.969, blue: 0.980)
+        case .paper: return Color(red: 0.975, green: 0.972, blue: 0.965)
+        case .cloud: return Color(red: 0.945, green: 0.955, blue: 0.965)
+        case .stone: return Color(red: 0.945, green: 0.945, blue: 0.948)
         case .ocean: return Color(red: 0.92, green: 0.95, blue: 0.97)
         case .wine: return Color(red: 0.97, green: 0.93, blue: 0.94)
         case .graphite: return Color(red: 0.94, green: 0.94, blue: 0.95)
@@ -166,6 +187,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .authorToday:
             // Navbar / chrome gray-blue from the site
             return Color(red: 0.16, green: 0.20, blue: 0.24)
+        case .paper, .cloud, .stone:
+            return Color(red: 0.12, green: 0.13, blue: 0.15)
         default:
             return Color(red: 0.10, green: 0.11, blue: 0.12)
         }
@@ -174,6 +197,24 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     /// Themes that look best with dark UI chrome.
     var prefersDark: Bool {
         isFuturisticFamily || isDaredevilFamily
+    }
+
+    /// Dim overlay strength for the living backdrop (lower = more readable lists).
+    var atmosphereOverlayTop: Double {
+        if prefersDark { return 0.35 }
+        if isCalmFamily { return 0.03 }
+        return 0.12
+    }
+
+    var atmosphereOverlayBottom: Double {
+        if prefersDark { return 0.55 }
+        if isCalmFamily { return 0.06 }
+        return 0.22
+    }
+
+    /// Accent wash on flat (no-photo) backgrounds.
+    var atmosphereAccentWash: Double {
+        isCalmFamily ? 0.10 : 0.35
     }
 
     var atmosphereStyle: ThemeAtmosphereStyle {
@@ -193,7 +234,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .moss: return "ThemeMoss"
         // Soft site-like wash (no photo) — matches flat AT chrome.
-        case .authorToday: return nil
+        case .authorToday, .paper, .cloud, .stone: return nil
         case .ocean: return "ThemeOcean"
         case .wine: return "ThemeWine"
         case .graphite: return "ThemeGraphite"
@@ -222,6 +263,9 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case .moss: return Color(red: 0.90, green: 0.93, blue: 0.91)
         // #e6f0fc — soft AT link/panel blue wash
         case .authorToday: return Color(red: 0.902, green: 0.941, blue: 0.988)
+        case .paper: return Color(red: 0.968, green: 0.964, blue: 0.955)
+        case .cloud: return Color(red: 0.935, green: 0.948, blue: 0.960)
+        case .stone: return Color(red: 0.935, green: 0.936, blue: 0.940)
         case .ocean: return Color(red: 0.88, green: 0.93, blue: 0.97)
         case .wine: return Color(red: 0.95, green: 0.90, blue: 0.92)
         case .graphite: return Color(red: 0.91, green: 0.92, blue: 0.93)
@@ -248,6 +292,21 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
                 Color(red: 0.271, green: 0.510, blue: 0.686),
                 Color(red: 0.204, green: 0.455, blue: 0.620),
                 Color(red: 0.427, green: 0.639, blue: 0.741)
+            ]
+        case .paper:
+            return [
+                Color(red: 0.88, green: 0.86, blue: 0.82),
+                Color(red: 0.78, green: 0.80, blue: 0.82)
+            ]
+        case .cloud:
+            return [
+                Color(red: 0.72, green: 0.80, blue: 0.88),
+                Color(red: 0.82, green: 0.88, blue: 0.92)
+            ]
+        case .stone:
+            return [
+                Color(red: 0.72, green: 0.74, blue: 0.76),
+                Color(red: 0.82, green: 0.83, blue: 0.85)
             ]
         case .ocean:
             return [Color(red: 0.25, green: 0.50, blue: 0.75), Color(red: 0.40, green: 0.70, blue: 0.85)]

@@ -31,7 +31,10 @@ struct ThemeAtmosphereView: View {
                         .opacity(intensity)
                 } else {
                     LinearGradient(
-                        colors: [preset.accent.opacity(0.35), preset.atmosphereBase],
+                        colors: [
+                            preset.accent.opacity(preset.atmosphereAccentWash * intensity),
+                            preset.atmosphereBase
+                        ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -39,8 +42,8 @@ struct ThemeAtmosphereView: View {
 
                 LinearGradient(
                     colors: [
-                        Color.black.opacity(preset.prefersDark ? 0.35 * intensity : 0.12 * intensity),
-                        Color.black.opacity(preset.prefersDark ? 0.55 * intensity : 0.22 * intensity)
+                        Color.black.opacity(preset.atmosphereOverlayTop * intensity),
+                        Color.black.opacity(preset.atmosphereOverlayBottom * intensity)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
