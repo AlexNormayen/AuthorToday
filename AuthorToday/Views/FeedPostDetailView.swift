@@ -28,7 +28,7 @@ struct FeedPostDetailView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Загрузка поста…")
+                LoadingStateView(title: "Загрузка поста…")
             } else if let error, details == nil {
                 ContentUnavailableView(
                     "Не удалось открыть пост",

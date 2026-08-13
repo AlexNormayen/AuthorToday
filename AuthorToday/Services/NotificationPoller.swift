@@ -15,10 +15,15 @@ final class NotificationPoller: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var hasMore = false
+    /// Which feed kinds are visible (AT-style “what to show”).
+    @Published var enabledKinds: Set<FeedKind>
 
     private var timer: Timer?
     private var knownIds: Set<String> = []
+    private var locallyReadIds: Set<String> = []
     private let knownKey = "at.knownNotificationIds"
+    private let readKey = "at.readNotificationIds"
+    private let kindsKey = "at.feedEnabledKinds"
     private let pollInterval: TimeInterval = 120
     private let pageSize = 20
     private var cursor: String?
@@ -27,6 +32,15 @@ final class NotificationPoller: ObservableObject {
     private init() {
         if let saved = UserDefaults.standard.array(forKey: knownKey) as? [String] {
             knownIds = Set(saved)
+        }
+        if let saved = UserDefaults.standard.array(forKey: readKey) as? [String] {
+            locallyReadIds = Set(saved)
+        }
+        if let raw = UserDefaults.standard.array(forKey: kindsKey) as? [String], !raw.isEmpty {
+            let parsed = Set(raw.compactMap(FeedKind.init(rawValue:)))
+            enabledKinds = parsed.isEmpty ? Set(FeedKind.allCases) : parsed
+        } else {
+            enabledKinds = Set(FeedKind.allCases)
         }
     }
 
@@ -54,25 +68,47 @@ final class NotificationPoller: ObservableObject {
         timer = nil
     }
 
+    func isUnread(_ item: NotificationItem) -> Bool {
+        if locallyReadIds.contains(item.stableId) { return false }
+        return item.appearsUnread
+    }
+
+    func setKind(_ kind: FeedKind, enabled: Bool) {
+        var next = enabledKinds
+        if enabled {
+            next.insert(kind)
+        } else if next.count > 1 {
+            next.remove(kind)
+        }
+        enabledKinds = next
+        persistKinds()
+    }
+
     /// First page (or pull-to-refresh).
     func refresh(announceNew: Bool) async {
+        if !DownloadManager.shared.online {
+            lastError = "Нет сети. Лента недоступна офлайн."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
             let page = try await APIClient.shared.feedPage(take: pageSize, lastItemCreationTime: nil)
             seenStableIds = Set(page.items.map(\.stableId))
-            items = page.items
+            items = page.items.map { overlayLocalRead($0) }
             cursor = page.cursor
             hasMore = page.more && page.cursor != nil
 
+            let localUnread = items.filter { isUnread($0) }.count
             if let check = try? await APIClient.shared.checkNotifications() {
-                unreadCount = check.effectiveUnread
+                // API may know about pages we haven't loaded yet.
+                unreadCount = max(localUnread, check.effectiveUnread)
             } else {
-                unreadCount = page.items.filter { !($0.isRead ?? true) }.count
+                unreadCount = localUnread
             }
 
             if announceNew {
-                for item in page.items where !(item.isRead ?? true) {
+                for item in items where isUnread(item) {
                     let sid = item.stableId
                     if !knownIds.contains(sid) {
                         knownIds.insert(sid)
@@ -81,7 +117,7 @@ final class NotificationPoller: ObservableObject {
                 }
                 persistKnown()
             } else {
-                knownIds.formUnion(page.items.map(\.stableId))
+                knownIds.formUnion(items.map(\.stableId))
                 persistKnown()
             }
             lastError = nil
@@ -98,7 +134,9 @@ final class NotificationPoller: ObservableObject {
         defer { isLoadingMore = false }
         do {
             let page = try await APIClient.shared.feedPage(take: pageSize, lastItemCreationTime: cursor)
-            let fresh = page.items.filter { seenStableIds.insert($0.stableId).inserted }
+            let fresh = page.items
+                .filter { seenStableIds.insert($0.stableId).inserted }
+                .map { overlayLocalRead($0) }
             items.append(contentsOf: fresh)
             self.cursor = page.cursor
             hasMore = page.more && page.cursor != nil && !fresh.isEmpty
@@ -110,43 +148,42 @@ final class NotificationPoller: ObservableObject {
         }
     }
 
-    /// Call when the user opens the feed tab.
-    func markFeedSeen() async {
+    /// Mark a single row read when the user opens it (does not clear the whole feed).
+    func markItemRead(_ item: NotificationItem) {
+        guard isUnread(item) else { return }
+        locallyReadIds.insert(item.stableId)
+        persistRead()
+        if let idx = items.firstIndex(where: { $0.stableId == item.stableId }) {
+            items[idx] = items[idx].marking(isRead: true)
+        }
+        unreadCount = max(0, unreadCount - 1)
+        Task { await applyAppBadge() }
+    }
+
+    /// Explicit “mark all read” (AT-style) — not called merely by opening the tab.
+    func markAllRead() async {
         do {
             try await APIClient.shared.markAllNotificationsRead()
         } catch {
             lastError = error.localizedDescription
         }
+        locallyReadIds.formUnion(items.map(\.stableId))
+        persistRead()
         unreadCount = 0
-        items = items.map { item in
-            NotificationItem(
-                id: item.id,
-                text: item.text,
-                title: item.title,
-                message: item.message,
-                content: item.content,
-                body: item.body,
-                html: item.html,
-                creationTime: item.creationTime,
-                isRead: true,
-                workId: item.resolvedWorkId,
-                workID: nil,
-                url: item.url,
-                link: item.link,
-                category: item.category,
-                notificationId: item.notificationId,
-                feedType: item.feedType,
-                postId: item.postId,
-                authorName: item.authorName,
-                authorUserName: item.authorUserName,
-                coverURL: item.coverURL
-            )
-        }
+        items = items.map { $0.marking(isRead: true) }
         await applyAppBadge()
     }
 
-    func markAllRead() async {
-        await markFeedSeen()
+    /// Kept for call sites that still use the old name.
+    func markFeedSeen() async {
+        await markAllRead()
+    }
+
+    private func overlayLocalRead(_ item: NotificationItem) -> NotificationItem {
+        if locallyReadIds.contains(item.stableId) {
+            return item.marking(isRead: true)
+        }
+        return item
     }
 
     private func applyAppBadge() async {
@@ -176,5 +213,15 @@ final class NotificationPoller: ObservableObject {
         let trimmed = Array(knownIds.suffix(500))
         knownIds = Set(trimmed)
         UserDefaults.standard.set(trimmed, forKey: knownKey)
+    }
+
+    private func persistRead() {
+        let trimmed = Array(locallyReadIds.suffix(800))
+        locallyReadIds = Set(trimmed)
+        UserDefaults.standard.set(trimmed, forKey: readKey)
+    }
+
+    private func persistKinds() {
+        UserDefaults.standard.set(enabledKinds.map(\.rawValue), forKey: kindsKey)
     }
 }

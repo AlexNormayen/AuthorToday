@@ -10,7 +10,7 @@ struct MessagesView: View {
     var body: some View {
         Group {
             if isLoading && chats.isEmpty {
-                ProgressView("Загружаем сообщения…")
+                LoadingStateView(title: "Загружаем сообщения…")
             } else if let error, chats.isEmpty {
                 ContentUnavailableView(
                     "Не удалось загрузить",

@@ -11,48 +11,77 @@ struct NotificationsView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var path = NavigationPath()
     @State private var expandedIds: Set<String> = []
+    @State private var quickFilter: FeedQuickFilter = .all
+    @State private var showKindSettings = false
+
+    private var filteredItems: [NotificationItem] {
+        notifications.items.filter { item in
+            notifications.enabledKinds.contains(item.feedKind)
+                && quickFilter.matches(item, isUnread: notifications.isUnread(item))
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
             Group {
                 if notifications.items.isEmpty && notifications.isLoading {
-                    ProgressView("Загрузка ленты…")
+                    LoadingStateView(
+                        title: "Загрузка ленты…",
+                        subtitle: "Получаем обновления с Author.Today"
+                    )
                 } else if notifications.items.isEmpty {
                     ContentUnavailableView(
                         notifications.lastError == nil ? "Лента пуста" : "Не удалось загрузить",
-                        systemImage: "bell.slash",
+                        systemImage: notifications.lastError == nil ? "bell.slash" : "wifi.exclamationmark",
                         description: Text(notifications.lastError
                             ?? "Обновления книг и посты авторов появятся здесь")
                     )
                 } else {
                     List {
-                        ForEach(notifications.items, id: \.stableId) { item in
-                            feedRow(item)
-                                .listRowBackground(
-                                    Rectangle().fill(.ultraThinMaterial.opacity(0.82))
-                                )
-                                .onAppear {
-                                    if item.stableId == notifications.items.last?.stableId {
-                                        Task { await notifications.loadMore() }
-                                    }
-                                }
+                        Section {
+                            filterBar
+                                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 4, trailing: 12))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
 
-                        if notifications.isLoadingMore {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                Spacer()
-                            }
-                            .listRowSeparator(.hidden)
+                        if filteredItems.isEmpty {
+                            ContentUnavailableView(
+                                "Нет записей",
+                                systemImage: "line.3.horizontal.decrease.circle",
+                                description: Text("Попробуйте другой фильтр или включите типы в настройках ленты")
+                            )
                             .listRowBackground(Color.clear)
-                        } else if notifications.hasMore {
-                            Color.clear
-                                .frame(height: 1)
-                                .listRowBackground(Color.clear)
-                                .onAppear {
-                                    Task { await notifications.loadMore() }
+                            .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(filteredItems, id: \.stableId) { item in
+                                feedRow(item)
+                                    .listRowBackground(
+                                        Rectangle().fill(.ultraThinMaterial.opacity(0.82))
+                                    )
+                                    .onAppear {
+                                        if item.stableId == filteredItems.last?.stableId {
+                                            Task { await notifications.loadMore() }
+                                        }
+                                    }
+                            }
+
+                            if notifications.isLoadingMore {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                    Spacer()
                                 }
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                            } else if notifications.hasMore {
+                                Color.clear
+                                    .frame(height: 1)
+                                    .listRowBackground(Color.clear)
+                                    .onAppear {
+                                        Task { await notifications.loadMore() }
+                                    }
+                            }
                         }
                     }
                     .listStyle(.plain)
@@ -65,6 +94,24 @@ struct NotificationsView: View {
             .navigationTitle("Лента")
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button {
+                            showKindSettings = true
+                        } label: {
+                            Label("Что показывать…", systemImage: "slider.horizontal.3")
+                        }
+                        if notifications.unreadCount > 0 {
+                            Button {
+                                Task { await notifications.markAllRead() }
+                            } label: {
+                                Label("Прочитать всё", systemImage: "checkmark.circle")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Обновить") {
                         Task { await notifications.refresh(announceNew: false) }
@@ -73,6 +120,10 @@ struct NotificationsView: View {
             }
             .refreshable {
                 await notifications.refresh(announceNew: false)
+            }
+            .sheet(isPresented: $showKindSettings) {
+                FeedKindSettingsSheet()
+                    .environmentObject(notifications)
             }
             .navigationDestination(for: FeedRoute.self) { route in
                 switch route {
@@ -83,29 +134,59 @@ struct NotificationsView: View {
                 }
             }
             .task {
+                // Do not mark all as read on open — keep badge and unread styling (AT-style).
                 await notifications.refresh(announceNew: false)
-                await notifications.markFeedSeen()
             }
+        }
+    }
+
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(FeedQuickFilter.allCases) { filter in
+                    let selected = quickFilter == filter
+                    Button {
+                        quickFilter = filter
+                    } label: {
+                        Text(filter.title)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background {
+                                Capsule()
+                                    .fill(selected ? appearance.accent.opacity(0.92) : Color.primary.opacity(0.08))
+                            }
+                            .foregroundStyle(selected ? Color.white : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
         }
     }
 
     private func feedRow(_ item: NotificationItem) -> some View {
         let expanded = expandedIds.contains(item.stableId)
+        let unread = notifications.isUnread(item)
         return Button {
             openOrExpand(item)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(unread ? appearance.accent : Color.clear)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 6)
+
                 if let cover = item.coverURL {
                     CoverImage(urlString: cover, corner: 8)
                         .frame(width: 52, height: 52)
+                        .opacity(unread ? 1 : 0.72)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        if let category = item.category, !category.isEmpty {
-                            Text(category)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(item.feedKind.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
                         if item.isBlogPost {
                             Text("Пост")
                                 .font(.caption2.weight(.semibold))
@@ -121,21 +202,20 @@ struct NotificationsView: View {
                     if let author = item.authorName, !author.isEmpty {
                         Text(author)
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(.primary.opacity(0.75))
+                            .foregroundStyle(.primary.opacity(unread ? 0.85 : 0.55))
                     }
                     if let title = item.displayTitle {
                         Text(title)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
+                            .font(.body.weight(unread ? .bold : .semibold))
+                            .foregroundStyle(.primary.opacity(unread ? 1 : 0.78))
                             .multilineTextAlignment(.leading)
                             .lineLimit(expanded ? nil : 3)
                     }
                     Text(item.displayText)
-                        .font(.body)
-                        .foregroundStyle(.primary)
+                        .font(.body.weight(unread ? .medium : .regular))
+                        .foregroundStyle(.primary.opacity(unread ? 1 : 0.72))
                         .multilineTextAlignment(.leading)
                         .lineLimit(expanded ? nil : 6)
-                        .opacity((item.isRead ?? false) ? 0.88 : 1)
 
                     if !expanded && item.displayText.count > 220 {
                         Text("Показать полностью")
@@ -152,9 +232,11 @@ struct NotificationsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(unread ? "Новое: \(item.displayText)" : item.displayText)
     }
 
     private func openOrExpand(_ item: NotificationItem) {
+        notifications.markItemRead(item)
         if let postId = item.postId {
             path.append(FeedRoute.post(postId))
             return
@@ -186,5 +268,41 @@ struct NotificationsView: View {
         f.locale = Locale(identifier: "ru_RU")
         f.unitsStyle = .short
         return f.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+private struct FeedKindSettingsSheet: View {
+    @EnvironmentObject private var notifications: NotificationPoller
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Выберите, какие типы событий показывать в ленте — по аналогии с настройками уведомлений на Author.Today.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                }
+                Section("Типы") {
+                    ForEach(FeedKind.allCases) { kind in
+                        Toggle(isOn: Binding(
+                            get: { notifications.enabledKinds.contains(kind) },
+                            set: { notifications.setKind(kind, enabled: $0) }
+                        )) {
+                            Text(kind.title)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Фильтр ленты")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Готово") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

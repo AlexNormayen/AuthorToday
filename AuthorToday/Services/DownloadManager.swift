@@ -51,20 +51,41 @@ final class DownloadManager: ObservableObject {
         }
 
         var remoteChapterId: Int?
+        var remoteChapterFraction = 0.0
         if isOnline, let meta = try? await APIClient.shared.workMeta(id: workId) {
             if store.isInLibrary(workId) {
                 store.upsertWork(from: meta, markFromSite: true)
             }
-            remoteChapterId = meta.lastReadChapterId
+            remoteChapterId = meta.resolvedLastReadChapterId
+            remoteChapterFraction = meta.resolvedChapterProgress
             // Keep site book-% for library display until local reading updates it.
             if meta.resolvedProgress > 0 {
                 store.updateBookProgress(workId: workId, progress: meta.resolvedProgress)
             }
+            // Seed local resume from portal when this device has never opened the book.
+            store.adoptRemoteResumeIfNeeded(
+                workId: workId,
+                chapterId: remoteChapterId,
+                chapterFraction: remoteChapterFraction,
+                bookProgress: meta.resolvedProgress
+            )
+        }
+        // Details payload carries the same last-read fields — use if meta-info missed them.
+        if remoteChapterId == nil {
+            remoteChapterId = details.resolvedLastReadChapterId
+            remoteChapterFraction = details.resolvedChapterProgress
+            store.adoptRemoteResumeIfNeeded(
+                workId: workId,
+                chapterId: remoteChapterId,
+                chapterFraction: remoteChapterFraction,
+                bookProgress: nil
+            )
         }
 
         let startId = resolveStartChapterId(
             preferredChapterId: preferredChapterId,
             remoteChapterId: remoteChapterId,
+            remoteChapterFraction: remoteChapterFraction,
             chapters: chapters,
             workId: workId,
             store: store,
@@ -92,6 +113,7 @@ final class DownloadManager: ObservableObject {
     private func resolveStartChapterId(
         preferredChapterId: Int?,
         remoteChapterId: Int?,
+        remoteChapterFraction: Double = 0,
         chapters: [ChapterMeta],
         workId: Int,
         store: OfflineStore,
@@ -127,7 +149,7 @@ final class DownloadManager: ObservableObject {
         if let p = store.progress(for: workId) {
             consider(p.chapterId, fraction: p.fraction)
         }
-        consider(remoteChapterId, fraction: 0)
+        consider(remoteChapterId, fraction: remoteChapterFraction)
         consider(store.cachedWork(workId: workId)?.lastReadChapterId, fraction: 0)
 
         if let bestId { return bestId }
@@ -190,7 +212,11 @@ final class DownloadManager: ObservableObject {
             isPurchased: nil,
             orderStatus: nil,
             orderStatusMessage: nil,
-            freeChapterCount: nil
+            freeChapterCount: nil,
+            lastChapterId: cached.lastReadChapterId,
+            lastChapterProgress: nil,
+            textLengthLastRead: nil,
+            textLength: nil
         )
     }
 

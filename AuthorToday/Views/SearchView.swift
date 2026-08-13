@@ -19,7 +19,10 @@ struct SearchView: View {
         NavigationStack(path: $path) {
             Group {
                 if isLoading && results.isEmpty && authors.isEmpty {
-                    ProgressView("Поиск…")
+                    LoadingStateView(
+                        title: "Поиск…",
+                        subtitle: downloads.online ? nil : "Нет сети"
+                    )
                 } else if let error, results.isEmpty && authors.isEmpty {
                     ContentUnavailableView("Ошибка", systemImage: "wifi.exclamationmark", description: Text(error))
                 } else if results.isEmpty && authors.isEmpty {
@@ -139,6 +142,12 @@ struct SearchView: View {
     private func runSearch() async {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
+        guard downloads.online else {
+            error = "Поиск недоступен офлайн"
+            authors = []
+            results = []
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -155,6 +164,10 @@ struct SearchView: View {
     }
 
     private func loadRecent() async {
+        guard downloads.online else {
+            error = "Каталог недоступен офлайн"
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }

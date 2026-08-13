@@ -632,6 +632,9 @@ final class OfflineStore: ObservableObject {
             existing.coverURL = WorkMeta.normalizeCover(details.coverUrl)
             existing.annotation = details.annotation
             existing.chaptersJSON = chaptersData
+            if let remoteChapter = details.resolvedLastReadChapterId {
+                existing.lastReadChapterId = existing.lastReadChapterId ?? remoteChapter
+            }
             existing.updatedAt = .now
         } else {
             // Keep offline metadata, but hide from library shelf via localonly
@@ -644,6 +647,7 @@ final class OfflineStore: ObservableObject {
                     coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
                     libraryState: "localonly",
+                    lastReadChapterId: details.resolvedLastReadChapterId,
                     chaptersJSON: chaptersData
                 )
             )
@@ -652,6 +656,48 @@ final class OfflineStore: ObservableObject {
         if library.contains(where: { $0.workId == id }) {
             reloadLibrary()
         }
+    }
+
+    /// Import portal last-read chapter/position when this device has no local resume yet.
+    func adoptRemoteResumeIfNeeded(
+        workId: Int,
+        chapterId: Int?,
+        chapterFraction: Double,
+        bookProgress: Double?
+    ) {
+        guard let chapterId else { return }
+        let hasLocalCheckpoint = ReadingSessionStore.shared.checkpoint(for: workId)?.hasInChapterProgress == true
+        let local = progress(for: workId)
+        let hasLocalProgress = (local?.fraction ?? 0) > 0.01
+            || (local.map { $0.pageIndex > 0 || $0.offsetY > 8 } ?? false)
+        // Same chapter on device but no in-chapter offset yet — still take portal %.
+        let canEnrichSameChapter = local?.chapterId == chapterId
+            && (local?.fraction ?? 0) < 0.01
+            && chapterFraction > 0.01
+        if let modelContext {
+            let workDesc = FetchDescriptor<CachedWork>(
+                predicate: #Predicate { $0.workId == workId }
+            )
+            if let work = try? modelContext.fetch(workDesc).first {
+                if work.lastReadChapterId == nil {
+                    work.lastReadChapterId = chapterId
+                }
+                if let bookProgress, bookProgress > work.progress {
+                    work.progress = min(max(bookProgress, 0), 1)
+                }
+                try? modelContext.save()
+            }
+        }
+        guard canEnrichSameChapter || (!hasLocalCheckpoint && !hasLocalProgress) else { return }
+        saveProgress(
+            workId: workId,
+            chapterId: chapterId,
+            offsetY: 0,
+            pageIndex: 0,
+            fraction: min(max(chapterFraction, 0), 1),
+            bookProgress: bookProgress,
+            forceChapter: true
+        )
     }
 
     /// Lookup including local-only cached works (not shown in library shelf).

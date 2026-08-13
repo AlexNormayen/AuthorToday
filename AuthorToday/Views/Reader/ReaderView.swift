@@ -49,8 +49,20 @@ struct ReaderView: View {
             readerBackground
 
             if isLoading {
-                ProgressView("Открываем книгу…")
+                VStack(spacing: 20) {
+                    LoadingStateView(
+                        title: "Открываем книгу…",
+                        subtitle: downloads.online
+                            ? nil
+                            : "Нет сети. Нужна заранее скачанная глава."
+                    )
+                    Button("Закрыть") {
+                        session.endReading()
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
                     .tint(settings.textColor)
+                }
             } else if let error {
                 VStack(spacing: 16) {
                     Image(systemName: "wifi.slash")
@@ -61,8 +73,11 @@ struct ReaderView: View {
                         .multilineTextAlignment(.center)
                     Button("Повторить") { Task { await bootstrap() } }
                         .buttonStyle(.borderedProminent)
-                    Button("Назад в библиотеку") { dismiss() }
-                        .foregroundStyle(settings.textColor)
+                    Button("Назад") {
+                        session.endReading()
+                        dismiss()
+                    }
+                    .foregroundStyle(settings.textColor)
                 }
                 .padding(24)
             } else {
@@ -79,11 +94,11 @@ struct ReaderView: View {
                 .animation(.easeInOut(duration: 0.2), value: showEndOfChapterCTA)
             }
 
-            if showChrome || error != nil {
+            if showChrome || error != nil || isLoading {
                 VStack(spacing: 0) {
                     topBar
                     Spacer(minLength: 0)
-                    if error == nil {
+                    if error == nil && !isLoading {
                         bottomBar
                     }
                 }
@@ -93,15 +108,15 @@ struct ReaderView: View {
         }
         .navigationBarHidden(true)
         // Show status bar with chrome; force scheme so time/battery stay readable.
-        .statusBarHidden(!showChrome && error == nil)
+        .statusBarHidden(!showChrome && error == nil && !isLoading)
         .preferredColorScheme(
-            (showChrome || error != nil)
+            (showChrome || error != nil || isLoading)
                 ? (chromePrefersDark ? .dark : .light)
                 : nil
         )
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
-        .ignoresSafeArea(edges: (showChrome || error != nil) ? [] : .all)
+        .ignoresSafeArea(edges: (showChrome || error != nil || isLoading) ? [] : .all)
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 ReaderSettingsView()
@@ -135,12 +150,6 @@ struct ReaderView: View {
         .task {
             await bootstrap()
             UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOn
-        }
-        .onAppear {
-            if !didStartSession {
-                didStartSession = true
-                session.beginReading(workId: workId, chapterId: initialChapterId)
-            }
         }
         .onChange(of: settings.keepScreenOn) { _, on in
             UIApplication.shared.isIdleTimerDisabled = on
@@ -199,6 +208,7 @@ struct ReaderView: View {
     private var scrollReader: some View {
         ReaderTextScrollView(
             text: plainText,
+            chapterHeading: chapterTitle,
             font: settings.fontFamily.uiFont(size: settings.fontSize),
             textColor: settings.textColor.uiColor(),
             lineSpacing: settings.lineSpacing,
@@ -275,7 +285,13 @@ struct ReaderView: View {
         return ZStack {
             TabView(selection: $pageIndex) {
                 ForEach(Array(pages.enumerated()), id: \.offset) { idx, page in
-                    Text(page)
+                    Text(HTMLText.attributedReaderPage(
+                        page,
+                        chapterHeading: chapterTitle,
+                        isFirstPage: idx == 0,
+                        size: settings.fontSize,
+                        family: settings.fontFamily
+                    ))
                         .font(settings.fontFamily.font(size: settings.fontSize))
                         .foregroundStyle(settings.textColor)
                         .lineSpacing(settings.lineSpacing)
@@ -604,11 +620,26 @@ struct ReaderView: View {
         error = nil
         defer { isLoading = false }
         do {
-            let result = try await downloads.openAndCache(
-                workId: workId,
-                preferredChapterId: initialChapterId,
-                store: offline
-            )
+            let result = try await withThrowingTaskGroup(
+                of: (details: WorkDetails, chapterId: Int, html: String, title: String).self
+            ) { group in
+                group.addTask { @MainActor in
+                    try await downloads.openAndCache(
+                        workId: workId,
+                        preferredChapterId: initialChapterId,
+                        store: offline
+                    )
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 45_000_000_000)
+                    throw APIError.message(
+                        "Превышено время ожидания. Проверьте сеть или скачайте книгу заранее."
+                    )
+                }
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
             details = result.details
             // Full TOC including paid/locked chapters (drafts still hidden)
             chapters = (result.details.chapters ?? []).filter { !($0.isDraft ?? false) }
@@ -674,12 +705,17 @@ struct ReaderView: View {
             if !didAddToLibrary, downloads.online {
                 considerLibraryAdd(chapterProgress: 1)
             }
+            // Only mark "was reading" after a successful open — otherwise cold start
+            // keeps reopening a book that can't load offline.
             session.beginReading(workId: workId, chapterId: result.chapterId)
+            didStartSession = true
             // Do not persistProgress() here: a wrong start chapter at offset 0 would
             // overwrite a further last-read position before the user scrolls.
             prefetchNeighborChapters()
         } catch {
             self.error = error.localizedDescription
+            session.endReading()
+            didStartSession = false
         }
     }
 

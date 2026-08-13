@@ -38,7 +38,7 @@ struct BookDetailView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Загрузка…")
+                LoadingStateView(title: "Загрузка…")
             } else if let error, details == nil {
                 ContentUnavailableView(
                     "Не удалось открыть",
@@ -351,6 +351,27 @@ struct BookDetailView: View {
                 details = try await APIClient.shared.workDetails(id: workId)
                 if let details {
                     offline.cacheWorkDetails(details)
+                    offline.adoptRemoteResumeIfNeeded(
+                        workId: workId,
+                        chapterId: details.resolvedLastReadChapterId,
+                        chapterFraction: details.resolvedChapterProgress,
+                        bookProgress: nil
+                    )
+                }
+                // meta-info is the most reliable source for last-read chapter + %
+                if let meta = try? await APIClient.shared.workMeta(id: workId) {
+                    if offline.isInLibrary(workId) {
+                        offline.upsertWork(from: meta, markFromSite: true)
+                    }
+                    offline.adoptRemoteResumeIfNeeded(
+                        workId: workId,
+                        chapterId: meta.resolvedLastReadChapterId,
+                        chapterFraction: meta.resolvedChapterProgress,
+                        bookProgress: meta.resolvedProgress
+                    )
+                    if meta.resolvedProgress > 0 {
+                        offline.updateBookProgress(workId: workId, progress: meta.resolvedProgress)
+                    }
                 }
             } else if let cached = offline.cachedWork(workId: workId) {
                 details = Self.detailsFromCache(cached)
@@ -447,7 +468,11 @@ struct BookDetailView: View {
             isPurchased: nil,
             orderStatus: nil,
             orderStatusMessage: nil,
-            freeChapterCount: nil
+            freeChapterCount: nil,
+            lastChapterId: cached.lastReadChapterId,
+            lastChapterProgress: nil,
+            textLengthLastRead: nil,
+            textLength: nil
         )
     }
 }

@@ -14,7 +14,7 @@ struct AuthorProfileView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Загрузка автора…")
+                LoadingStateView(title: "Загрузка автора…")
             } else if let error, profile == nil {
                 ContentUnavailableView(
                     "Не удалось открыть автора",

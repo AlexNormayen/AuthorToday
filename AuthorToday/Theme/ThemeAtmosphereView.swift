@@ -84,6 +84,46 @@ enum ThemeAtmosphereStyle {
     case daredevil
 }
 
+/// Centered loading placeholder that doesn't collapse into a tiny themed scrap
+/// (bare `ProgressView("…")` can render broken page-style chrome on photo themes).
+struct LoadingStateView: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        ZStack {
+            // Opaque enough that photo themes don't show through as a tiny scrap.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.primary)
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.regularMaterial)
+            }
+            .padding(28)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 extension View {
     /// Lets the living theme atmosphere show through lists / forms / scroll views.
     func themedScreenChrome() -> some View {

@@ -726,8 +726,8 @@ actor APIClient {
             workInLibraryState: work.workInLibraryState,
             inLibraryState: work.inLibraryState,
             progress: work.resolvedProgress,
-            // Never fall back to lastChapterId — that is the latest published chapter, not last read
-            lastReadChapterId: work.lastReadChapterId,
+            // AT stores the user's last-read chapter in `lastChapterId` (+ lastChapterProgress).
+            lastReadChapterId: work.lastReadChapterId ?? work.lastChapterId,
             lastChapterProgress: work.lastChapterProgress,
             price: work.price,
             discount: work.discount,

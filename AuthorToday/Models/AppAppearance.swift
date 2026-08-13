@@ -27,6 +27,8 @@ enum AppColorMode: String, CaseIterable, Identifiable, Codable {
 
 enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     case moss
+    /// Official Author.Today site colors (accent #4582af).
+    case authorToday
     case ocean
     case wine
     case graphite
@@ -59,6 +61,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         case "daredevil": return .ddLeap
         case "hellsKitchen": return .ddShadow
         case "murdock": return .ddRain
+        case "at", "author.today", "site": return .authorToday
         default:
             return AppThemePreset(rawValue: raw) ?? .moss
         }
@@ -84,6 +87,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .moss: return "Мох"
+        case .authorToday: return "Author.Today"
         case .ocean: return "Океан"
         case .wine: return "Вино"
         case .graphite: return "Графит"
@@ -110,6 +114,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     var accent: Color {
         switch self {
         case .moss: return Color(red: 0.18, green: 0.42, blue: 0.36)
+        // Site brand / theme-color tile: #4582af
+        case .authorToday: return Color(red: 0.271, green: 0.510, blue: 0.686)
         case .ocean: return Color(red: 0.14, green: 0.35, blue: 0.55)
         case .wine: return Color(red: 0.55, green: 0.18, blue: 0.28)
         case .graphite: return Color(red: 0.35, green: 0.38, blue: 0.42)
@@ -136,6 +142,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     var mistLight: Color {
         switch self {
         case .moss: return Color(red: 0.93, green: 0.94, blue: 0.93)
+        // Site surfaces: #f5f7fa / #fcfcfc
+        case .authorToday: return Color(red: 0.961, green: 0.969, blue: 0.980)
         case .ocean: return Color(red: 0.92, green: 0.95, blue: 0.97)
         case .wine: return Color(red: 0.97, green: 0.93, blue: 0.94)
         case .graphite: return Color(red: 0.94, green: 0.94, blue: 0.95)
@@ -155,6 +163,9 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
             return Color(red: 0.06, green: 0.04, blue: 0.04)
         case _ where isFuturisticFamily:
             return Color(red: 0.05, green: 0.06, blue: 0.09)
+        case .authorToday:
+            // Navbar / chrome gray-blue from the site
+            return Color(red: 0.16, green: 0.20, blue: 0.24)
         default:
             return Color(red: 0.10, green: 0.11, blue: 0.12)
         }
@@ -181,6 +192,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     var backgroundImageName: String? {
         switch self {
         case .moss: return "ThemeMoss"
+        // Soft site-like wash (no photo) — matches flat AT chrome.
+        case .authorToday: return nil
         case .ocean: return "ThemeOcean"
         case .wine: return "ThemeWine"
         case .graphite: return "ThemeGraphite"
@@ -207,6 +220,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     var atmosphereBase: Color {
         switch self {
         case .moss: return Color(red: 0.90, green: 0.93, blue: 0.91)
+        // #e6f0fc — soft AT link/panel blue wash
+        case .authorToday: return Color(red: 0.902, green: 0.941, blue: 0.988)
         case .ocean: return Color(red: 0.88, green: 0.93, blue: 0.97)
         case .wine: return Color(red: 0.95, green: 0.90, blue: 0.92)
         case .graphite: return Color(red: 0.91, green: 0.92, blue: 0.93)
@@ -227,6 +242,13 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .moss:
             return [Color(red: 0.25, green: 0.55, blue: 0.42), Color(red: 0.45, green: 0.62, blue: 0.40)]
+        case .authorToday:
+            // #4582af, #34749e, #6da3bd
+            return [
+                Color(red: 0.271, green: 0.510, blue: 0.686),
+                Color(red: 0.204, green: 0.455, blue: 0.620),
+                Color(red: 0.427, green: 0.639, blue: 0.741)
+            ]
         case .ocean:
             return [Color(red: 0.25, green: 0.50, blue: 0.75), Color(red: 0.40, green: 0.70, blue: 0.85)]
         case .wine:

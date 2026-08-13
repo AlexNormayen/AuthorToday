@@ -313,6 +313,28 @@ enum HTMLText {
         return heading + "\n\n" + body
     }
 
+    /// Bold chapter title on the first page of paged reading mode.
+    static func attributedReaderPage(
+        _ page: String,
+        chapterHeading: String,
+        isFirstPage: Bool,
+        size: CGFloat,
+        family: ReaderFontFamily? = nil
+    ) -> AttributedString {
+        var attr = AttributedString(page)
+        let heading = chapterHeading.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isFirstPage, !heading.isEmpty, page.hasPrefix(heading),
+              let range = attr.range(of: heading) else {
+            return attr
+        }
+        if let family {
+            attr[range].font = family.font(size: size).bold()
+        } else {
+            attr[range].font = .system(size: size, weight: .bold)
+        }
+        return attr
+    }
+
     /// Post body with tappable links (Markdown → AttributedString).
     static func attributedPostBody(from html: String) -> AttributedString {
         var s = html

@@ -38,8 +38,12 @@ struct LocalReaderView: View {
             readerBackground
 
             if isLoading {
-                ProgressView("Открываем книгу…")
-                    .tint(settings.textColor)
+                VStack(spacing: 20) {
+                    LoadingStateView(title: "Открываем книгу…")
+                    Button("Закрыть") { dismiss() }
+                        .buttonStyle(.bordered)
+                        .tint(settings.textColor)
+                }
             } else if let error {
                 VStack(spacing: 16) {
                     Text(error)
@@ -160,6 +164,7 @@ struct LocalReaderView: View {
         case .verticalScroll:
             ReaderTextScrollView(
                 text: plainText,
+                chapterHeading: chapterTitle,
                 font: settings.fontFamily.uiFont(size: settings.fontSize),
                 textColor: settings.textColor.uiColor(),
                 lineSpacing: settings.lineSpacing,
@@ -195,7 +200,13 @@ struct LocalReaderView: View {
         return ZStack {
             TabView(selection: $pageIndex) {
                 ForEach(Array(pages.enumerated()), id: \.offset) { idx, page in
-                    Text(page)
+                    Text(HTMLText.attributedReaderPage(
+                        page,
+                        chapterHeading: chapterTitle,
+                        isFirstPage: idx == 0,
+                        size: settings.fontSize,
+                        family: settings.fontFamily
+                    ))
                         .font(settings.fontFamily.font(size: settings.fontSize))
                         .foregroundStyle(settings.textColor)
                         .lineSpacing(settings.lineSpacing)

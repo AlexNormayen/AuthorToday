@@ -4,6 +4,8 @@ import UIKit
 /// Own UITextView scroll surface — reliable offset tracking and restore (unlike SwiftUI ScrollView + PreferenceKey).
 struct ReaderTextScrollView: UIViewRepresentable {
     let text: String
+    /// Chapter name prepended at the top of `text` — rendered bold.
+    var chapterHeading: String = ""
     let font: UIFont
     let textColor: UIColor
     let lineSpacing: CGFloat
@@ -114,7 +116,23 @@ struct ReaderTextScrollView: UIViewRepresentable {
             .foregroundColor: textColor,
             .paragraphStyle: paragraph
         ]
-        tv.attributedText = NSAttributedString(string: text, attributes: attrs)
+        let attributed = NSMutableAttributedString(string: text, attributes: attrs)
+        let heading = chapterHeading.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !heading.isEmpty, text.hasPrefix(heading) {
+            let bold = font.withTraits(.traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
+            let headingParagraph = NSMutableParagraphStyle()
+            headingParagraph.lineSpacing = lineSpacing
+            headingParagraph.paragraphSpacing = max(lineSpacing, 6)
+            attributed.addAttributes(
+                [
+                    .font: bold,
+                    .foregroundColor: textColor,
+                    .paragraphStyle: headingParagraph
+                ],
+                range: NSRange(location: 0, length: (heading as NSString).length)
+            )
+        }
+        tv.attributedText = attributed
         tv.typingAttributes = attrs
         tv.font = font
         tv.textColor = textColor
@@ -337,5 +355,14 @@ struct ReaderTextScrollView: UIViewRepresentable {
             let frac = min(max(Double(tv.contentOffset.y) / Double(maxY), 0), 1)
             return Int((Double(textLength) * frac).rounded())
         }
+    }
+}
+
+private extension UIFont {
+    func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont? {
+        guard let descriptor = fontDescriptor.withSymbolicTraits(fontDescriptor.symbolicTraits.union(traits)) else {
+            return nil
+        }
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }

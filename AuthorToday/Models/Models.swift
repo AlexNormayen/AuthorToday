@@ -225,6 +225,19 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
         return min(max(normalized, 0), 1)
     }
 
+    /// AT API uses `lastChapterId` for the user's last-read chapter (with `lastChapterProgress`).
+    /// `lastReadChapterId` is kept as an alias for older payloads / local cache.
+    var resolvedLastReadChapterId: Int? {
+        lastReadChapterId ?? lastChapterId
+    }
+
+    /// In-chapter resume from the portal (0…1).
+    var resolvedChapterProgress: Double {
+        let raw = lastChapterProgress ?? 0
+        let normalized = raw > 1.0 ? raw / 100.0 : raw
+        return min(max(normalized, 0), 1)
+    }
+
     var displayPriceText: String? {
         if isPurchased == true { return "Куплено" }
         let statusLower = (status ?? "").lowercased()
@@ -284,6 +297,11 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     let orderStatus: String?
     let orderStatusMessage: String?
     let freeChapterCount: Int?
+    /// User's last-read chapter on Author.Today (same field as meta-info).
+    let lastChapterId: Int?
+    let lastChapterProgress: Double?
+    let textLengthLastRead: Int?
+    let textLength: Int?
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -295,6 +313,14 @@ struct WorkDetails: Codable, Identifiable, Sendable {
 
     var availableChapters: [ChapterMeta] {
         (chapters ?? []).filter(\.isAvailableEffective)
+    }
+
+    var resolvedLastReadChapterId: Int? { lastChapterId }
+
+    var resolvedChapterProgress: Double {
+        let raw = lastChapterProgress ?? 0
+        let normalized = raw > 1.0 ? raw / 100.0 : raw
+        return min(max(normalized, 0), 1)
     }
 
     var needsPurchase: Bool {
@@ -521,6 +547,104 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
         if t.contains("framework7") { return true }
         if t == "лента" || t == "уведомление" { return true }
         return false
+    }
+
+    var feedKind: FeedKind {
+        FeedKind.classify(feedType: feedType, category: category, isBlogPost: isBlogPost)
+    }
+
+    var appearsUnread: Bool { !(isRead ?? false) }
+
+    func marking(isRead: Bool) -> NotificationItem {
+        NotificationItem(
+            id: id,
+            text: text,
+            title: title,
+            message: message,
+            content: content,
+            body: body,
+            html: html,
+            creationTime: creationTime,
+            isRead: isRead,
+            workId: workId,
+            workID: workID,
+            url: url,
+            link: link,
+            category: category,
+            notificationId: notificationId,
+            feedType: feedType,
+            postId: postId,
+            authorName: authorName,
+            authorUserName: authorUserName,
+            coverURL: coverURL
+        )
+    }
+}
+
+/// Client-side feed categories (Author.Today notification kinds).
+enum FeedKind: String, CaseIterable, Identifiable, Sendable {
+    case workUpdate
+    case newChapter
+    case post
+    case discount
+    case price
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .workUpdate: return "Обновления книг"
+        case .newChapter: return "Новые главы"
+        case .post: return "Посты"
+        case .discount: return "Скидки"
+        case .price: return "Цены"
+        case .other: return "Прочее"
+        }
+    }
+
+    static func classify(feedType: String?, category: String?, isBlogPost: Bool) -> FeedKind {
+        if isBlogPost { return .post }
+        let t = (feedType ?? category ?? "").lowercased()
+        if t.contains("newchapter") || t.contains("chapter") { return .newChapter }
+        if t.contains("discount") { return .discount }
+        if t.contains("price") { return .price }
+        if t.contains("workupdate") || t.contains("work") { return .workUpdate }
+        if t.contains("post") { return .post }
+        return .other
+    }
+}
+
+enum FeedQuickFilter: String, CaseIterable, Identifiable {
+    case all
+    case unread
+    case books
+    case posts
+    case discounts
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Все"
+        case .unread: return "Новые"
+        case .books: return "Книги"
+        case .posts: return "Посты"
+        case .discounts: return "Скидки"
+        }
+    }
+
+    func matches(_ item: NotificationItem, isUnread: Bool) -> Bool {
+        switch self {
+        case .all: return true
+        case .unread: return isUnread
+        case .books:
+            return item.feedKind == .workUpdate || item.feedKind == .newChapter
+        case .posts:
+            return item.feedKind == .post
+        case .discounts:
+            return item.feedKind == .discount || item.feedKind == .price
+        }
     }
 }
 
