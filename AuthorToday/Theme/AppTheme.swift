@@ -327,11 +327,8 @@ enum HTMLText {
               let range = attr.range(of: heading) else {
             return attr
         }
-        if let family {
-            attr[range].font = family.font(size: size).bold()
-        } else {
-            attr[range].font = .system(size: size, weight: .bold)
-        }
+        // System bold — custom family .bold() is often a no-op when no bold face is installed.
+        attr[range].font = .system(size: size, weight: .bold)
         return attr
     }
 

@@ -117,26 +117,71 @@ struct ReaderTextScrollView: UIViewRepresentable {
             .paragraphStyle: paragraph
         ]
         let attributed = NSMutableAttributedString(string: text, attributes: attrs)
-        let heading = chapterHeading.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !heading.isEmpty, text.hasPrefix(heading) {
-            let bold = font.withTraits(.traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
+        if let headingRange = Self.headingRange(in: text, preferredHeading: chapterHeading) {
+            let bold = font.boldReaderHeading()
             let headingParagraph = NSMutableParagraphStyle()
             headingParagraph.lineSpacing = lineSpacing
-            headingParagraph.paragraphSpacing = max(lineSpacing, 6)
+            headingParagraph.paragraphSpacing = max(lineSpacing + 4, 10)
             attributed.addAttributes(
                 [
                     .font: bold,
                     .foregroundColor: textColor,
                     .paragraphStyle: headingParagraph
                 ],
-                range: NSRange(location: 0, length: (heading as NSString).length)
+                range: headingRange
             )
         }
-        tv.attributedText = attributed
+        // Do not set tv.font / tv.textColor after attributedText — that resets run fonts
+        // and strips the bold chapter heading.
         tv.typingAttributes = attrs
-        tv.font = font
-        tv.textColor = textColor
         tv.textContainerInset = contentInset
+        tv.attributedText = attributed
+    }
+
+    /// UTF-16 range of the chapter title at the start of reader text.
+    private static func headingRange(in text: String, preferredHeading: String) -> NSRange? {
+        let ns = text as NSString
+        guard ns.length > 0 else { return nil }
+        let preferred = preferredHeading.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !preferred.isEmpty {
+            let prefLen = (preferred as NSString).length
+            if ns.length >= prefLen {
+                let prefix = ns.substring(to: prefLen)
+                if prefix == preferred
+                    || prefix.caseInsensitiveCompare(preferred) == .orderedSame {
+                    return NSRange(location: 0, length: prefLen)
+                }
+            }
+        }
+
+        // First paragraph as heading when it matches the chapter title (or looks like one).
+        let firstEnd: Int = {
+            let full = text as NSString
+            let blank = full.range(of: "\n\n")
+            if blank.location != NSNotFound { return blank.location }
+            let nl = full.range(of: "\n")
+            if nl.location != NSNotFound { return nl.location }
+            return min(full.length, 180)
+        }()
+        guard firstEnd > 0, firstEnd <= 180 else { return nil }
+        let first = ns.substring(to: firstEnd)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !first.isEmpty else { return nil }
+
+        if !preferred.isEmpty {
+            if first.caseInsensitiveCompare(preferred) == .orderedSame {
+                return NSRange(location: 0, length: firstEnd)
+            }
+            return nil
+        }
+
+        // No explicit title — still bold a short "Глава …" first line.
+        let lower = first.lowercased()
+        if lower.hasPrefix("глава") || lower.hasPrefix("chapter") {
+            return NSRange(location: 0, length: firstEnd)
+        }
+        return nil
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -364,5 +409,20 @@ private extension UIFont {
             return nil
         }
         return UIFont(descriptor: descriptor, size: pointSize)
+    }
+
+    /// Bold face for chapter titles — prefer a real bold of the same family, else heavy system.
+    func boldReaderHeading() -> UIFont {
+        if let bold = withTraits(.traitBold),
+           bold.fontDescriptor.symbolicTraits.contains(.traitBold) {
+            return bold
+        }
+        // Serif readers still look fine with a heavy system weight for the title only.
+        if let serif = UIFont.systemFont(ofSize: pointSize, weight: .bold)
+            .fontDescriptor
+            .withDesign(.serif) {
+            return UIFont(descriptor: serif, size: pointSize)
+        }
+        return UIFont.systemFont(ofSize: pointSize, weight: .bold)
     }
 }
