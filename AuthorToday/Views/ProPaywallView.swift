@@ -161,11 +161,13 @@ struct ProPaywallView: View {
         if let intro = introHint(for: yearly) { return intro }
         guard let monthly,
               let yearPrice = priceValue(yearly),
-              let monthPrice = priceValue(monthly),
-              monthPrice > 0 else { return "Один платёж в год" }
-        let fullYear = monthPrice * 12
-        let saved = fullYear - yearPrice
-        guard saved > 0 else { return "Один платёж в год" }
+              let monthPrice = priceValue(monthly) else { return "Один платёж в год" }
+        let year = NSDecimalNumber(decimal: yearPrice).doubleValue
+        let month = NSDecimalNumber(decimal: monthPrice).doubleValue
+        guard month > 0 else { return "Один платёж в год" }
+        let fullYear = month * 12
+        let saved = fullYear - year
+        guard saved > 0, fullYear > 0 else { return "Один платёж в год" }
         let pct = Int((saved / fullYear * 100).rounded())
         return "Экономия ~\(pct)% против 12 месяцев"
     }

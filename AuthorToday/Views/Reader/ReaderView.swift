@@ -1019,7 +1019,7 @@ struct ReaderView: View {
             workId: workId,
             chapterId: chapter.id,
             workTitle: details?.displayTitle ?? "Книга",
-            chapterTitle: chapterTitle.isEmpty ? chapter.title : chapterTitle,
+            chapterTitle: chapterTitle.isEmpty ? chapter.displayTitle : chapterTitle,
             charOffset: charOffset,
             fraction: scrollFraction
         )
@@ -1047,7 +1047,7 @@ struct ReaderView: View {
             workId: workId,
             chapterId: chapter.id,
             workTitle: details?.displayTitle ?? "Книга",
-            chapterTitle: chapterTitle.isEmpty ? chapter.title : chapterTitle,
+            chapterTitle: chapterTitle.isEmpty ? chapter.displayTitle : chapterTitle,
             body: text,
             charOffset: charOffset,
             fraction: scrollFraction
