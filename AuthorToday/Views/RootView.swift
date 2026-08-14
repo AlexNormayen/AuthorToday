@@ -68,7 +68,9 @@ struct RootView: View {
 struct MainTabView: View {
     @EnvironmentObject private var notifications: NotificationPoller
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @EnvironmentObject private var pro: ProEntitlementStore
     @ObservedObject private var session = ReadingSessionStore.shared
+    @ObservedObject private var nudge = ProNudgeStore.shared
     @State private var selectedTab = 0
     @State private var resumeReader: ReadingSessionStore.ResumeReader?
     @State private var didApplyColdStart = false
@@ -116,9 +118,17 @@ struct MainTabView: View {
             selectedTab = min(max(session.selectedTab, 0), 4)
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                _ = nudge.considerPresenting(isProUnlocked: pro.isProUnlocked)
+            }
         }
         .onChange(of: selectedTab) { _, tab in
             session.setSelectedTab(tab)
+        }
+        .onOpenURL { url in
+            if let item = Self.resumeFromWidgetURL(url) {
+                resumeReader = item
+            }
         }
         .fullScreenCover(item: $resumeReader, onDismiss: {
             session.endReading()
@@ -127,6 +137,20 @@ struct MainTabView: View {
                 ReaderView(workId: item.workId, initialChapterId: item.chapterId)
             }
         }
+        .sheet(isPresented: $nudge.showPaywall) {
+            ProPaywallView(reason: "Вы уже читаете в Читальне несколько дней. Pro снимает лимит офлайна и открывает темы, закладки и «Мои книги».")
+        }
+    }
+
+    private static func resumeFromWidgetURL(_ url: URL) -> ReadingSessionStore.ResumeReader? {
+        guard url.scheme == "chitalnya", url.host == "resume" else { return nil }
+        let parts = url.path.split(separator: "/").compactMap { Int($0) }
+        guard let workId = parts.first else { return nil }
+        let chapter = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "chapter" })
+            .flatMap { Int($0.value ?? "") }
+        return .init(workId: workId, chapterId: chapter)
     }
 
     /// Tabs with temporary «Мои книги» tab: 0 Library, 1 Local, 2 Recent, 3 Search, 4 Feed, 5 More.
@@ -183,6 +207,11 @@ struct SettingsHubView: View {
                 }
 
                 Section {
+                    if !pro.isProUnlocked {
+                        OfflineQuotaStatusView(compact: true)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
+                    }
                     NavigationLink {
                         ProPaywallView()
                     } label: {
@@ -201,33 +230,21 @@ struct SettingsHubView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Text("Темы · офлайн · файлы")
+                                Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
+                    NavigationLink {
+                        BookmarksNotesView()
+                    } label: {
+                        Label("Закладки и заметки", systemImage: "bookmark")
+                    }
                 } header: {
                     Text("Поддержка")
                 } footer: {
-                    Text("Pro улучшает клиент Читальня (темы, офлайн, свои TXT/EPUB). Книги и оплата контента — только на author.today.")
-                }
-
-                if ProFeatures.isOwnerAccount(
-                    email: auth.user?.email,
-                    userName: auth.user?.resolvedUserName ?? auth.resolvedUserName
-                ) {
-                    Section {
-                        NavigationLink {
-                            ProGrantsAdminView()
-                        } label: {
-                            Label("Pro-доступы (временно)", systemImage: "person.badge.key")
-                        }
-                    } header: {
-                        Text("Владелец")
-                    } footer: {
-                        Text("Выдача Pro друзьям до Apple IAP. Перед App Store убрать или заменить.")
-                    }
+                    Text("Pro улучшает клиент Читальня (темы, офлайн, закладки, свои TXT/EPUB). Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
                 }
 
                 Section("Оформление") {

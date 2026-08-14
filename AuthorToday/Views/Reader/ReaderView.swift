@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import SwiftData
 
 struct ReaderView: View {
     let workId: Int
@@ -7,9 +8,12 @@ struct ReaderView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var settings: ReaderSettingsStore
+    @EnvironmentObject private var pro: ProEntitlementStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @ObservedObject private var session = ReadingSessionStore.shared
 
     @State private var details: WorkDetails?
@@ -24,6 +28,11 @@ struct ReaderView: View {
     @State private var showSettings = false
     @State private var showTOC = false
     @State private var showPurchase = false
+    @State private var showPaywall = false
+    @State private var paywallReason: String?
+    @State private var showNoteComposer = false
+    @State private var noteDraft = ""
+    @State private var bookmarkFlash: String?
     @State private var pageIndex = 0
     @State private var scrollOffset: Double = 0
     @State private var scrollFraction: Double = 0
@@ -147,9 +156,43 @@ struct ReaderView: View {
                 }
             }
         }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(reason: paywallReason)
+        }
+        .sheet(isPresented: $showNoteComposer) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Заметка к «\(chapterTitle)»")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $noteDraft)
+                        .frame(minHeight: 160)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        )
+                    Spacer()
+                }
+                .padding()
+                .navigationTitle("Новая заметка")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { showNoteComposer = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Сохранить") { saveNote() }
+                            .disabled(noteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .task {
             await bootstrap()
             UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOn
+            ProNudgeStore.shared.recordActiveReadingDay()
         }
         .onChange(of: settings.keepScreenOn) { _, on in
             UIApplication.shared.isIdleTimerDisabled = on
@@ -410,6 +453,20 @@ struct ReaderView: View {
             }
             .buttonStyle(.borderless)
 
+            Button { addBookmarkTapped() } label: {
+                Image(systemName: "bookmark")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+
+            Button { noteTapped() } label: {
+                Image(systemName: "note.text")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+
             Button { showSettings = true } label: {
                 Image(systemName: "textformat.size")
                     .frame(width: 44, height: 44)
@@ -428,6 +485,17 @@ struct ReaderView: View {
                 Rectangle().fill(.ultraThinMaterial)
             }
             .ignoresSafeArea(edges: .top)
+        }
+        .overlay(alignment: .bottom) {
+            if let bookmarkFlash {
+                Text(bookmarkFlash)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 4)
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -922,6 +990,75 @@ struct ReaderView: View {
             forceChapter: forceChapter
         )
         session.updateActiveChapter(chapter.id)
+        publishWidgetResume()
+    }
+
+    private func publishWidgetResume() {
+        WidgetResumeStore.save(
+            workId: workId,
+            chapterId: currentChapter?.id,
+            title: details?.displayTitle ?? "Книга",
+            chapterTitle: chapterTitle.isEmpty ? nil : chapterTitle,
+            coverURL: details?.coverUrl
+        )
+    }
+
+    private func requireProOrPaywall(_ reason: String) -> Bool {
+        guard pro.isProUnlocked else {
+            paywallReason = reason
+            showPaywall = true
+            return false
+        }
+        return true
+    }
+
+    private func addBookmarkTapped() {
+        guard requireProOrPaywall("Закладки доступны в Читальне Pro.") else { return }
+        guard let chapter = currentChapter else { return }
+        let bm = ReadingBookmark(
+            workId: workId,
+            chapterId: chapter.id,
+            workTitle: details?.displayTitle ?? "Книга",
+            chapterTitle: chapterTitle.isEmpty ? chapter.title : chapterTitle,
+            charOffset: charOffset,
+            fraction: scrollFraction
+        )
+        modelContext.insert(bm)
+        try? modelContext.save()
+        withAnimation {
+            bookmarkFlash = "Закладка сохранена"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { bookmarkFlash = nil }
+        }
+    }
+
+    private func noteTapped() {
+        guard requireProOrPaywall("Заметки доступны в Читальне Pro.") else { return }
+        noteDraft = ""
+        showNoteComposer = true
+    }
+
+    private func saveNote() {
+        guard let chapter = currentChapter else { return }
+        let text = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let note = ReadingNote(
+            workId: workId,
+            chapterId: chapter.id,
+            workTitle: details?.displayTitle ?? "Книга",
+            chapterTitle: chapterTitle.isEmpty ? chapter.title : chapterTitle,
+            body: text,
+            charOffset: charOffset,
+            fraction: scrollFraction
+        )
+        modelContext.insert(note)
+        try? modelContext.save()
+        showNoteComposer = false
+        withAnimation { bookmarkFlash = "Заметка сохранена" }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { bookmarkFlash = nil }
+        }
     }
 
     private struct ChapterPosition {

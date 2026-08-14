@@ -190,6 +190,7 @@ struct ReaderSettingsView: View {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)
                 .environmentObject(appearance)
+                .environmentObject(OfflineStore.shared)
         }
     }
 }

@@ -59,7 +59,9 @@ struct AuthorTodayApp: App {
             CachedChapter.self,
             ReadingProgress.self,
             LocalBook.self,
-            LocalChapter.self
+            LocalChapter.self,
+            ReadingBookmark.self,
+            ReadingNote.self
         ])
     }
 

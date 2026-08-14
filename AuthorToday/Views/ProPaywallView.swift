@@ -1,10 +1,10 @@
 import SwiftUI
 import StoreKit
-import UIKit
 
 struct ProPaywallView: View {
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @EnvironmentObject private var offline: OfflineStore
     @Environment(\.dismiss) private var dismiss
 
     var reason: String?
@@ -12,8 +12,6 @@ struct ProPaywallView: View {
     @State private var showRedeem = false
     @State private var redeemCode = ""
     @State private var redeemMessage: String?
-    @State private var selectedPlan: ProGrantStore.Plan = .month
-    @State private var didCopyPhone = false
 
     var body: some View {
         NavigationStack {
@@ -26,11 +24,11 @@ struct ProPaywallView: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
                     }
+                    if !pro.isProUnlocked {
+                        OfflineQuotaStatusView(compact: true)
+                    }
                     bullets
                     if !pro.isProUnlocked {
-                        manualPayment
-                    }
-                    if !pro.products.isEmpty {
                         storeProducts
                     }
 #if DEBUG
@@ -77,7 +75,7 @@ struct ProPaywallView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(appearance.accent)
             }
-            Text("Pro улучшает Читальню (темы, офлайн, «Мои книги»). Книги Author.Today — только на author.today.")
+            Text("Pro улучшает Читальню (темы, офлайн, закладки, «Мои книги»). Книги Author.Today — только на author.today.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -104,114 +102,41 @@ struct ProPaywallView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var manualPayment: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Оплата (временно)")
-                .font(.headline)
-
-            Picker("Срок", selection: $selectedPlan) {
-                ForEach(ProGrantStore.Plan.allCases) { plan in
-                    Text(plan.title).tag(plan)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(selectedPlan.priceLabel)
-                    .font(.title.weight(.semibold))
-                if let hint = selectedPlan.perMonthHint {
-                    Text(hint)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text(selectedPlan.subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label("СБП → \(ProFeatures.ManualPayment.bank)", systemImage: "building.columns")
-                HStack {
-                    Text(ProFeatures.ManualPayment.phoneDisplay)
-                        .font(.title3.monospacedDigit().weight(.semibold))
-                        .textSelection(.enabled)
-                    Spacer()
-                    Button {
-                        UIPasteboard.general.string = ProFeatures.ManualPayment.phoneE164
-                        didCopyPhone = true
-                    } label: {
-                        Label(didCopyPhone ? "Скопировано" : "Копировать", systemImage: "doc.on.doc")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
-                }
-                Text("Переведите \(selectedPlan.priceLabel). В комментарии укажите:")
-                    .font(.subheadline.weight(.medium))
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("• «\(ProFeatures.ManualPayment.transferNote)»")
-                    Text("• срок: \(selectedPlan.title.lowercased())")
-                    Text("• куда выслать код: Max или Telegram (@ник)")
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-                Text("После оплаты пришлём код активации. Затем введите его ниже.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Все тарифы")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(ProGrantStore.Plan.allCases) { plan in
-                    HStack {
-                        Text(plan.title)
-                        Spacer()
-                        Text(plan.priceLabel)
-                            .font(.body.monospacedDigit().weight(.medium))
-                        if let hint = plan.perMonthHint {
-                            Text(hint)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(plan == selectedPlan ? .primary : .secondary)
-                }
-            }
-            .padding(.top, 4)
-        }
-    }
-
     private var storeProducts: some View {
         VStack(spacing: 12) {
-            Text("App Store (когда подключим)")
+            Text("Оплата через App Store")
                 .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Часто доступны пробный период или скидка на первый срок — если Apple покажет их ниже, это настройки App Store Connect.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if pro.isLoadingProducts, pro.products.isEmpty {
                 ProgressView("Загрузка тарифов…")
                     .frame(maxWidth: .infinity)
                     .padding()
+            } else if pro.products.isEmpty {
+                Text("Тарифы появятся после публикации продуктов в App Store Connect. Пока можно восстановить покупки или ввести промокод.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            // Year first (best value), then month, then lifetime.
             if let yearly = pro.yearlyProduct {
-                productButton(yearly, badge: "Выгодно")
+                productButton(
+                    yearly,
+                    badge: "Выгодно",
+                    subtitleHint: yearlySavingsHint(yearly: yearly, monthly: pro.monthlyProduct)
+                )
             }
             if let monthly = pro.monthlyProduct {
-                productButton(monthly, badge: nil)
+                productButton(monthly, badge: nil, subtitleHint: introHint(for: monthly))
             }
             if let lifetime = pro.lifetimeProduct {
-                productButton(lifetime, badge: "Навсегда")
+                productButton(lifetime, badge: "Навсегда", subtitleHint: "Как примерно 2 года подписки — без продления")
             }
 
             Button {
@@ -232,19 +157,50 @@ struct ProPaywallView: View {
         }
     }
 
+    private func yearlySavingsHint(yearly: Product, monthly: Product?) -> String? {
+        if let intro = introHint(for: yearly) { return intro }
+        guard let monthly,
+              let yearPrice = priceValue(yearly),
+              let monthPrice = priceValue(monthly),
+              monthPrice > 0 else { return "Один платёж в год" }
+        let fullYear = monthPrice * 12
+        let saved = fullYear - yearPrice
+        guard saved > 0 else { return "Один платёж в год" }
+        let pct = Int((saved / fullYear * 100).rounded())
+        return "Экономия ~\(pct)% против 12 месяцев"
+    }
+
+    private func introHint(for product: Product) -> String? {
+        guard let sub = product.subscription,
+              let offer = sub.introductoryOffer else { return nil }
+        let price = offer.displayPrice
+        switch offer.paymentMode {
+        case .freeTrial:
+            return "Пробный период: \(offer.periodDebugLabel)"
+        case .payAsYouGo, .payUpFront:
+            return "Intro: \(price) · \(offer.periodDebugLabel)"
+        default:
+            return "Спецпредложение: \(price)"
+        }
+    }
+
+    private func priceValue(_ product: Product) -> Decimal? {
+        product.price
+    }
+
     private var redeemBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 showRedeem.toggle()
             } label: {
-                Text(showRedeem ? "Скрыть ввод кода" : (pro.isProUnlocked ? "Другой код" : "У меня есть код"))
+                Text(showRedeem ? "Скрыть промокод" : "У меня есть промокод")
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 44)
             }
             .buttonStyle(.bordered)
 
             if showRedeem {
-                TextField("Код (например CN30-…)", text: $redeemCode)
+                TextField("Промокод", text: $redeemCode)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .padding(12)
@@ -306,7 +262,7 @@ struct ProPaywallView: View {
         }
     }
 
-    private func productButton(_ product: Product, badge: String?) -> some View {
+    private func productButton(_ product: Product, badge: String?, subtitleHint: String?) -> some View {
         Button {
             Task {
                 let ok = await pro.purchase(product)
@@ -331,6 +287,11 @@ struct ProPaywallView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                    if let subtitleHint, !subtitleHint.isEmpty {
+                        Text(subtitleHint)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(appearance.accent)
+                    }
                 }
                 Spacer()
                 if pro.isPurchasing {
@@ -354,14 +315,27 @@ struct ProPaywallView: View {
 
     private var legal: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Сейчас оплата идёт переводом на указанный номер (СБП). Это не покупка через Apple и не оплата книг Author.Today. Когда подключим App Store, оплата будет через IAP.")
+            Text("Оплата через Apple (In-App Purchase). Это удобства клиента Читальня, не покупка книг Author.Today. Подписку можно отменить в настройках Apple ID. Семейный доступ — если включён для подписки в App Store Connect.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            if !pro.products.isEmpty, let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 Link("Условия использования Apple (EULA)", destination: url)
                     .font(.caption)
             }
         }
         .padding(.top, 8)
+    }
+}
+
+private extension Product.SubscriptionOffer {
+    var periodDebugLabel: String {
+        let n = period.value
+        switch period.unit {
+        case .day: return n == 1 ? "1 день" : "\(n) дн."
+        case .week: return n == 1 ? "1 неделя" : "\(n) нед."
+        case .month: return n == 1 ? "1 месяц" : "\(n) мес."
+        case .year: return n == 1 ? "1 год" : "\(n) г."
+        @unknown default: return "спецпериод"
+        }
     }
 }

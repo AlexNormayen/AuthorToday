@@ -54,10 +54,46 @@
 		100000000000000000000040 /* LocalReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000040 /* LocalReaderView.swift */; };
 		100000000000000000000041 /* ProGrantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000041 /* ProGrantStore.swift */; };
 		100000000000000000000042 /* ProGrantsAdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000042 /* ProGrantsAdminView.swift */; };
+		100000000000000000000043 /* OfflineQuotaStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000043 /* OfflineQuotaStatusView.swift */; };
+		100000000000000000000044 /* WidgetResumeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000044 /* WidgetResumeStore.swift */; };
+		100000000000000000000045 /* ReadingBookmarkModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000045 /* ReadingBookmarkModels.swift */; };
+		100000000000000000000046 /* BookmarksNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000046 /* BookmarksNotesView.swift */; };
+		100000000000000000000047 /* ProNudgeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000047 /* ProNudgeStore.swift */; };
+		100000000000000000000048 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* WidgetKit.framework */; };
+		100000000000000000000049 /* ContinueReadingWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* ContinueReadingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		100000000000000000000050 /* ContinueReadingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* ContinueReadingWidget.swift */; };
+		100000000000000000000051 /* WidgetResumeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000051 /* WidgetResumeStore.swift */; };
+		100000000000000000000052 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* WidgetKit.framework */; };
+		100000000000000000000053 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000055 /* SwiftUI.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C00000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 600000000000000000000002;
+			remoteInfo = ContinueReadingWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		900000000000000000000002 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				100000000000000000000049 /* ContinueReadingWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		300000000000000000000001 /* AuthorToday.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AuthorToday.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		300000000000000000000002 /* ContinueReadingWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ContinueReadingWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000001 /* AuthorTodayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorTodayApp.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* ReaderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderSettings.swift; sourceTree = "<group>"; };
@@ -99,6 +135,18 @@
 		200000000000000000000040 /* LocalReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalReaderView.swift; sourceTree = "<group>"; };
 		200000000000000000000041 /* ProGrantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProGrantStore.swift; sourceTree = "<group>"; };
 		200000000000000000000042 /* ProGrantsAdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProGrantsAdminView.swift; sourceTree = "<group>"; };
+		200000000000000000000043 /* OfflineQuotaStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQuotaStatusView.swift; sourceTree = "<group>"; };
+		200000000000000000000044 /* WidgetResumeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetResumeStore.swift; sourceTree = "<group>"; };
+		200000000000000000000045 /* ReadingBookmarkModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingBookmarkModels.swift; sourceTree = "<group>"; };
+		200000000000000000000046 /* BookmarksNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksNotesView.swift; sourceTree = "<group>"; };
+		200000000000000000000047 /* ProNudgeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProNudgeStore.swift; sourceTree = "<group>"; };
+		200000000000000000000048 /* AuthorToday.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AuthorToday.entitlements; sourceTree = "<group>"; };
+		200000000000000000000050 /* ContinueReadingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueReadingWidget.swift; sourceTree = "<group>"; };
+		200000000000000000000051 /* WidgetResumeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetResumeStore.swift; sourceTree = "<group>"; };
+		200000000000000000000052 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000053 /* ContinueReadingWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ContinueReadingWidget.entitlements; sourceTree = "<group>"; };
+		200000000000000000000054 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		200000000000000000000055 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		200000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000020 /* Roboto-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Roboto-Regular.ttf"; sourceTree = "<group>"; };
 		200000000000000000000021 /* Alegreya-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Alegreya-Regular.ttf"; sourceTree = "<group>"; };
@@ -113,6 +161,16 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000048 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000052 /* WidgetKit.framework in Frameworks */,
+				100000000000000000000053 /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -123,6 +181,8 @@
 			isa = PBXGroup;
 			children = (
 				500000000000000000000002 /* AuthorToday */,
+				50000000000000000000000A /* ContinueReadingWidget */,
+				50000000000000000000000B /* Frameworks */,
 				500000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -131,8 +191,29 @@
 			isa = PBXGroup;
 			children = (
 				300000000000000000000001 /* AuthorToday.app */,
+				300000000000000000000002 /* ContinueReadingWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		50000000000000000000000B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000054 /* WidgetKit.framework */,
+				200000000000000000000055 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		50000000000000000000000A /* ContinueReadingWidget */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000050 /* ContinueReadingWidget.swift */,
+				200000000000000000000051 /* WidgetResumeStore.swift */,
+				200000000000000000000052 /* Info.plist */,
+				200000000000000000000053 /* ContinueReadingWidget.entitlements */,
+			);
+			path = ContinueReadingWidget;
 			sourceTree = "<group>";
 		};
 		500000000000000000000002 /* AuthorToday */ = {
@@ -140,6 +221,7 @@
 			children = (
 				200000000000000000000001 /* AuthorTodayApp.swift */,
 				200000000000000000000017 /* Info.plist */,
+				200000000000000000000048 /* AuthorToday.entitlements */,
 				200000000000000000000025 /* PrivacyInfo.xcprivacy */,
 				20000000000000000000003A /* Products.storekit */,
 				500000000000000000000004 /* Models */,
@@ -169,6 +251,7 @@
 			children = (
 				200000000000000000000002 /* Models.swift */,
 				20000000000000000000003B /* LocalLibraryModels.swift */,
+				200000000000000000000045 /* ReadingBookmarkModels.swift */,
 				200000000000000000000003 /* ReaderSettings.swift */,
 				200000000000000000000014 /* AppAppearance.swift */,
 			);
@@ -188,6 +271,8 @@
 				200000000000000000000037 /* ProFeatures.swift */,
 				200000000000000000000038 /* ProEntitlementStore.swift */,
 				200000000000000000000041 /* ProGrantStore.swift */,
+				200000000000000000000047 /* ProNudgeStore.swift */,
+				200000000000000000000044 /* WidgetResumeStore.swift */,
 				20000000000000000000003C /* LocalLibraryStore.swift */,
 				20000000000000000000003D /* LocalBookImporter.swift */,
 				20000000000000000000003E /* LocalZIP.swift */,
@@ -211,6 +296,8 @@
 				200000000000000000000015 /* PurchaseWebView.swift */,
 				200000000000000000000016 /* AppearanceSettingsView.swift */,
 				200000000000000000000039 /* ProPaywallView.swift */,
+				200000000000000000000043 /* OfflineQuotaStatusView.swift */,
+				200000000000000000000046 /* BookmarksNotesView.swift */,
 				200000000000000000000042 /* ProGrantsAdminView.swift */,
 				20000000000000000000003F /* LocalLibraryView.swift */,
 				500000000000000000000008 /* Reader */,
@@ -248,15 +335,34 @@
 				800000000000000000000001 /* Sources */,
 				400000000000000000000001 /* Frameworks */,
 				900000000000000000000001 /* Resources */,
+				900000000000000000000002 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D00000000000000000000001 /* PBXTargetDependency */,
 			);
 			name = AuthorToday;
 			productName = AuthorToday;
 			productReference = 300000000000000000000001 /* AuthorToday.app */;
 			productType = "com.apple.product-type.application";
+		};
+		600000000000000000000002 /* ContinueReadingWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 700000000000000000000003 /* Build configuration list for PBXNativeTarget "ContinueReadingWidget" */;
+			buildPhases = (
+				800000000000000000000002 /* Sources */,
+				400000000000000000000002 /* Frameworks */,
+				900000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ContinueReadingWidget;
+			productName = ContinueReadingWidget;
+			productReference = 300000000000000000000002 /* ContinueReadingWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -269,6 +375,9 @@
 				LastUpgradeCheck = 1540;
 				TargetAttributes = {
 					600000000000000000000001 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					600000000000000000000002 = {
 						CreatedOnToolsVersion = 15.4;
 					};
 				};
@@ -288,6 +397,7 @@
 			projectRoot = "";
 			targets = (
 				600000000000000000000001 /* AuthorToday */,
+				600000000000000000000002 /* ContinueReadingWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -305,6 +415,13 @@
 				100000000000000000000023 /* FiraSans-Regular.ttf in Resources */,
 				100000000000000000000024 /* PTSans-Regular.ttf in Resources */,
 				10000000000000000000003A /* Products.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		900000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,6 +463,11 @@
 				100000000000000000000037 /* ProFeatures.swift in Sources */,
 				100000000000000000000038 /* ProEntitlementStore.swift in Sources */,
 				100000000000000000000039 /* ProPaywallView.swift in Sources */,
+				100000000000000000000043 /* OfflineQuotaStatusView.swift in Sources */,
+				100000000000000000000044 /* WidgetResumeStore.swift in Sources */,
+				100000000000000000000045 /* ReadingBookmarkModels.swift in Sources */,
+				100000000000000000000046 /* BookmarksNotesView.swift in Sources */,
+				100000000000000000000047 /* ProNudgeStore.swift in Sources */,
 				10000000000000000000003B /* LocalLibraryModels.swift in Sources */,
 				10000000000000000000003C /* LocalLibraryStore.swift in Sources */,
 				10000000000000000000003D /* LocalBookImporter.swift in Sources */,
@@ -357,7 +479,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		800000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000050 /* ContinueReadingWidget.swift in Sources */,
+				100000000000000000000051 /* WidgetResumeStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D00000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 600000000000000000000002 /* ContinueReadingWidget */;
+			targetProxy = C00000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B00000000000000000000001 /* Debug */ = {
@@ -396,6 +535,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AuthorToday/AuthorToday.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -429,6 +569,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AuthorToday/AuthorToday.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -457,6 +598,62 @@
 			};
 			name = Release;
 		};
+		B00000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ContinueReadingWidget/ContinueReadingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ContinueReadingWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Продолжить";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.chitalnya.reader.ContinueReadingWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B00000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ContinueReadingWidget/ContinueReadingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ContinueReadingWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Продолжить";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.chitalnya.reader.ContinueReadingWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -474,6 +671,15 @@
 			buildConfigurations = (
 				B00000000000000000000003 /* Debug */,
 				B00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		700000000000000000000003 /* Build configuration list for PBXNativeTarget "ContinueReadingWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000005 /* Debug */,
+				B00000000000000000000006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

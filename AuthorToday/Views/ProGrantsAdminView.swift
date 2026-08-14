@@ -49,7 +49,7 @@ struct ProGrantsAdminView: View {
     private var adminContent: some View {
         List {
             Section {
-                Text("Оплата: СБП \(ProFeatures.ManualPayment.phoneDisplay), \(ProFeatures.ManualPayment.bank). После перевода сгенерируйте код и отправьте в Max/Telegram.")
+                Text("Внутренняя выдача промокодов (не СБП). Для продаж используйте App Store IAP.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

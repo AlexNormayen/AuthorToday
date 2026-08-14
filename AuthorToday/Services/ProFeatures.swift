@@ -16,7 +16,7 @@ enum ProFeatures {
         "dark_tarkhan",
     ]
 
-    /// Owner can open temporary Pro grants admin (sideload).
+    /// Owner allowlist (complimentary Pro + optional internal tools).
     static func isOwnerAccount(email: String?, userName: String?) -> Bool {
         if let email = normalize(email), complimentaryEmails.contains(email) {
             return true
@@ -57,7 +57,7 @@ enum ProFeatures {
         AppThemePreset.allCases.filter { !requiresPro($0) }
     }
 
-    /// Temporary invite codes for sideload friends (same in every install until you change & rebuild).
+    /// Optional promo codes. Paid Pro is App Store IAP.
     static let sideloadInviteCodes: Set<String> = [
         "CHITALNYA-FRIENDS",
     ]
@@ -65,25 +65,11 @@ enum ProFeatures {
     /// Local file shelf (TXT/EPUB) — Pro only.
     static let localLibraryRequiresPro = true
 
-    /// Temporary SBP payment (sideload). Remove / replace with Apple IAP for App Store.
-    enum ManualPayment {
-        static let phoneDisplay = "+7 906 015-50-40"
-        static let phoneE164 = "+79060155040"
-        static let bank = "Райффайзенбанк"
-        static let transferNote = "Читальня"
-        static let instruction: String = """
-        Оплата временно через СБП на Райффайзенбанк.
-        Телефон: +7 906 015-50-40
-        Тарифы: неделя 149 ₽ · месяц 349 ₽ · год 1 990 ₽.
-        В комментарии к переводу укажите «Читальня», срок и куда выслать код — Max или Telegram (@ник).
-        После оплаты пришлём код активации.
-        """
-    }
-
     static var paywallBullets: [String] {
         [
             "Все темы оформления (неон, фото-фоны и свой цвет)",
             "Скачивание книг целиком без лимита (\(freeFullDownloadLimit) книги бесплатно)",
+            "Закладки и заметки в читалке",
             "«Мои книги»: свои TXT и EPUB на устройстве",
             "Режим «Перелистывание» как у бумажной книги",
             "Свой цвет и картинка фона в читалке"

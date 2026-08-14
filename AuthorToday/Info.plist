@@ -44,5 +44,16 @@
 		<string>FiraSans-Regular.ttf</string>
 		<string>PTSans-Regular.ttf</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ru.chitalnya.reader</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>chitalnya</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -94,6 +94,7 @@ struct LocalLibraryPane: View {
         }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView()
+                .environmentObject(OfflineStore.shared)
         }
         .fullScreenCover(item: Binding(
             get: { readerBookId.map { LocalReaderItem(id: $0) } },

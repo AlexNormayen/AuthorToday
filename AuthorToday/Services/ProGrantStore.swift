@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 import Combine
 
-/// Temporary sideload grants (before App Store IAP). Device-local persistence.
+/// Optional promo-code grants (device-local). Paid Pro goes through StoreKit.
 @MainActor
 final class ProGrantStore: ObservableObject {
     static let shared = ProGrantStore()
@@ -58,7 +58,7 @@ final class ProGrantStore: ObservableObject {
             }
         }
 
-        /// Sideload SBP price (RUB). Tune in one place.
+        /// Reference label for promo admin UI (not charged via SBP).
         var priceRub: Int {
             switch self {
             case .week: return 149

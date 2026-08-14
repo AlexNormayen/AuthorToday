@@ -14,6 +14,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "600000000000000000000002"
+               BuildableName = "ContinueReadingWidget.appex"
+               BlueprintName = "ContinueReadingWidget"
+               ReferencedContainer = "container:AuthorToday.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "600000000000000000000001"
                BuildableName = "AuthorToday.app"
                BlueprintName = "AuthorToday"

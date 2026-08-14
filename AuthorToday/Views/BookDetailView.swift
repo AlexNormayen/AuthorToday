@@ -75,6 +75,7 @@ struct BookDetailView: View {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)
                 .environmentObject(appearance)
+                .environmentObject(offline)
         }
         .sheet(isPresented: $showTOC) {
             BookTOCSheet(
@@ -263,6 +264,17 @@ struct BookDetailView: View {
             if downloads.online, !details.availableChapters.isEmpty {
                 downloadBlock(details)
             }
+
+            NavigationLink {
+                BookmarksNotesView(workIdFilter: workId)
+            } label: {
+                Label(
+                    pro.isProUnlocked ? "Закладки и заметки" : "Закладки и заметки (Pro)",
+                    systemImage: "bookmark"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -278,11 +290,17 @@ struct BookDetailView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("Загрузка")
                 .font(AppTheme.headlineFont)
+
             if !pro.isProUnlocked {
-                Text("Бесплатно: до \(ProFeatures.freeFullDownloadLimit) книг целиком. Сейчас: \(fullCount)/\(ProFeatures.freeFullDownloadLimit). Открытые главы кэшируются без лимита.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                OfflineQuotaStatusView(
+                    compact: true,
+                    onUpgrade: {
+                        paywallReason = "Лимит бесплатного офлайна (\(ProFeatures.freeFullDownloadLimit) книги) исчерпан. Pro снимает ограничение."
+                        showPaywall = true
+                    }
+                )
             }
+
             Button {
                 if !allowed {
                     paywallReason = "Лимит бесплатного офлайна (\(ProFeatures.freeFullDownloadLimit) книги) исчерпан. Pro снимает ограничение."
