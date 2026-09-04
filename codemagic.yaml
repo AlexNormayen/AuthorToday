@@ -9,8 +9,8 @@ workflows:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
         CHITALNYA_PUBLISH_URL: https://tv.theinquisitor.ru/chitalnya/api/publish
-        # Publish-only token (not SSH). Rotatable on VPS: /opt/chitalnya/.publish_token
-        CHITALNYA_PUBLISH_TOKEN: 3da3a2742ec324512fefb45a0f11931ae2b96d5b6baf62df
+        # Publish-only token (can replace IPAs on the install page; rotate on VPS if leaked).
+        CHITALNYA_PUBLISH_TOKEN: 4a581112430aa71109f4cb9b911915cb12c576b1952de7a9
     scripts:
       - name: Show Xcode
         script: |

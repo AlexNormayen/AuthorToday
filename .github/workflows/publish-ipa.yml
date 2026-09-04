@@ -1,0 +1,62 @@
+# Publish IPA from Codemagic without putting secrets in the public repo.
+# Codemagic uploads the IPA to a short-lived host and triggers this workflow
+# OR we publish via repository_dispatch with the IPA attached as an artifact upload from a trusted caller.
+#
+# Primary path used by Codemagic (AuthorToday): workflow_dispatch with artifact_url from 0x0.st / litterbox,
+# authenticated by repository secrets on the Actions runner (not in yaml source).
+
+name: Publish IPA to install page
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: chitalnya or tubevault
+        required: true
+        default: chitalnya
+      artifact_url:
+        description: Direct URL to the .ipa file
+        required: true
+      build_number:
+        description: CodeMagic build number
+        required: false
+        default: ""
+      commit:
+        description: Short commit SHA
+        required: false
+        default: ""
+      branch:
+        description: Branch name
+        required: false
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download IPA
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o app.ipa "${{ inputs.artifact_url }}"
+          file app.ipa
+          test -s app.ipa
+
+      - name: Upload to install page
+        env:
+          TOKEN: ${{ secrets.CHITALNYA_PUBLISH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "Missing CHITALNYA_PUBLISH_TOKEN secret"
+            exit 1
+          fi
+          curl -fL --retry 3 \
+            -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "app=${{ inputs.app }}" \
+            -F "buildNumber=${{ inputs.build_number }}" \
+            -F "commit=${{ inputs.commit }}" \
+            -F "branch=${{ inputs.branch }}" \
+            -F "ipa=@app.ipa;filename=app.ipa;type=application/octet-stream"
+          echo
+          echo "Done: https://tv.theinquisitor.ru/chitalnya/"
