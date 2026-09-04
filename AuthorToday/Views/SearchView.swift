@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct SearchView: View {
+    var initialQuery: String = ""
+    /// Shown when opened from Library as a sheet (iPhone).
+    var showsDismissButton: Bool = false
+
     @State private var query = ""
     @State private var mode: CatalogSearchMode = .both
     @State private var authors: [AuthorSearchHit] = []
@@ -9,8 +13,10 @@ struct SearchView: View {
     @State private var error: String?
     @State private var path = NavigationPath()
     @State private var showingRecent = false
+    @State private var didApplyInitialQuery = false
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @Environment(\.dismiss) private var dismiss
 
     private enum Route: Hashable {
         case work(Int)
@@ -132,6 +138,11 @@ struct SearchView: View {
                 Task { await runSearch() }
             }
             .toolbar {
+                if showsDismissButton {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Закрыть") { dismiss() }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Свежее") {
                         Task { await loadRecent() }
@@ -148,6 +159,15 @@ struct SearchView: View {
                 }
             }
             .task {
+                if !didApplyInitialQuery {
+                    didApplyInitialQuery = true
+                    let seed = initialQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !seed.isEmpty {
+                        query = seed
+                        await runSearch()
+                        return
+                    }
+                }
                 if results.isEmpty && authors.isEmpty && downloads.online {
                     await loadRecent()
                 }

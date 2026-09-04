@@ -95,6 +95,10 @@ struct MainTabView: View {
             didApplyColdStart = true
             migrateTabIndexIfNeeded()
             selectedTab = min(max(session.selectedTab, 0), MainDestination.allCases.count - 1)
+            if !useSidebar, selectedTab == MainDestination.search.rawValue {
+                selectedTab = MainDestination.library.rawValue
+                session.setSelectedTab(selectedTab)
+            }
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -107,6 +111,10 @@ struct MainTabView: View {
         .onChange(of: sizeClass) { _, _ in
             // Keep selection when rotating / entering Split View.
             selectedTab = min(max(selectedTab, 0), MainDestination.allCases.count - 1)
+            if !PlatformLayout.prefersSidebar(sizeClass: sizeClass),
+               selectedTab == MainDestination.search.rawValue {
+                selectedTab = MainDestination.library.rawValue
+            }
         }
         .onOpenURL { url in
             if let item = Self.resumeFromWidgetURL(url) {
@@ -127,7 +135,7 @@ struct MainTabView: View {
 
     private var iPhoneTabShell: some View {
         TabView(selection: $selectedTab) {
-            ForEach(MainDestination.allCases) { dest in
+            ForEach(MainDestination.phoneCases) { dest in
                 dest.rootView
                     .tabItem {
                         Label(dest.title, systemImage: dest.systemImage)
@@ -147,7 +155,7 @@ struct MainTabView: View {
                 set: { if let value = $0 { selectedTab = value.rawValue } }
             )) {
                 Section("Читальня") {
-                    ForEach(MainDestination.allCases) { dest in
+                    ForEach(MainDestination.padCases) { dest in
                         Label {
                             HStack {
                                 Text(dest.title)
@@ -212,12 +220,21 @@ struct MainTabView: View {
         }
 
         let downloadedKey = "at.tabs.downloadedInserted.v1"
-        guard !UserDefaults.standard.bool(forKey: downloadedKey) else { return }
-        let tab = session.selectedTab
-        if tab >= 1 {
-            session.setSelectedTab(tab + 1)
+        if !UserDefaults.standard.bool(forKey: downloadedKey) {
+            let tab = session.selectedTab
+            if tab >= 1 {
+                session.setSelectedTab(tab + 1)
+            }
+            UserDefaults.standard.set(true, forKey: downloadedKey)
         }
-        UserDefaults.standard.set(true, forKey: downloadedKey)
+
+        // Search moved into Library on iPhone; keep pad raw values, remap saved Search tab.
+        let searchKey = "at.tabs.searchMovedIntoLibrary.v1"
+        guard !UserDefaults.standard.bool(forKey: searchKey) else { return }
+        if session.selectedTab == MainDestination.search.rawValue {
+            session.setSelectedTab(MainDestination.library.rawValue)
+        }
+        UserDefaults.standard.set(true, forKey: searchKey)
     }
 }
 
@@ -230,6 +247,16 @@ private enum MainDestination: Int, CaseIterable, Identifiable, Hashable {
     case more = 5
 
     var id: Int { rawValue }
+
+    /// iPhone tab bar — search lives inside Library.
+    static var phoneCases: [MainDestination] {
+        [.library, .downloaded, .recent, .feed, .more]
+    }
+
+    /// iPad sidebar — search stays as its own row.
+    static var padCases: [MainDestination] {
+        allCases
+    }
 
     var title: String {
         switch self {

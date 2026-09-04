@@ -6,6 +6,8 @@ struct LibraryView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var path = NavigationPath()
     @State private var query = ""
+    @State private var searchScope: LibrarySearchScope = .library
+    @State private var catalogSearchSeed: CatalogSearchSeed?
     @State private var mode: LibraryBrowseMode = .authors
     @State private var authorSort: AuthorSortMode = .name
 
@@ -82,6 +84,33 @@ struct LibraryView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .modifier(LibrarySearchModifier(isEnabled: mode != .mine, query: $query))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if mode != .mine {
+                    Picker("Где искать", selection: $searchScope) {
+                        ForEach(LibrarySearchScope.allCases) { scope in
+                            Text(scope.title).tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial.opacity(0.7))
+                }
+            }
+            .onChange(of: searchScope) { _, scope in
+                guard scope == .catalog else { return }
+                let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                catalogSearchSeed = CatalogSearchSeed(query: q)
+                // Keep library filter when user comes back.
+                searchScope = .library
+            }
+            .onSubmit(of: .search) {
+                if searchScope == .catalog {
+                    let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    catalogSearchSeed = CatalogSearchSeed(query: q)
+                    searchScope = .library
+                }
+            }
             .toolbar {
                 if mode != .mine {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -134,6 +163,9 @@ struct LibraryView: View {
                 case .authorProfile(let userName, let displayName):
                     AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
+            }
+            .sheet(item: $catalogSearchSeed) { seed in
+                SearchView(initialQuery: seed.query, showsDismissButton: true)
             }
             .safeAreaInset(edge: .bottom) {
                 if let msg = downloads.statusMessage {
@@ -315,6 +347,20 @@ enum LibraryBrowseMode: String, CaseIterable, Identifiable {
     }
 }
 
+private enum LibrarySearchScope: String, CaseIterable, Identifiable {
+    case library
+    case catalog
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .library: return "В библиотеке"
+        case .catalog: return "Author.Today"
+        }
+    }
+}
+
 private struct LibrarySearchModifier: ViewModifier {
     let isEnabled: Bool
     @Binding var query: String
@@ -352,6 +398,11 @@ enum LibraryRoute: Hashable {
     case author(String, downloadedOnly: Bool)
     case authorSeries(author: String, series: String, downloadedOnly: Bool)
     case authorProfile(userName: String, displayName: String?)
+}
+
+private struct CatalogSearchSeed: Identifiable {
+    let id = UUID()
+    let query: String
 }
 
 struct AuthorBooksView: View {
