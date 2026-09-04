@@ -42,7 +42,21 @@ final class OfflineStore: ObservableObject {
         backfillLastReadAtIfNeeded()
         repairLastReadAtFromLocalProgressIfNeeded()
         normalizeStoredProgressIfNeeded()
+        seedKnownChapterCounts()
         reloadLibrary()
+    }
+
+    private func seedKnownChapterCounts() {
+        for work in downloadedWorks {
+            let count: Int
+            if let data = work.chaptersJSON,
+               let chapters = try? JSONDecoder().decode([ChapterMeta].self, from: data) {
+                count = chapters.count
+            } else {
+                count = cachedChapters(workId: work.workId).count
+            }
+            NotificationPoller.shared.rememberChapterCount(workId: work.workId, count: count)
+        }
     }
 
     /// Migrate older installs: copy ReadingProgress.updatedAt → CachedWork.lastReadAt
@@ -171,8 +185,27 @@ final class OfflineStore: ObservableObject {
         authorsGrouped(sortedBy: .name)
     }
 
+    /// Books with at least one readable cached chapter (or marked fully downloaded).
+    var downloadedWorks: [CachedWork] {
+        guard let modelContext else { return [] }
+        let all = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
+        let readableIds = readableOfflineWorkIds()
+        return all.filter { $0.isFullyDownloaded || readableIds.contains($0.workId) }
+    }
+
+    func downloadedAuthorsGrouped(sortedBy mode: AuthorSortMode) -> [(author: String, works: [CachedWork])] {
+        authorsGrouped(from: downloadedWorks, sortedBy: mode)
+    }
+
     func authorsGrouped(sortedBy mode: AuthorSortMode) -> [(author: String, works: [CachedWork])] {
-        let grouped = Dictionary(grouping: library) { work -> String in
+        authorsGrouped(from: library, sortedBy: mode)
+    }
+
+    func authorsGrouped(
+        from works: [CachedWork],
+        sortedBy mode: AuthorSortMode
+    ) -> [(author: String, works: [CachedWork])] {
+        let grouped = Dictionary(grouping: works) { work -> String in
             let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Без автора" : name
         }
@@ -559,6 +592,9 @@ final class OfflineStore: ObservableObject {
             if let views = meta.viewsCount ?? meta.viewCount {
                 existing.viewsCount = views
             }
+            if let chapters = meta.chapterCount {
+                NotificationPoller.shared.rememberChapterCount(workId: meta.id, count: chapters)
+            }
             if let seriesTitle = meta.displaySeriesTitle {
                 existing.seriesTitle = seriesTitle
             }
@@ -623,7 +659,8 @@ final class OfflineStore: ObservableObject {
         )
         let existing = try? modelContext.fetch(descriptor).first
         let chaptersData = try? JSONEncoder().encode(details.chapters ?? [])
-            if let existing {
+        let snapshot = try? JSONEncoder().encode(details)
+        if let existing {
             existing.title = details.displayTitle
             existing.author = details.displayAuthor
             if let uname = details.authorUserName, !uname.isEmpty {
@@ -632,10 +669,21 @@ final class OfflineStore: ObservableObject {
             existing.coverURL = WorkMeta.normalizeCover(details.coverUrl)
             existing.annotation = details.annotation
             existing.chaptersJSON = chaptersData
+            existing.detailsJSON = snapshot
             if let remoteChapter = details.resolvedLastReadChapterId {
                 existing.lastReadChapterId = existing.lastReadChapterId ?? remoteChapter
             }
             existing.updatedAt = .now
+            NotificationPoller.shared.rememberChapterCount(
+                workId: details.id,
+                count: details.chapterCount ?? details.chapters?.count ?? 0
+            )
+            // TOC may gain new chapters — never keep a stale "fully downloaded" flag.
+            let expectedIds = details.availableChapters.map(\.id)
+            if !expectedIds.isEmpty {
+                let readable = readableOfflineChapterIds(workId: id)
+                existing.isFullyDownloaded = expectedIds.allSatisfy { readable.contains($0) }
+            }
         } else {
             // Keep offline metadata, but hide from library shelf via localonly
             modelContext.insert(
@@ -648,8 +696,13 @@ final class OfflineStore: ObservableObject {
                     annotation: details.annotation,
                     libraryState: "localonly",
                     lastReadChapterId: details.resolvedLastReadChapterId,
-                    chaptersJSON: chaptersData
+                    chaptersJSON: chaptersData,
+                    detailsJSON: snapshot
                 )
+            )
+            NotificationPoller.shared.rememberChapterCount(
+                workId: details.id,
+                count: details.chapterCount ?? details.chapters?.count ?? 0
             )
         }
         try? modelContext.save()
@@ -698,6 +751,86 @@ final class OfflineStore: ObservableObject {
             bookProgress: bookProgress,
             forceChapter: true
         )
+    }
+
+    /// Rebuild the book page from the last saved snapshot / TOC / downloaded chapters.
+    func workDetailsFromCache(workId: Int) -> WorkDetails? {
+        guard let cached = cachedWork(workId: workId) else { return nil }
+        if let data = cached.detailsJSON,
+           let snapshot = try? JSONDecoder().decode(WorkDetails.self, from: data) {
+            return snapshot.mergingOfflineChapters(cachedChapters(workId: workId), workId: workId)
+        }
+        return detailsFromLegacyCache(cached)
+    }
+
+    func hasReadableOfflineChapters(workId: Int) -> Bool {
+        cachedChapters(workId: workId).contains { ChapterDecryptor.looksLikePlaintext($0.htmlText) }
+    }
+
+    func hasOfflineBookPage(workId: Int) -> Bool {
+        guard let cached = cachedWork(workId: workId) else { return false }
+        if cached.detailsJSON != nil { return true }
+        if cached.chaptersJSON != nil { return true }
+        return !cachedChapters(workId: workId).isEmpty
+    }
+
+    private func readableOfflineWorkIds() -> Set<Int> {
+        guard let modelContext else { return [] }
+        let rows = (try? modelContext.fetch(FetchDescriptor<CachedChapter>())) ?? []
+        return Set(
+            rows.compactMap { chapter in
+                ChapterDecryptor.looksLikePlaintext(chapter.htmlText) ? chapter.workId : nil
+            }
+        )
+    }
+
+    private func detailsFromLegacyCache(_ cached: CachedWork) -> WorkDetails {
+        var chapters: [ChapterMeta] = []
+        if let data = cached.chaptersJSON,
+           let decoded = try? JSONDecoder().decode([ChapterMeta].self, from: data),
+           !decoded.isEmpty {
+            chapters = decoded
+        } else {
+            chapters = cachedChapters(workId: cached.workId).map {
+                ChapterMeta(
+                    id: $0.chapterId,
+                    workId: cached.workId,
+                    title: $0.title,
+                    isAvailable: true,
+                    publishTime: nil,
+                    lastUpdateTime: nil,
+                    textLength: nil,
+                    isDraft: false
+                )
+            }
+        }
+        return WorkDetails(
+            id: cached.workId,
+            title: cached.title,
+            authorFIO: cached.author,
+            authorUserName: cached.authorUserName,
+            coverUrl: cached.coverURL,
+            annotation: cached.annotation,
+            chapters: chapters,
+            status: nil,
+            genreName: nil,
+            secondGenreName: nil,
+            likeCount: cached.likeCount,
+            viewsCount: cached.viewsCount,
+            chapterCount: chapters.count,
+            downloadAllowed: nil,
+            isFinished: nil,
+            price: nil,
+            discount: nil,
+            isPurchased: nil,
+            orderStatus: nil,
+            orderStatusMessage: nil,
+            freeChapterCount: nil,
+            lastChapterId: cached.lastReadChapterId,
+            lastChapterProgress: nil,
+            textLengthLastRead: nil,
+            textLength: nil
+        ).mergingOfflineChapters(cachedChapters(workId: cached.workId), workId: cached.workId)
     }
 
     /// Lookup including local-only cached works (not shown in library shelf).
@@ -867,8 +1000,44 @@ final class OfflineStore: ObservableObject {
         return try? modelContext.fetch(descriptor).first
     }
 
+    /// True only when chapter body is present and readable offline (not encrypted soup).
     func isChapterCached(workId: Int, chapterId: Int) -> Bool {
-        chapter(workId: workId, chapterId: chapterId) != nil
+        guard let cached = chapter(workId: workId, chapterId: chapterId) else { return false }
+        return ChapterDecryptor.looksLikePlaintext(cached.htmlText)
+    }
+
+    /// Available TOC ids that already have readable offline bodies.
+    func readableOfflineChapterIds(workId: Int) -> Set<Int> {
+        Set(
+            cachedChapters(workId: workId).compactMap { row in
+                ChapterDecryptor.looksLikePlaintext(row.htmlText) ? row.chapterId : nil
+            }
+        )
+    }
+
+    /// Recompute `isFullyDownloaded` from TOC vs readable chapter bodies.
+    /// Call after full download and whenever the saved TOC changes.
+    func reconcileFullDownloadStatus(workId: Int, expectedChapterIds: [Int]? = nil) {
+        let expected: [Int]
+        if let expectedChapterIds {
+            expected = expectedChapterIds
+        } else if let details = workDetailsFromCache(workId: workId) {
+            expected = details.availableChapters.map(\.id)
+        } else {
+            return
+        }
+        guard !expected.isEmpty else { return }
+        let readable = readableOfflineChapterIds(workId: workId)
+        let complete = expected.allSatisfy { readable.contains($0) }
+        markDownloaded(workId: workId, fully: complete)
+    }
+
+    func offlineChapterCoverage(workId: Int) -> (ready: Int, total: Int)? {
+        guard let details = workDetailsFromCache(workId: workId) else { return nil }
+        let expected = details.availableChapters.map(\.id)
+        guard !expected.isEmpty else { return nil }
+        let ready = expected.filter { isChapterCached(workId: workId, chapterId: $0) }.count
+        return (ready, expected.count)
     }
 
     func isInLibrary(_ workId: Int) -> Bool {

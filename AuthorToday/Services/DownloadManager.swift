@@ -29,7 +29,7 @@ final class DownloadManager: ObservableObject {
 
     var online: Bool { isOnline }
 
-    /// Ensures the chapter is available offline; then downloads the rest of the book in background.
+    /// Opens a book from the local cache when possible. Network is used to refresh, never to block a downloaded book.
     func openAndCache(
         workId: Int,
         preferredChapterId: Int?,
@@ -37,12 +37,30 @@ final class DownloadManager: ObservableObject {
     ) async throws -> (details: WorkDetails, chapterId: Int, html: String, title: String) {
         startMonitoring()
 
+        let cachedDetails = store.workDetailsFromCache(workId: workId)
+        let hasOfflineText = store.hasReadableOfflineChapters(workId: workId)
+
         let details: WorkDetails
-        if isOnline {
-            details = try await APIClient.shared.workDetails(id: workId)
-            store.cacheWorkDetails(details)
+        if hasOfflineText, let cachedDetails {
+            details = cachedDetails
+            if isOnline {
+                Task { await refreshBookPageIfPossible(workId: workId, store: store) }
+            }
+        } else if isOnline {
+            do {
+                details = try await APIClient.shared.workDetails(id: workId)
+                store.cacheWorkDetails(details)
+            } catch {
+                if let cachedDetails {
+                    details = cachedDetails
+                } else {
+                    throw error
+                }
+            }
+        } else if let cachedDetails {
+            details = cachedDetails
         } else {
-            details = try offlineDetails(workId: workId, store: store)
+            throw APIError.message("Нет сети и книга ещё не скачана")
         }
 
         let chapters = details.availableChapters
@@ -52,7 +70,7 @@ final class DownloadManager: ObservableObject {
 
         var remoteChapterId: Int?
         var remoteChapterFraction = 0.0
-        if isOnline, let meta = try? await APIClient.shared.workMeta(id: workId) {
+        if isOnline, !hasOfflineText, let meta = try? await APIClient.shared.workMeta(id: workId) {
             if store.isInLibrary(workId) {
                 store.upsertWork(from: meta, markFromSite: true)
             }
@@ -89,7 +107,7 @@ final class DownloadManager: ObservableObject {
             chapters: chapters,
             workId: workId,
             store: store,
-            online: isOnline
+            online: isOnline && !hasOfflineText
         )
 
         let chapterMeta = chapters.first(where: { $0.id == startId }) ?? chapters[0]
@@ -102,11 +120,40 @@ final class DownloadManager: ObservableObject {
 
         // Mark reader session on the site, but do NOT call update-progress here —
         // sending chapter 1 with nil progress was wiping the portal's last-read chapter.
-        if isOnline {
+        // Never block opening a downloaded book on this call.
+        if isOnline, !hasOfflineText {
             try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
+        } else if isOnline {
+            Task {
+                try? await APIClient.shared.readerStart(workId: workId, chapterId: chapterMeta.id)
+            }
         }
 
         return (details, chapterMeta.id, html, title)
+    }
+
+    /// Refresh the saved book page when the portal is reachable. Failures are ignored.
+    private func refreshBookPageIfPossible(workId: Int, store: OfflineStore) async {
+        do {
+            let details = try await APIClient.shared.workDetails(id: workId)
+            store.cacheWorkDetails(details)
+            if let meta = try? await APIClient.shared.workMeta(id: workId) {
+                if store.isInLibrary(workId) {
+                    store.upsertWork(from: meta, markFromSite: true)
+                }
+                store.adoptRemoteResumeIfNeeded(
+                    workId: workId,
+                    chapterId: meta.resolvedLastReadChapterId,
+                    chapterFraction: meta.resolvedChapterProgress,
+                    bookProgress: meta.resolvedProgress
+                )
+                if meta.resolvedProgress > 0 {
+                    store.updateBookProgress(workId: workId, progress: meta.resolvedProgress)
+                }
+            }
+        } catch {
+            // Keep the local copy; portal is optional.
+        }
     }
 
     /// Explicit UI chapter first; else furthest known position (local + portal).
@@ -163,61 +210,15 @@ final class DownloadManager: ObservableObject {
         )
     }
 
-    /// Offline: rebuild TOC from chaptersJSON or from already cached chapter rows.
+    /// Offline: rebuild TOC from the saved book page or downloaded chapter rows.
     private func offlineDetails(workId: Int, store: OfflineStore) throws -> WorkDetails {
-        guard let cached = store.cachedWork(workId: workId) else {
+        guard let details = store.workDetailsFromCache(workId: workId) else {
             throw APIError.message("Нет сети и книга ещё не скачана")
         }
-        var chapters: [ChapterMeta] = []
-        if let data = cached.chaptersJSON,
-           let decoded = try? JSONDecoder().decode([ChapterMeta].self, from: data),
-           !decoded.isEmpty {
-            chapters = decoded
-        } else {
-            let cachedChapters = store.cachedChapters(workId: workId)
-            chapters = cachedChapters.map {
-                ChapterMeta(
-                    id: $0.chapterId,
-                    workId: workId,
-                    title: $0.title,
-                    isAvailable: true,
-                    publishTime: nil,
-                    lastUpdateTime: nil,
-                    textLength: nil,
-                    isDraft: false
-                )
-            }
-        }
-        guard !chapters.isEmpty else {
+        guard !(details.chapters ?? []).isEmpty else {
             throw APIError.message("Нет сети и нет сохранённых глав этой книги")
         }
-        return WorkDetails(
-            id: workId,
-            title: cached.title,
-            authorFIO: cached.author,
-            authorUserName: cached.authorUserName,
-            coverUrl: cached.coverURL,
-            annotation: cached.annotation,
-            chapters: chapters,
-            status: nil,
-            genreName: nil,
-            secondGenreName: nil,
-            likeCount: nil,
-            viewsCount: nil,
-            chapterCount: chapters.count,
-            downloadAllowed: nil,
-            isFinished: nil,
-            price: nil,
-            discount: nil,
-            isPurchased: nil,
-            orderStatus: nil,
-            orderStatusMessage: nil,
-            freeChapterCount: nil,
-            lastChapterId: cached.lastReadChapterId,
-            lastChapterProgress: nil,
-            textLengthLastRead: nil,
-            textLength: nil
-        )
+        return details
     }
 
     /// Prefer requested chapter if cached; otherwise any downloaded chapter (offline).
@@ -305,29 +306,10 @@ final class DownloadManager: ObservableObject {
 
         let chapters = details.availableChapters
         guard !chapters.isEmpty else { return }
+        store.cacheWorkDetails(details)
 
-        do {
-            let batch = try await APIClient.shared.manyChapterTexts(workId: workId)
-            if !batch.isEmpty {
-                let byId = Dictionary(uniqueKeysWithValues: chapters.enumerated().map { ($0.element.id, $0.offset) })
-                for item in batch where item.id != 0 {
-                    store.saveChapter(
-                        workId: workId,
-                        chapterId: item.id,
-                        title: item.title ?? "Глава",
-                        html: item.html,
-                        sortIndex: byId[item.id] ?? 0
-                    )
-                }
-                store.downloadProgress[workId] = 1
-                store.markDownloaded(workId: workId, fully: true)
-                statusMessage = "«\(details.displayTitle)» скачана"
-                return
-            }
-        } catch {
-            // fall through
-        }
-
+        // One path only: loadChapter verifies plaintext before save, so airplane mode
+        // never treats encrypted/corrupt rows as "already downloaded".
         for (index, chapter) in chapters.enumerated() {
             if store.isChapterCached(workId: workId, chapterId: chapter.id) {
                 store.downloadProgress[workId] = Double(index + 1) / Double(chapters.count)
@@ -346,10 +328,13 @@ final class DownloadManager: ObservableObject {
             store.downloadProgress[workId] = Double(index + 1) / Double(chapters.count)
         }
 
-        let cachedCount = store.cachedChapters(workId: workId).count
-        store.markDownloaded(workId: workId, fully: cachedCount >= chapters.count)
-        statusMessage = cachedCount >= chapters.count
+        let expectedIds = chapters.map(\.id)
+        store.reconcileFullDownloadStatus(workId: workId, expectedChapterIds: expectedIds)
+        let ready = expectedIds.filter { store.isChapterCached(workId: workId, chapterId: $0) }.count
+        let complete = ready == expectedIds.count
+        store.downloadProgress[workId] = complete ? 1 : Double(ready) / Double(expectedIds.count)
+        statusMessage = complete
             ? "«\(details.displayTitle)» скачана"
-            : "Скачано \(cachedCount) из \(chapters.count) глав"
+            : "Скачано \(ready) из \(expectedIds.count) глав — повторите, когда будет сеть"
     }
 }

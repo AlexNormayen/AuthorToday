@@ -345,6 +345,67 @@ struct WorkDetails: Codable, Identifiable, Sendable {
         // Dedicated work page checkout / buy flow on site (not a blank SPA shell).
         URL(string: "https://author.today/work/\(id)?buy=1")!
     }
+
+    /// Prefer saved TOC; if empty, rebuild from downloaded chapter rows so offline open works.
+    func mergingOfflineChapters(_ cached: [CachedChapter], workId: Int) -> WorkDetails {
+        var chapters = self.chapters ?? []
+        if chapters.isEmpty {
+            chapters = cached.map {
+                ChapterMeta(
+                    id: $0.chapterId,
+                    workId: workId,
+                    title: $0.title,
+                    isAvailable: true,
+                    publishTime: nil,
+                    lastUpdateTime: nil,
+                    textLength: nil,
+                    isDraft: false
+                )
+            }
+        } else {
+            let cachedIds = Set(cached.map(\.chapterId))
+            chapters = chapters.map { chapter in
+                guard !chapter.isAvailableEffective, cachedIds.contains(chapter.id) else { return chapter }
+                return ChapterMeta(
+                    id: chapter.id,
+                    workId: chapter.workId ?? workId,
+                    title: chapter.title,
+                    isAvailable: true,
+                    publishTime: chapter.publishTime,
+                    lastUpdateTime: chapter.lastUpdateTime,
+                    textLength: chapter.textLength,
+                    isDraft: chapter.isDraft
+                )
+            }
+        }
+        return WorkDetails(
+            id: id,
+            title: title,
+            authorFIO: authorFIO,
+            authorUserName: authorUserName,
+            coverUrl: coverUrl,
+            annotation: annotation,
+            chapters: chapters,
+            status: status,
+            genreName: genreName,
+            secondGenreName: secondGenreName,
+            likeCount: likeCount,
+            viewsCount: viewsCount,
+            chapterCount: chapterCount ?? chapters.count,
+            downloadAllowed: downloadAllowed,
+            isFinished: isFinished,
+            price: price,
+            discount: discount,
+            isPurchased: isPurchased,
+            orderStatus: orderStatus,
+            orderStatusMessage: orderStatusMessage,
+            freeChapterCount: freeChapterCount,
+            lastChapterId: lastChapterId,
+            lastChapterProgress: lastChapterProgress,
+            textLengthLastRead: textLengthLastRead,
+            textLength: textLength
+        )
+    }
 }
 
 struct ChapterMeta: Codable, Identifiable, Hashable, Sendable {
@@ -843,6 +904,8 @@ final class CachedWork {
     /// Site like count — used for author popularity sort.
     var likeCount: Int?
     var viewsCount: Int?
+    /// Full WorkDetails snapshot so the book page opens without the portal.
+    var detailsJSON: Data?
 
     init(
         workId: Int,
@@ -862,7 +925,8 @@ final class CachedWork {
         seriesTitle: String? = nil,
         seriesOrder: Int? = nil,
         likeCount: Int? = nil,
-        viewsCount: Int? = nil
+        viewsCount: Int? = nil,
+        detailsJSON: Data? = nil
     ) {
         self.workId = workId
         self.title = title
@@ -882,6 +946,7 @@ final class CachedWork {
         self.seriesOrder = seriesOrder
         self.likeCount = likeCount
         self.viewsCount = viewsCount
+        self.detailsJSON = detailsJSON
     }
 
     /// Safe 0…100 for UI (handles legacy rows that stored API percent as-is).

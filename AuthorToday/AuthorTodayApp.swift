@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct AuthorTodayApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth = AuthService.shared
     @StateObject private var readerSettings = ReaderSettingsStore()
     @StateObject private var appearance = AppAppearanceStore()
@@ -10,6 +11,10 @@ struct AuthorTodayApp: App {
     @StateObject private var localLibrary = LocalLibraryStore.shared
     @StateObject private var notifications = NotificationPoller.shared
     @StateObject private var pro = ProEntitlementStore.shared
+
+    init() {
+        NotificationPoller.registerBackgroundRefresh()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -52,6 +57,18 @@ struct AuthorTodayApp: App {
                 }
                 .onChange(of: pro.isProUnlocked) { _, _ in
                     enforceFreeTierIfNeeded()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active:
+                        if auth.isAuthenticated {
+                            Task { await notifications.handleSceneBecameActive() }
+                        }
+                    case .background:
+                        notifications.scheduleBackgroundRefresh()
+                    default:
+                        break
+                    }
                 }
         }
         .modelContainer(for: [

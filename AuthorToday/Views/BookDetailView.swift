@@ -97,8 +97,14 @@ struct BookDetailView: View {
             .environmentObject(appearance)
         }
         .task {
-            await load()
-            await loadComments(reset: true)
+            presentCachedPageIfPossible()
+            if details != nil {
+                Task { await load() }
+                await loadComments(reset: true)
+            } else {
+                await load()
+                await loadComments(reset: true)
+            }
         }
     }
 
@@ -186,10 +192,14 @@ struct BookDetailView: View {
                         .foregroundStyle(appearance.accent)
                 }
 
-                if offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded }) {
-                    Label("Скачано", systemImage: "arrow.down.circle.fill")
+                if offline.cachedWork(workId: workId)?.isFullyDownloaded == true {
+                    Label("Скачано целиком", systemImage: "arrow.down.circle.fill")
                         .font(.caption)
                         .foregroundStyle(appearance.accent)
+                } else if let cov = offline.offlineChapterCoverage(workId: workId), cov.ready > 0 {
+                    Label("Офлайн \(cov.ready) из \(cov.total)", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -215,7 +225,7 @@ struct BookDetailView: View {
 
             Button {
                 Task {
-                    if !offline.isInLibrary(workId) {
+                    if downloads.online, !offline.isInLibrary(workId) {
                         try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
                     }
                     // Always nil for Continue/Read — DownloadManager picks the furthest
@@ -228,8 +238,8 @@ struct BookDetailView: View {
                 Text(readButtonTitle)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .opacity(details.availableChapters.isEmpty && details.needsPurchase ? 0.45 : 1)
-            .disabled(details.availableChapters.isEmpty && details.needsPurchase)
+            .opacity(canOpenReader(details) ? 1 : 0.45)
+            .disabled(!canOpenReader(details))
 
             if let chapters = details.chapters, !chapters.isEmpty {
                 Button {
@@ -261,7 +271,7 @@ struct BookDetailView: View {
                 .buttonStyle(.bordered)
             }
 
-            if downloads.online, !details.availableChapters.isEmpty {
+            if !details.availableChapters.isEmpty || offline.hasReadableOfflineChapters(workId: workId) {
                 downloadBlock(details)
             }
 
@@ -279,7 +289,7 @@ struct BookDetailView: View {
     }
 
     private func downloadBlock(_ details: WorkDetails) -> some View {
-        let alreadyFull = offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
+        let alreadyFull = offline.cachedWork(workId: workId)?.isFullyDownloaded == true
         let fullCount = offline.fullyDownloadedCount
         let allowed = pro.canStartFullDownload(
             workId: workId,
@@ -334,6 +344,12 @@ struct BookDetailView: View {
         }
     }
 
+    private func canOpenReader(_ details: WorkDetails) -> Bool {
+        if offline.hasReadableOfflineChapters(workId: workId) { return true }
+        if !details.availableChapters.isEmpty { return true }
+        return false
+    }
+
     private var readButtonTitle: String {
         let canContinue = ReadingSessionStore.shared.checkpoint(for: workId) != nil
             || offline.progress(for: workId) != nil
@@ -342,8 +358,13 @@ struct BookDetailView: View {
     }
 
     private var downloadButtonTitle: String {
-        let downloaded = offline.library.contains(where: { $0.workId == workId && $0.isFullyDownloaded })
-        return downloaded ? "Скачать заново" : "Скачать все главы"
+        if offline.cachedWork(workId: workId)?.isFullyDownloaded == true {
+            return "Скачать заново"
+        }
+        if let cov = offline.offlineChapterCoverage(workId: workId), cov.ready > 0, cov.ready < cov.total {
+            return "Докачать главы (\(cov.ready)/\(cov.total))"
+        }
+        return "Скачать все главы"
     }
 
     private var commentsBlock: some View {
@@ -361,21 +382,34 @@ struct BookDetailView: View {
         )
     }
 
+    private func presentCachedPageIfPossible() {
+        if let cached = offline.workDetailsFromCache(workId: workId) {
+            details = cached
+            isLoading = false
+            error = nil
+        }
+    }
+
     private func load() async {
-        isLoading = true
+        let hadCache = details != nil
+        if !hadCache {
+            presentCachedPageIfPossible()
+        }
+        if details == nil {
+            isLoading = true
+        }
         defer { isLoading = false }
         do {
             if downloads.online {
-                details = try await APIClient.shared.workDetails(id: workId)
-                if let details {
-                    offline.cacheWorkDetails(details)
-                    offline.adoptRemoteResumeIfNeeded(
-                        workId: workId,
-                        chapterId: details.resolvedLastReadChapterId,
-                        chapterFraction: details.resolvedChapterProgress,
-                        bookProgress: nil
-                    )
-                }
+                // Portal may be blocked even when the path looks online — keep the saved page.
+                details = remote
+                offline.cacheWorkDetails(remote)
+                offline.adoptRemoteResumeIfNeeded(
+                    workId: workId,
+                    chapterId: remote.resolvedLastReadChapterId,
+                    chapterFraction: remote.resolvedChapterProgress,
+                    bookProgress: nil
+                )
                 // meta-info is the most reliable source for last-read chapter + %
                 if let meta = try? await APIClient.shared.workMeta(id: workId) {
                     if offline.isInLibrary(workId) {
@@ -391,20 +425,19 @@ struct BookDetailView: View {
                         offline.updateBookProgress(workId: workId, progress: meta.resolvedProgress)
                     }
                 }
-            } else if let cached = offline.cachedWork(workId: workId) {
-                details = Self.detailsFromCache(cached)
-                if (details?.chapters ?? []).isEmpty, offline.cachedChapters(workId: workId).isEmpty {
-                    error = "Нет сети и нет оглавления. Откройте книгу онлайн хотя бы раз или скачайте главы."
-                }
-            } else {
-                error = "Нет сети и нет локальной копии"
+                error = nil
+            } else if details == nil {
+                error = offline.hasOfflineBookPage(workId: workId)
+                    ? "Нет сети и нет оглавления. Откройте книгу онлайн хотя бы раз или скачайте главы."
+                    : "Нет сети и нет локальной копии"
             }
         } catch {
-            if details == nil, let cached = offline.cachedWork(workId: workId) {
-                details = Self.detailsFromCache(cached)
-            } else {
+            if details == nil, let cached = offline.workDetailsFromCache(workId: workId) {
+                details = cached
+            } else if details == nil {
                 self.error = error.localizedDescription
             }
+            // Keep the saved page if the portal is unreachable.
         }
     }
 
@@ -461,38 +494,6 @@ struct BookDetailView: View {
         }
     }
 
-    private static func detailsFromCache(_ cached: CachedWork) -> WorkDetails {
-        let chapters = (cached.chaptersJSON).flatMap {
-            try? JSONDecoder().decode([ChapterMeta].self, from: $0)
-        } ?? []
-        return WorkDetails(
-            id: cached.workId,
-            title: cached.title,
-            authorFIO: cached.author,
-            authorUserName: cached.authorUserName,
-            coverUrl: cached.coverURL,
-            annotation: cached.annotation,
-            chapters: chapters,
-            status: nil,
-            genreName: nil,
-            secondGenreName: nil,
-            likeCount: nil,
-            viewsCount: nil,
-            chapterCount: chapters.count,
-            downloadAllowed: nil,
-            isFinished: nil,
-            price: nil,
-            discount: nil,
-            isPurchased: nil,
-            orderStatus: nil,
-            orderStatusMessage: nil,
-            freeChapterCount: nil,
-            lastChapterId: cached.lastReadChapterId,
-            lastChapterProgress: nil,
-            textLengthLastRead: nil,
-            textLength: nil
-        )
-    }
 }
 
 private struct BookTOCSheet: View {

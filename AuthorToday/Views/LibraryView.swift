@@ -9,13 +9,17 @@ struct LibraryView: View {
     @State private var mode: LibraryBrowseMode = .authors
     @State private var authorSort: AuthorSortMode = .name
 
+    private var shelfWorks: [CachedWork] {
+        offline.library
+    }
+
     private var filteredWorks: [CachedWork] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let base: [CachedWork]
         if q.isEmpty {
-            base = offline.library
+            base = shelfWorks
         } else {
-            base = offline.library.filter {
+            base = shelfWorks.filter {
                 $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
             }
         }
@@ -94,9 +98,9 @@ struct LibraryView: View {
                 }
             }
             .safeAreaInset(edge: .top) {
-                if mode != .mine, offline.isSyncing || offline.lastSyncCount > 0 || !offline.library.isEmpty {
+                if mode != .mine, offline.isSyncing || offline.lastSyncCount > 0 || !offline.library.isEmpty || !offline.downloadedWorks.isEmpty {
                     HStack {
-                        Text("\(offline.library.count) книг · \(offline.authorsGrouped.count) авторов")
+                        Text(shelfSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -123,10 +127,10 @@ struct LibraryView: View {
                     ReaderView(workId: workId, initialChapterId: chapterId)
                 case .details(let workId):
                     BookDetailView(workId: workId)
-                case .author(let name):
-                    AuthorBooksView(author: name, path: $path)
-                case .authorSeries(let author, let series):
-                    AuthorSeriesBooksView(author: author, series: series, path: $path)
+                case .author(let name, let downloadedOnly):
+                    AuthorBooksView(author: name, path: $path, downloadedOnly: downloadedOnly)
+                case .authorSeries(let author, let series, let downloadedOnly):
+                    AuthorSeriesBooksView(author: author, series: series, path: $path, downloadedOnly: downloadedOnly)
                 case .authorProfile(let userName, let displayName):
                     AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
@@ -179,7 +183,7 @@ struct LibraryView: View {
     private var allBooksContent: some View {
         if offline.library.isEmpty && offline.isSyncing {
             ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
-        } else if offline.library.isEmpty {
+        } else if filteredWorks.isEmpty {
             ContentUnavailableView(
                 "Библиотека пуста",
                 systemImage: "books.vertical",
@@ -190,11 +194,15 @@ struct LibraryView: View {
         }
     }
 
+    private var shelfSummary: String {
+        "\(offline.library.count) книг · \(offline.authorsGrouped.count) авторов"
+    }
+
     private var authorsList: some View {
         List {
             ForEach(filteredAuthors, id: \.author) { group in
                 Button {
-                    path.append(LibraryRoute.author(group.author))
+                    path.append(LibraryRoute.author(group.author, downloadedOnly: false))
                 } label: {
                     HStack(spacing: 14) {
                         AuthorCoverCollage(
@@ -341,18 +349,22 @@ enum AuthorSortMode: String, CaseIterable, Identifiable {
 enum LibraryRoute: Hashable {
     case reader(workId: Int, chapterId: Int?)
     case details(workId: Int)
-    case author(String)
-    case authorSeries(author: String, series: String)
+    case author(String, downloadedOnly: Bool)
+    case authorSeries(author: String, series: String, downloadedOnly: Bool)
     case authorProfile(userName: String, displayName: String?)
 }
 
 struct AuthorBooksView: View {
     let author: String
     @Binding var path: NavigationPath
+    var downloadedOnly: Bool = false
     @EnvironmentObject private var offline: OfflineStore
+    @State private var sort: AuthorSortMode = .recentlyRead
 
     private var works: [CachedWork] {
-        offline.library.filter { matchesAuthor($0) }
+        let source = downloadedOnly ? offline.downloadedWorks : offline.library
+        let filtered = source.filter { matchesAuthor($0) }
+        return downloadedOnly ? offline.worksSorted(filtered, by: sort) : filtered
     }
 
     private var seriesGroups: [(series: String, works: [CachedWork])] {
@@ -386,7 +398,7 @@ struct AuthorBooksView: View {
                 List {
                     ForEach(seriesGroups, id: \.series) { group in
                         Button {
-                            path.append(LibraryRoute.authorSeries(author: author, series: group.series))
+                            path.append(LibraryRoute.authorSeries(author: author, series: group.series, downloadedOnly: downloadedOnly))
                         } label: {
                             HStack(spacing: 14) {
                                 AuthorCoverCollage(
@@ -423,6 +435,16 @@ struct AuthorBooksView: View {
         .navigationTitle(author)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if downloadedOnly {
+                ToolbarItem(placement: .topBarLeading) {
+                    Picker("Сортировка", selection: $sort) {
+                        ForEach(AuthorSortMode.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
             if let userName = siteUserName {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Профиль") {
@@ -474,10 +496,12 @@ struct AuthorSeriesBooksView: View {
     let author: String
     let series: String
     @Binding var path: NavigationPath
+    var downloadedOnly: Bool = false
     @EnvironmentObject private var offline: OfflineStore
 
     private var works: [CachedWork] {
-        offline.library
+        let source = downloadedOnly ? offline.downloadedWorks : offline.library
+        return source
             .filter { work in
                 let authorMatch = author == "Без автора"
                     ? work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -571,10 +595,10 @@ struct RecentReadsView: View {
                     ReaderView(workId: workId, initialChapterId: chapterId)
                 case .details(let workId):
                     BookDetailView(workId: workId)
-                case .author(let name):
-                    AuthorBooksView(author: name, path: $path)
-                case .authorSeries(let author, let series):
-                    AuthorSeriesBooksView(author: author, series: series, path: $path)
+                case .author(let name, let downloadedOnly):
+                    AuthorBooksView(author: name, path: $path, downloadedOnly: downloadedOnly)
+                case .authorSeries(let author, let series, let downloadedOnly):
+                    AuthorSeriesBooksView(author: author, series: series, path: $path, downloadedOnly: downloadedOnly)
                 case .authorProfile(let userName, let displayName):
                     AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
@@ -622,6 +646,10 @@ struct LibraryRow: View {
                         Label("Офлайн", systemImage: "arrow.down.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(appearance.accent)
+                    } else if let cov = offline.offlineChapterCoverage(workId: work.workId), cov.ready > 0 {
+                        Label("\(cov.ready)/\(cov.total)", systemImage: "arrow.down.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     } else if let chapterId = work.lastReadChapterId,
                               offline.isChapterCached(workId: work.workId, chapterId: chapterId) {
                         Label("Глава офлайн", systemImage: "arrow.down.circle")
@@ -652,5 +680,112 @@ struct LibraryRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+}
+
+/// Flat list of offline books — own tab, no author drill-down.
+struct DownloadedLibraryView: View {
+    @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
+    @State private var path = NavigationPath()
+    @State private var query = ""
+    @State private var sort: AuthorSortMode = .recentlyRead
+
+    private var filteredWorks: [CachedWork] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let base: [CachedWork]
+        if q.isEmpty {
+            base = offline.downloadedWorks
+        } else {
+            base = offline.downloadedWorks.filter {
+                $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
+            }
+        }
+        return offline.worksSorted(base, by: sort)
+    }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            Group {
+                if offline.downloadedWorks.isEmpty {
+                    ContentUnavailableView(
+                        "Нет скачанных книг",
+                        systemImage: "arrow.down.circle",
+                        description: Text("Скачайте книгу на её странице — она появится здесь и будет доступна без сети.")
+                    )
+                } else {
+                    VStack(spacing: 0) {
+                        Picker("Сортировка", selection: $sort) {
+                            ForEach(AuthorSortMode.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(filteredWorks, id: \.workId) { work in
+                                    Button {
+                                        path.append(LibraryRoute.details(workId: work.workId))
+                                    } label: {
+                                        LibraryRow(work: work)
+                                    }
+                                    .buttonStyle(.plain)
+                                    Divider().padding(.leading, 88)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+            }
+            .background {
+                ThemeAtmosphereView(preset: appearance.themePreset)
+            }
+            .navigationTitle("Скачанные")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .searchable(text: $query, prompt: "Название или автор")
+            .safeAreaInset(edge: .top) {
+                if !offline.downloadedWorks.isEmpty {
+                    HStack {
+                        Text(summaryText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial.opacity(0.55))
+                }
+            }
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case .reader(let workId, let chapterId):
+                    ReaderView(workId: workId, initialChapterId: chapterId)
+                case .details(let workId):
+                    BookDetailView(workId: workId)
+                case .author(let name, let downloadedOnly):
+                    AuthorBooksView(author: name, path: $path, downloadedOnly: downloadedOnly)
+                case .authorSeries(let author, let series, let downloadedOnly):
+                    AuthorSeriesBooksView(author: author, series: series, path: $path, downloadedOnly: downloadedOnly)
+                case .authorProfile(let userName, let displayName):
+                    AuthorProfileView(userName: userName, displayNameHint: displayName)
+                }
+            }
+            .onAppear { offline.reloadLibrary() }
+        }
+    }
+
+    private var summaryText: String {
+        let full = offline.downloadedWorks.filter(\.isFullyDownloaded).count
+        let total = offline.downloadedWorks.count
+        if full == total {
+            return "\(total) книг офлайн"
+        }
+        return "\(total) книг · \(full) целиком"
     }
 }

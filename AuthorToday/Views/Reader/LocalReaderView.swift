@@ -57,21 +57,21 @@ struct LocalReaderView: View {
                 readerContent
             }
 
-            if error == nil, !isLoading, !showChrome, showEndOfChapterCTA {
-                VStack {
-                    Spacer(minLength: 0)
-                    endOfChapterBar
-                }
-            }
-
             if showChrome || error != nil {
                 VStack(spacing: 0) {
                     topBar
                     Spacer(minLength: 0)
+                        .allowsHitTesting(false)
                     if error == nil {
                         bottomBar
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if error == nil, !isLoading, !showChrome, showEndOfChapterCTA {
+                endOfChapterBar
             }
         }
         .navigationBarHidden(true)
@@ -171,7 +171,9 @@ struct LocalReaderView: View {
                 contentInset: UIEdgeInsets(
                     top: settings.marginVertical + (showChrome ? 56 : 12),
                     left: settings.marginHorizontal,
-                    bottom: settings.marginVertical + (showChrome ? 56 : 12),
+                    bottom: settings.marginVertical
+                        + (showChrome ? 56 : 12)
+                        + (showEndOfChapterCTA && !showChrome ? 108 : 0),
                     right: settings.marginHorizontal
                 ),
                 restoreFraction: restoreFraction,
@@ -326,7 +328,7 @@ struct LocalReaderView: View {
     private var isAtChapterEnd: Bool {
         guard !pendingRestore, !plainText.isEmpty else { return false }
         if settings.pageTurnMode == .verticalScroll {
-            return scrollFraction >= 0.90 || chapterContentFits
+            return scrollFraction >= 0.97 || (chapterContentFits && scrollFraction >= 0.5)
         }
         return pageCountForChapter > 0 && pageIndex + 1 >= pageCountForChapter
     }

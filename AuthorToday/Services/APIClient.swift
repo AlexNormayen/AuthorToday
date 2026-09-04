@@ -1337,7 +1337,6 @@ actor APIClient {
 
         let encoded = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
         let profileHTML = (try? await fetchWebHTML(path: "/u/\(encoded)")) ?? ""
-        let worksHTML = (try? await fetchWebHTML(path: "/u/\(encoded)/works")) ?? profileHTML
 
         let displayName = Self.firstMatch(#"class="[^"]*user-name[^"]*"[^>]*>([^<]+)<"#, in: profileHTML)
             ?? Self.firstMatch(#"<h1[^>]*>([^<]+)</h1>"#, in: profileHTML)
@@ -1348,13 +1347,8 @@ actor APIClient {
         let about = Self.firstMatch(#"class="[^"]*about[^"]*"[^>]*>([\s\S]*?)</div>"#, in: profileHTML)
             .map { HTMLText.plain(from: $0) }
 
-        // Collect work ids + series from works page
-        var orderedIDs: [Int] = []
-        var seen = Set<Int>()
-        for idStr in matches(#"href="/work/(\d+)""#, in: worksHTML) {
-            guard let id = Int(idStr), seen.insert(id).inserted else { continue }
-            orderedIDs.append(id)
-        }
+        // Site serves ~30 works per /works?page=N; without pagination only the first page appears.
+        let orderedIDs = try await scrapeAuthorWorkIDs(username: user, maxPages: 50)
         var metas: [WorkMeta] = []
         for chunkStart in stride(from: 0, to: orderedIDs.count, by: 40) {
             let end = min(chunkStart + 40, orderedIDs.count)
@@ -1400,6 +1394,47 @@ actor APIClient {
             works: metas,
             series: series
         )
+    }
+
+    /// All public works from `/u/{user}/works?page=N` (site page size ≈ 30).
+    private func scrapeAuthorWorkIDs(username: String, maxPages: Int) async throws -> [Int] {
+        let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty else { return [] }
+        let encoded = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+
+        var ordered: [Int] = []
+        var seen = Set<Int>()
+        for page in 1...maxPages {
+            let path = page == 1
+                ? "/u/\(encoded)/works"
+                : "/u/\(encoded)/works?page=\(page)"
+            guard let html = try? await fetchWebHTML(path: path), !html.isEmpty else { break }
+            let pageIDs = Self.extractAuthorWorkIDs(from: html)
+            let fresh = pageIDs.filter { seen.insert($0).inserted }
+            if fresh.isEmpty { break }
+            ordered.append(contentsOf: fresh)
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        return ordered
+    }
+
+    /// Prefer list-card markers so nav/footer `/work/` links are ignored when possible.
+    private static func extractAuthorWorkIDs(from html: String) -> [Int] {
+        var ordered: [Int] = []
+        var seen = Set<Int>()
+        let patterns = [
+            #"workId:\s*(\d+)"#,
+            #"id="work-(\d+)""#,
+            #"href="/work/(\d+)""#
+        ]
+        for pattern in patterns {
+            for idStr in matches(pattern, in: html) {
+                guard let id = Int(idStr), seen.insert(id).inserted else { continue }
+                ordered.append(id)
+            }
+            if !ordered.isEmpty { return ordered }
+        }
+        return ordered
     }
 
     private static func extractProfileUserId(from html: String) -> Int? {

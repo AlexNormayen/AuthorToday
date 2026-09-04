@@ -93,26 +93,26 @@ struct ReaderView: View {
                 readerContent
             }
 
-            // End-of-chapter CTA — visible without tapping chrome.
-            if error == nil, !isLoading, !showChrome, showEndOfChapterCTA {
-                VStack {
-                    Spacer(minLength: 0)
-                    endOfChapterBar
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: showEndOfChapterCTA)
-            }
-
             if showChrome || error != nil || isLoading {
                 VStack(spacing: 0) {
                     topBar
                     Spacer(minLength: 0)
+                        .allowsHitTesting(false)
                     if error == nil && !isLoading {
                         bottomBar
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.opacity)
+            }
+        }
+        // CTA only at the bottom — a full-screen VStack was eating pan gestures
+        // once scrollFraction ≥ 0.9 (“can't scroll further until chrome toggle”).
+        .overlay(alignment: .bottom) {
+            if error == nil, !isLoading, !showChrome, showEndOfChapterCTA {
+                endOfChapterBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.2), value: showEndOfChapterCTA)
             }
         }
         .navigationBarHidden(true)
@@ -258,7 +258,9 @@ struct ReaderView: View {
             contentInset: UIEdgeInsets(
                 top: settings.marginVertical + (showChrome ? 56 : 12),
                 left: settings.marginHorizontal,
-                bottom: settings.marginVertical + (showChrome ? 56 : 12),
+                bottom: settings.marginVertical
+                    + (showChrome ? 56 : 12)
+                    + (showEndOfChapterCTA && !showChrome ? 108 : 0),
                 right: settings.marginHorizontal
             ),
             restoreFraction: restoreFraction,
@@ -503,8 +505,8 @@ struct ReaderView: View {
     private var isAtChapterEnd: Bool {
         guard !pendingRestore, !plainText.isEmpty else { return false }
         if settings.pageTurnMode == .verticalScroll {
-            // Scrolled near bottom, or chapter fits on one screen.
-            return scrollFraction >= 0.90 || chapterContentFits
+            // Require a clear bottom reach — avoid early CTA that used to cover the scroll view.
+            return scrollFraction >= 0.97 || (chapterContentFits && scrollFraction >= 0.5)
         }
         return pageCountForChapter > 0 && pageIndex + 1 >= pageCountForChapter
     }
@@ -645,6 +647,7 @@ struct ReaderView: View {
 
     private func tocRow(idx: Int, chapter: ChapterMeta) -> some View {
         let locked = !chapter.isAvailableEffective
+        let missingOffline = !downloads.online && !offline.isChapterCached(workId: workId, chapterId: chapter.id)
         return Button {
             guard !locked else {
                 if details?.needsPurchase == true {
@@ -653,16 +656,21 @@ struct ReaderView: View {
                 }
                 return
             }
+            guard !missingOffline else { return }
             showTOC = false
             Task { await openChapter(at: idx) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(chapter.displayTitle)
-                        .foregroundStyle(locked ? Color.secondary : Color.primary)
+                        .foregroundStyle((locked || missingOffline) ? Color.secondary : Color.primary)
                         .multilineTextAlignment(.leading)
                     if locked {
                         Text("Недоступна · нужна покупка")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else if missingOffline {
+                        Text("Не скачана · нужен интернет")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -672,13 +680,21 @@ struct ReaderView: View {
                     Image(systemName: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if missingOffline {
+                    Image(systemName: "icloud.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else if idx == chapterIndex {
                     Image(systemName: "book.fill")
+                        .foregroundStyle(AppTheme.moss)
+                } else if offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
                         .foregroundStyle(AppTheme.moss)
                 }
             }
         }
-        .disabled(locked && details?.needsPurchase != true)
+        .disabled(missingOffline || (locked && details?.needsPurchase != true))
     }
 
     // MARK: - Logic
@@ -798,6 +814,10 @@ struct ReaderView: View {
             }
             return
         }
+        if !downloads.online && !offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+            error = "Эта глава не скачана. Нужен интернет или скачайте книгу целиком на карточке книги."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -879,7 +899,11 @@ struct ReaderView: View {
         guard direction != 0 else { return nil }
         var i = index + direction
         while chapters.indices.contains(i) {
-            if chapters[i].isAvailableEffective { return i }
+            let chapter = chapters[i]
+            if chapter.isAvailableEffective,
+               downloads.online || offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+                return i
+            }
             i += direction
         }
         return nil

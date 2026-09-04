@@ -1,12 +1,16 @@
 import Foundation
 import UserNotifications
+import BackgroundTasks
 import Combine
+import UIKit
 
 /// Polls Author.Today notification API and posts local notifications.
-/// Remote APNs/FCM require a paid Apple Developer account — not used here.
+/// Remote APNs need a server + paid Apple Developer account — here we use
+/// local alerts from foreground polling and BGAppRefresh.
 @MainActor
 final class NotificationPoller: ObservableObject {
     static let shared = NotificationPoller()
+    static let refreshTaskId = "ru.chitalnya.reader.refresh"
 
     @Published var items: [NotificationItem] = []
     @Published var unreadCount = 0
@@ -24,7 +28,12 @@ final class NotificationPoller: ObservableObject {
     private let knownKey = "at.knownNotificationIds"
     private let readKey = "at.readNotificationIds"
     private let kindsKey = "at.feedEnabledKinds"
-    private let pollInterval: TimeInterval = 120
+    private let alertsKey = "at.localAlertsEnabled"
+    private let chapterCountsKey = "at.knownChapterCounts"
+    private let pollInterval: TimeInterval = 90
+    @Published var alertsEnabled: Bool {
+        didSet { UserDefaults.standard.set(alertsEnabled, forKey: alertsKey) }
+    }
     private let pageSize = 20
     private var cursor: String?
     private var seenStableIds = Set<String>()
@@ -42,6 +51,23 @@ final class NotificationPoller: ObservableObject {
         } else {
             enabledKinds = Set(FeedKind.allCases)
         }
+        if UserDefaults.standard.object(forKey: alertsKey) == nil {
+            alertsEnabled = true
+        } else {
+            alertsEnabled = UserDefaults.standard.bool(forKey: alertsKey)
+        }
+    }
+
+    static func registerBackgroundRefresh() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshTaskId, using: nil) { task in
+            guard let refresh = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            Task { @MainActor in
+                await NotificationPoller.shared.handleBackgroundRefresh(refresh)
+            }
+        }
     }
 
     func configure() async {
@@ -55,6 +81,7 @@ final class NotificationPoller: ObservableObject {
 
     func startPolling() {
         stopPolling()
+        scheduleBackgroundRefresh()
         Task { await refresh(announceNew: false) }
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -122,6 +149,10 @@ final class NotificationPoller: ObservableObject {
             }
             lastError = nil
             await applyAppBadge()
+            if announceNew {
+                await checkLibraryChapterUpdates()
+            }
+            scheduleBackgroundRefresh()
         } catch {
             lastError = error.localizedDescription
         }
@@ -192,8 +223,83 @@ final class NotificationPoller: ObservableObject {
         }
     }
 
+    func handleSceneBecameActive() async {
+        scheduleBackgroundRefresh()
+        await refresh(announceNew: true)
+    }
+
+    func scheduleBackgroundRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: Self.refreshTaskId)
+        request.earliestBeginDate = Date().addingTimeInterval(15 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    func handleBackgroundRefresh(_ task: BGAppRefreshTask) async {
+        scheduleBackgroundRefresh()
+        let work = Task { @MainActor in
+            await refresh(announceNew: true)
+            await checkLibraryChapterUpdates()
+        }
+        task.expirationHandler = {
+            work.cancel()
+        }
+        await work.value
+        task.setTaskCompleted(success: !work.isCancelled)
+    }
+
+    /// Notify about new chapters on books we already have locally.
+    func checkLibraryChapterUpdates() async {
+        guard alertsEnabled, isAuthorized else { return }
+        guard DownloadManager.shared.online else { return }
+        let store = OfflineStore.shared
+        var ids: [Int] = []
+        var seen = Set<Int>()
+        for work in store.downloadedWorks + store.recentlyRead + store.library {
+            if seen.insert(work.workId).inserted {
+                ids.append(work.workId)
+            }
+            if ids.count >= 40 { break }
+        }
+        guard !ids.isEmpty else { return }
+        guard let metas = try? await APIClient.shared.workMetas(ids: ids) else { return }
+        var known = (UserDefaults.standard.dictionary(forKey: chapterCountsKey) as? [String: Int]) ?? [:]
+        for meta in metas {
+            let key = String(meta.id)
+            let previous = known[key]
+            let current = meta.chapterCount ?? 0
+            if let previous, current > previous {
+                await postChapterUpdate(
+                    workId: meta.id,
+                    title: meta.displayTitle,
+                    added: current - previous
+                )
+            }
+            if current > 0 {
+                known[key] = current
+            }
+        }
+        UserDefaults.standard.set(known, forKey: chapterCountsKey)
+    }
+
+    private func postChapterUpdate(workId: Int, title: String, added: Int) async {
+        guard alertsEnabled, isAuthorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Читальня"
+        content.body = added == 1
+            ? "Новая глава в «\(title)»"
+            : "+\(added) глав в «\(title)»"
+        content.sound = .default
+        content.userInfo = ["workId": workId]
+        let request = UNNotificationRequest(
+            identifier: "chapter-\(workId)-\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     private func postLocal(_ item: NotificationItem) async {
-        guard isAuthorized else { return }
+        guard alertsEnabled, isAuthorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Читальня"
         content.body = item.displayText
@@ -223,5 +329,15 @@ final class NotificationPoller: ObservableObject {
 
     private func persistKinds() {
         UserDefaults.standard.set(enabledKinds.map(\.rawValue), forKey: kindsKey)
+    }
+
+    /// Remember current chapter counts so the next poll can detect new chapters.
+    func rememberChapterCount(workId: Int, count: Int) {
+        guard count > 0 else { return }
+        var known = (UserDefaults.standard.dictionary(forKey: chapterCountsKey) as? [String: Int]) ?? [:]
+        if known[String(workId)] == nil {
+            known[String(workId)] = count
+            UserDefaults.standard.set(known, forKey: chapterCountsKey)
+        }
     }
 }

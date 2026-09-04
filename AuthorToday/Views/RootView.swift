@@ -83,30 +83,36 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
+            DownloadedLibraryView()
+                .tabItem {
+                    Label("Скачанные", systemImage: "arrow.down.circle")
+                }
+                .tag(1)
+
             RecentReadsView()
                 .tabItem {
                     Label("Недавние", systemImage: "clock")
                 }
-                .tag(1)
+                .tag(2)
 
             SearchView()
                 .tabItem {
                     Label("Поиск", systemImage: "magnifyingglass")
                 }
-                .tag(2)
+                .tag(3)
 
             NotificationsView()
                 .tabItem {
                     Label("Лента", systemImage: "bell")
                 }
                 .badge(notifications.unreadCount)
-                .tag(3)
+                .tag(4)
 
             SettingsHubView()
                 .tabItem {
                     Label("Ещё", systemImage: "ellipsis.circle")
                 }
-                .tag(4)
+                .tag(5)
         }
         .tint(appearance.accent)
         .toolbarBackground(.ultraThinMaterial, for: .tabBar)
@@ -115,7 +121,7 @@ struct MainTabView: View {
             guard !didApplyColdStart else { return }
             didApplyColdStart = true
             migrateTabIndexIfNeeded()
-            selectedTab = min(max(session.selectedTab, 0), 4)
+            selectedTab = min(max(session.selectedTab, 0), 5)
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -153,23 +159,30 @@ struct MainTabView: View {
         return .init(workId: workId, chapterId: chapter)
     }
 
-    /// Tabs with temporary «Мои книги» tab: 0 Library, 1 Local, 2 Recent, 3 Search, 4 Feed, 5 More.
-    /// Current: 0 Library, 1 Recent, 2 Search, 3 Feed, 4 More («Мои книги» inside Library).
+    /// Previous: 0 Library, 1 Recent, 2 Search, 3 Feed, 4 More.
+    /// Current:  0 Library, 1 Downloaded, 2 Recent, 3 Search, 4 Feed, 5 More.
     private func migrateTabIndexIfNeeded() {
         let removeKey = "at.tabs.localLibraryRemoved.v1"
-        guard !UserDefaults.standard.bool(forKey: removeKey) else { return }
-
-        // Only remap if the user previously lived on the 6-tab layout.
-        let insertKey = "at.tabs.localLibraryInserted.v1"
-        if UserDefaults.standard.bool(forKey: insertKey) {
-            let tab = session.selectedTab
-            if tab == 1 {
-                session.setSelectedTab(0)
-            } else if tab > 1 {
-                session.setSelectedTab(tab - 1)
+        if !UserDefaults.standard.bool(forKey: removeKey) {
+            let insertKey = "at.tabs.localLibraryInserted.v1"
+            if UserDefaults.standard.bool(forKey: insertKey) {
+                let tab = session.selectedTab
+                if tab == 1 {
+                    session.setSelectedTab(0)
+                } else if tab > 1 {
+                    session.setSelectedTab(tab - 1)
+                }
             }
+            UserDefaults.standard.set(true, forKey: removeKey)
         }
-        UserDefaults.standard.set(true, forKey: removeKey)
+
+        let downloadedKey = "at.tabs.downloadedInserted.v1"
+        guard !UserDefaults.standard.bool(forKey: downloadedKey) else { return }
+        let tab = session.selectedTab
+        if tab >= 1 {
+            session.setSelectedTab(tab + 1)
+        }
+        UserDefaults.standard.set(true, forKey: downloadedKey)
     }
 }
 
@@ -179,6 +192,7 @@ struct SettingsHubView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var pro: ProEntitlementStore
+    @EnvironmentObject private var notifications: NotificationPoller
 
     var body: some View {
         NavigationStack {
@@ -245,6 +259,14 @@ struct SettingsHubView: View {
                     Text("Поддержка")
                 } footer: {
                     Text("Pro улучшает клиент Читальня (темы, офлайн, закладки, свои TXT/EPUB). Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
+                }
+
+                Section {
+                    Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
+                } header: {
+                    Text("Оповещения")
+                } footer: {
+                    Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Настоящие APNs-пуши с сервера недоступны без платного Apple Developer.")
                 }
 
                 Section("Оформление") {
