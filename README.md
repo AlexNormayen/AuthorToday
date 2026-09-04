@@ -62,7 +62,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 
 Подпись ~7 дней, потом Refresh в SideStore или переподпись в Sideloadly.
 
-После успешного unsigned-билда CodeMagic IPA **сам** появляется на странице (нужны env `CHITALNYA_SSH_KEY` и `CHITALNYA_VPS_HOST` — см. docs). Вручную:
+После успешного unsigned-билда CodeMagic IPA **сам** появляется на странице (встроенный publish в `codemagic.yaml`). Вручную:
 
 ```bash
 ./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa ~/Downloads/TubeVault.ipa

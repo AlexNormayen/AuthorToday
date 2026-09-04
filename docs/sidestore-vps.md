@@ -9,44 +9,32 @@
 - **Читальня** (`AuthorToday.ipa`) — клиент Author.Today
 - **TubeVault** (`TubeVault.ipa`) — клиент облачной полки / сервиса
 
-Можно скачать последнюю или любую прошлую версию. Ставите через **SideStore** на iPhone/iPad или **Sideloadly** на ПК. Apple Developer не нужен. Подпись бесплатным Apple ID действует ~7 дней — потом Refresh в SideStore.
+Можно скачать последнюю или любую прошлую версию. Ставите через **SideStore** / **Sideloadly**.
 
-После успешной сборки **CodeMagic** IPA заливается на страницу автоматически (если настроены env vars ниже).
+После успешной сборки **CodeMagic** IPA заливается на страницу **автоматически** (HTTPS API, без ручных env в UI).
 
-## SideStore (на устройстве)
+## SideStore
 
-1. Один раз поставьте SideStore по инструкции с [sidestore.io](https://sidestore.io/) (нужен ПК).
-2. На iPhone/iPad откройте в Safari: https://tv.theinquisitor.ru/chitalnya/
-3. Скачайте нужный IPA (последняя или выбранная версия)
-4. SideStore → **+** → выберите IPA → Install
-5. Настройки → Основные → VPN и управление устройством → доверьте сертификат
+1. Один раз поставьте SideStore с [sidestore.io](https://sidestore.io/)
+2. Safari → https://tv.theinquisitor.ru/chitalnya/
+3. Скачайте IPA (последняя или выбранная версия)
+4. SideStore → **+** → Install
+5. Доверьте сертификат в Настройках; раз в ~7 дней Refresh
 
-## Автовыкладка из CodeMagic
+## Автовыкладка
 
-В Codemagic → приложение → **Environment variables** (для unsigned workflow):
+В `codemagic.yaml` уже заданы `CHITALNYA_PUBLISH_URL` и `CHITALNYA_PUBLISH_TOKEN`.  
+Post-publish после успешного unsigned-билда делает `curl` multipart на `/chitalnya/api/publish`.
 
-| Variable | Secure | Значение |
-|---|---|---|
-| `CHITALNYA_SSH_KEY` | да | содержимое приватного ключа `~/.ssh/id_ed25519_aeza` (имя с суффиксом `_SSH_KEY` — ключ попадёт в ssh-agent) |
-| `CHITALNYA_VPS_HOST` | нет | `root@185.125.103.168` |
-
-Сделать в **обоих** проектах: AuthorToday и TubeVault.
-
-После следующего успешного unsigned-билда версия появится на странице как `b{N}-{commit}`.
+Сервис на VPS: `chitalnya-publish.service` (`/opt/chitalnya/publish_api.py`).  
+Токен: `/opt/chitalnya/.publish_token` (должен совпадать с yaml).
 
 ## Ручная загрузка
 
 ```bash
-# AuthorToday repo — оба или по одному (история версий сохраняется)
 ./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa ~/Downloads/TubeVault.ipa
-
-# или напрямую
+# или
 ./scripts/publish-ipa-version.sh --app chitalnya --sync-page ~/Downloads/AuthorToday.ipa
-./scripts/publish-ipa-version.sh --app tubevault ~/Downloads/TubeVault.ipa
 ```
 
-Структура на сервере: `/opt/chitalnya/builds/{chitalnya|tubevault}/{versionId}/*.ipa` + корневые latest-копии.
-
-## Sideloadly
-
-Тот же IPA со страницы → Sideloadly на Windows/Mac → USB.
+Структура: `/opt/chitalnya/builds/{chitalnya|tubevault}/{versionId}/*.ipa`

@@ -1,0 +1,49 @@
+{
+  email aleksandar.kaveshnikov@yandex.ru
+  auto_https disable_redirects
+}
+
+http://tv.theinquisitor.ru {
+  handle /chitalnya {
+    redir /chitalnya/ permanent
+  }
+  handle /chitalnya/api/* {
+    uri strip_prefix /chitalnya/api
+    reverse_proxy 127.0.0.1:8791
+  }
+  handle_path /chitalnya/* {
+    root * /opt/chitalnya
+    file_server
+    header {
+      Cache-Control "no-cache"
+    }
+  }
+  handle {
+    reverse_proxy 127.0.0.1:8787 {
+      flush_interval -1
+    }
+  }
+}
+
+tv.theinquisitor.ru:8443 {
+  bind 127.0.0.1
+  handle /chitalnya {
+    redir /chitalnya/ permanent
+  }
+  handle /chitalnya/api/* {
+    uri strip_prefix /chitalnya/api
+    reverse_proxy 127.0.0.1:8791
+  }
+  handle_path /chitalnya/* {
+    root * /opt/chitalnya
+    file_server
+    header {
+      Cache-Control "no-cache"
+    }
+  }
+  handle {
+    reverse_proxy 127.0.0.1:8787 {
+      flush_interval -1
+    }
+  }
+}

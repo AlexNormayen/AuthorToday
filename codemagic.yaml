@@ -8,6 +8,9 @@ workflows:
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
+        CHITALNYA_PUBLISH_URL: https://tv.theinquisitor.ru/chitalnya/api/publish
+        # Publish-only token (not SSH). Rotatable on VPS: /opt/chitalnya/.publish_token
+        CHITALNYA_PUBLISH_TOKEN: 3da3a2742ec324512fefb45a0f11931ae2b96d5b6baf62df
     scripts:
       - name: Show Xcode
         script: |
@@ -80,22 +83,23 @@ workflows:
               echo "Build did not succeed — skip VPS publish"
               exit 0
             fi
-            if [ ! -f "$CM_BUILD_DIR/AuthorToday.ipa" ]; then
+            IPA="$CM_BUILD_DIR/AuthorToday.ipa"
+            if [ ! -f "$IPA" ]; then
               echo "AuthorToday.ipa missing — skip VPS publish"
               exit 0
             fi
-            if [ -z "${CHITALNYA_VPS_HOST:-}" ]; then
-              echo "CHITALNYA_VPS_HOST not set — skip VPS publish"
-              echo "Add CHITALNYA_VPS_HOST=root@185.125.103.168 and CHITALNYA_SSH_KEY in Codemagic env."
-              exit 0
-            fi
-            chmod +x "$CM_BUILD_DIR/scripts/publish-ipa-version.sh"
-            # Key ending with _SSH_KEY is loaded into ssh-agent by Codemagic.
-            # If a file path was provided instead, publish script uses -i.
-            "$CM_BUILD_DIR/scripts/publish-ipa-version.sh" \
-              --app chitalnya \
-              --sync-page \
-              "$CM_BUILD_DIR/AuthorToday.ipa"
+            COMMIT_SHORT="$(printf '%s' "${CM_COMMIT:-}" | cut -c1-7)"
+            echo "Publishing AuthorToday.ipa to install page…"
+            curl -fL --retry 3 --retry-delay 2 \
+              -X POST "$CHITALNYA_PUBLISH_URL" \
+              -H "Authorization: Bearer $CHITALNYA_PUBLISH_TOKEN" \
+              -F "app=chitalnya" \
+              -F "buildNumber=${PROJECT_BUILD_NUMBER:-}" \
+              -F "commit=${COMMIT_SHORT}" \
+              -F "branch=${CM_BRANCH:-}" \
+              -F "ipa=@${IPA};filename=AuthorToday.ipa;type=application/octet-stream"
+            echo
+            echo "Published: https://tv.theinquisitor.ru/chitalnya/"
 
   # App Store / TestFlight — only after Developer enrollment.
   # In Codemagic UI → Environment variables (for this workflow) set:
