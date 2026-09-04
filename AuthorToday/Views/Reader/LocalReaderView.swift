@@ -55,6 +55,7 @@ struct LocalReaderView: View {
                 .padding(24)
             } else {
                 readerContent
+                    .readableColumn(maxWidth: PlatformLayout.readerMaxWidth)
             }
 
             if showChrome || error != nil {

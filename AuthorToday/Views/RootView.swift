@@ -66,62 +66,35 @@ struct RootView: View {
 }
 
 struct MainTabView: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject private var notifications: NotificationPoller
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var pro: ProEntitlementStore
     @ObservedObject private var session = ReadingSessionStore.shared
     @ObservedObject private var nudge = ProNudgeStore.shared
     @State private var selectedTab = 0
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var resumeReader: ReadingSessionStore.ResumeReader?
     @State private var didApplyColdStart = false
 
+    private var useSidebar: Bool {
+        PlatformLayout.prefersSidebar(sizeClass: sizeClass)
+    }
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            LibraryView()
-                .tabItem {
-                    Label("Библиотека", systemImage: "books.vertical")
-                }
-                .tag(0)
-
-            DownloadedLibraryView()
-                .tabItem {
-                    Label("Скачанные", systemImage: "arrow.down.circle")
-                }
-                .tag(1)
-
-            RecentReadsView()
-                .tabItem {
-                    Label("Недавние", systemImage: "clock")
-                }
-                .tag(2)
-
-            SearchView()
-                .tabItem {
-                    Label("Поиск", systemImage: "magnifyingglass")
-                }
-                .tag(3)
-
-            NotificationsView()
-                .tabItem {
-                    Label("Лента", systemImage: "bell")
-                }
-                .badge(notifications.unreadCount)
-                .tag(4)
-
-            SettingsHubView()
-                .tabItem {
-                    Label("Ещё", systemImage: "ellipsis.circle")
-                }
-                .tag(5)
+        Group {
+            if useSidebar {
+                iPadSplitShell
+            } else {
+                iPhoneTabShell
+            }
         }
         .tint(appearance.accent)
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-        .background(Color.clear)
         .onAppear {
             guard !didApplyColdStart else { return }
             didApplyColdStart = true
             migrateTabIndexIfNeeded()
-            selectedTab = min(max(session.selectedTab, 0), 5)
+            selectedTab = min(max(session.selectedTab, 0), MainDestination.allCases.count - 1)
             session.prepareColdStartResume()
             resumeReader = session.pendingResume
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -130,6 +103,10 @@ struct MainTabView: View {
         }
         .onChange(of: selectedTab) { _, tab in
             session.setSelectedTab(tab)
+        }
+        .onChange(of: sizeClass) { _, _ in
+            // Keep selection when rotating / entering Split View.
+            selectedTab = min(max(selectedTab, 0), MainDestination.allCases.count - 1)
         }
         .onOpenURL { url in
             if let item = Self.resumeFromWidgetURL(url) {
@@ -146,6 +123,64 @@ struct MainTabView: View {
         .sheet(isPresented: $nudge.showPaywall) {
             ProPaywallView(reason: "Вы уже читаете в Читальне несколько дней. Pro снимает лимит офлайна и открывает темы, закладки и «Мои книги».")
         }
+    }
+
+    private var iPhoneTabShell: some View {
+        TabView(selection: $selectedTab) {
+            ForEach(MainDestination.allCases) { dest in
+                dest.rootView
+                    .tabItem {
+                        Label(dest.title, systemImage: dest.systemImage)
+                    }
+                    .badge(dest == .feed ? notifications.unreadCount : 0)
+                    .tag(dest.rawValue)
+            }
+        }
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .background(Color.clear)
+    }
+
+    private var iPadSplitShell: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            List(selection: Binding(
+                get: { MainDestination(rawValue: selectedTab) },
+                set: { if let value = $0 { selectedTab = value.rawValue } }
+            )) {
+                Section("Читальня") {
+                    ForEach(MainDestination.allCases) { dest in
+                        Label {
+                            HStack {
+                                Text(dest.title)
+                                if dest == .feed, notifications.unreadCount > 0 {
+                                    Spacer(minLength: 8)
+                                    Text("\(notifications.unreadCount)")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(appearance.accent))
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: dest.systemImage)
+                        }
+                        .tag(dest)
+                    }
+                }
+            }
+            .navigationTitle("Читальня")
+            .listStyle(.sidebar)
+        } detail: {
+            destinationDetail
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    @ViewBuilder
+    private var destinationDetail: some View {
+        let dest = MainDestination(rawValue: selectedTab) ?? .library
+        dest.rootView
+            .id(dest) // reset navigation stacks when switching sidebar item
     }
 
     private static func resumeFromWidgetURL(_ url: URL) -> ReadingSessionStore.ResumeReader? {
@@ -183,6 +218,51 @@ struct MainTabView: View {
             session.setSelectedTab(tab + 1)
         }
         UserDefaults.standard.set(true, forKey: downloadedKey)
+    }
+}
+
+private enum MainDestination: Int, CaseIterable, Identifiable, Hashable {
+    case library = 0
+    case downloaded = 1
+    case recent = 2
+    case search = 3
+    case feed = 4
+    case more = 5
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .library: return "Библиотека"
+        case .downloaded: return "Скачанные"
+        case .recent: return "Недавние"
+        case .search: return "Поиск"
+        case .feed: return "Лента"
+        case .more: return "Ещё"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .library: return "books.vertical"
+        case .downloaded: return "arrow.down.circle"
+        case .recent: return "clock"
+        case .search: return "magnifyingglass"
+        case .feed: return "bell"
+        case .more: return "ellipsis.circle"
+        }
+    }
+
+    @ViewBuilder
+    var rootView: some View {
+        switch self {
+        case .library: LibraryView()
+        case .downloaded: DownloadedLibraryView()
+        case .recent: RecentReadsView()
+        case .search: SearchView()
+        case .feed: NotificationsView()
+        case .more: SettingsHubView()
+        }
     }
 }
 

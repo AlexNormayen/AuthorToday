@@ -91,6 +91,7 @@ struct ReaderView: View {
                 .padding(24)
             } else {
                 readerContent
+                    .readableColumn(maxWidth: PlatformLayout.readerMaxWidth)
             }
 
             if showChrome || error != nil || isLoading {
@@ -319,7 +320,11 @@ struct ReaderView: View {
 
     private var pagedReader: some View {
         GeometryReader { geo in
-            pagedReaderContent(size: geo.size)
+            let column = min(geo.size.width, PlatformLayout.readerMaxWidth)
+            let size = CGSize(width: column, height: geo.size.height)
+            pagedReaderContent(size: size)
+                .frame(width: column)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

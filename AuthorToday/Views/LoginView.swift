@@ -48,6 +48,8 @@ struct LoginView: View {
                 .background(.ultraThinMaterial.opacity(0.55))
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .padding(.horizontal, 22)
+                .frame(maxWidth: PlatformLayout.formMaxWidth)
+                .frame(maxWidth: .infinity)
 
                 Spacer()
 

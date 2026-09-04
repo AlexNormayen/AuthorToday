@@ -63,6 +63,7 @@
 		100000000000000000000049 /* BookVaultClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004A /* BookVaultClient.swift */; };
 		10000000000000000000004A /* BookVaultSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* BookVaultSync.swift */; };
 		10000000000000000000004B /* BookVaultSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004C /* BookVaultSettingsView.swift */; };
+		10000000000000000000004C /* PlatformLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004D /* PlatformLayout.swift */; };
 		100000000000000000000048 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* WidgetKit.framework */; };
 		100000000000000000000049 /* ContinueReadingWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* ContinueReadingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		100000000000000000000050 /* ContinueReadingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* ContinueReadingWidget.swift */; };
@@ -149,6 +150,7 @@
 		20000000000000000000004A /* BookVaultClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookVaultClient.swift; sourceTree = "<group>"; };
 		20000000000000000000004B /* BookVaultSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookVaultSync.swift; sourceTree = "<group>"; };
 		20000000000000000000004C /* BookVaultSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookVaultSettingsView.swift; sourceTree = "<group>"; };
+		20000000000000000000004D /* PlatformLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformLayout.swift; sourceTree = "<group>"; };
 		200000000000000000000050 /* ContinueReadingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueReadingWidget.swift; sourceTree = "<group>"; };
 		200000000000000000000051 /* WidgetResumeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetResumeStore.swift; sourceTree = "<group>"; };
 		200000000000000000000052 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -333,6 +335,7 @@
 			children = (
 				20000000000000000000000A /* AppTheme.swift */,
 				200000000000000000000032 /* ThemeAtmosphereView.swift */,
+				20000000000000000000004D /* PlatformLayout.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -484,6 +487,7 @@
 				100000000000000000000049 /* BookVaultClient.swift in Sources */,
 				10000000000000000000004A /* BookVaultSync.swift in Sources */,
 				10000000000000000000004B /* BookVaultSettingsView.swift in Sources */,
+				10000000000000000000004C /* PlatformLayout.swift in Sources */,
 				10000000000000000000003B /* LocalLibraryModels.swift in Sources */,
 				10000000000000000000003C /* LocalLibraryStore.swift in Sources */,
 				10000000000000000000003D /* LocalBookImporter.swift in Sources */,
@@ -577,7 +581,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -612,7 +616,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -640,7 +644,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -668,7 +672,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
