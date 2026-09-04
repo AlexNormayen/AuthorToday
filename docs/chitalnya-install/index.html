@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Читальня — установка</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a222c;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #5b9fd4;
+      --line: #2a3542;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1c3a52 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 48px 20px 64px;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    .lead { color: var(--muted); margin: 0 0 28px; }
+    .card {
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px 20px 18px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 1.05rem;
+      margin: 0 0 10px;
+    }
+    .meta {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin: 0 0 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: 0;
+      background: var(--accent);
+      color: #061018;
+      font-weight: 650;
+      font-size: 1rem;
+      text-decoration: none;
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+      margin-top: 10px;
+    }
+    .btn[disabled], .btn.is-disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    ol { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+    ol li { margin: 0.45rem 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86em;
+      background: #0c1117;
+      padding: 0.1em 0.35em;
+      border-radius: 6px;
+    }
+    a { color: var(--accent); }
+    .note {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 14px;
+    }
+    footer {
+      margin-top: 28px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Читальня</h1>
+    <p class="lead">Неофициальный клиент Author.Today. Скачайте IPA и установите через SideStore (или Sideloadly на ПК).</p>
+
+    <section class="card">
+      <h2>Скачать IPA</h2>
+      <p class="meta" id="buildMeta">Проверяем наличие сборки…</p>
+      <a class="btn is-disabled" id="downloadBtn" href="AuthorToday.ipa" download>Скачать AuthorToday.ipa</a>
+      <a class="btn secondary" href="https://github.com/AlexNormayen/AuthorToday/releases" target="_blank" rel="noopener">Сборки на GitHub / CodeMagic</a>
+      <p class="note">Файл не подписан Apple. SideStore подпишет его вашим Apple ID на устройстве (~7 дней на бесплатном аккаунте).</p>
+    </section>
+
+    <section class="card">
+      <h2>Установка через SideStore</h2>
+      <ol>
+        <li>Установите <a href="https://sidestore.io/" target="_blank" rel="noopener">SideStore</a> (по их инструкции, с ПК один раз).</li>
+        <li>На iPhone/iPad откройте эту страницу в Safari и скачайте <code>AuthorToday.ipa</code>.</li>
+        <li>В SideStore: <strong>+</strong> → выберите скачанный IPA → Install.</li>
+        <li>Доверьте сертификат разработчика: Настройки → Основные → VPN и управление устройством.</li>
+        <li>Раз в ~7 дней обновляйте подпись в SideStore (Refresh), иначе приложение перестанет открываться.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Через Sideloadly (ПК)</h2>
+      <ol>
+        <li>Скачайте IPA на компьютер.</li>
+        <li>Откройте в <a href="https://sideloadly.io/" target="_blank" rel="noopener">Sideloadly</a>, подключите устройство по USB, укажите Apple ID.</li>
+      </ol>
+    </section>
+
+    <footer>
+      Читальня не связана с Author.Today. Книги и оплата контента — только на author.today.<br />
+      Bundle ID: <code>ru.chitalnya.reader</code>
+    </footer>
+  </main>
+  <script>
+    async function refreshMeta() {
+      const metaEl = document.getElementById('buildMeta');
+      const btn = document.getElementById('downloadBtn');
+      try {
+        const res = await fetch('meta.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('no meta');
+        const meta = await res.json();
+        const sizeMb = meta.sizeBytes ? (meta.sizeBytes / 1048576).toFixed(1) + ' МБ' : '';
+        const when = meta.updatedAt ? new Date(meta.updatedAt).toLocaleString('ru-RU') : '';
+        metaEl.textContent = [meta.version && ('версия ' + meta.version), sizeMb, when && ('обновлено ' + when)]
+          .filter(Boolean).join(' · ') || 'IPA готов к скачиванию';
+        btn.classList.remove('is-disabled');
+      } catch (_) {
+        // Fallback: probe IPA with HEAD
+        try {
+          const head = await fetch('AuthorToday.ipa', { method: 'HEAD', cache: 'no-store' });
+          if (head.ok) {
+            const len = Number(head.headers.get('content-length') || 0);
+            metaEl.textContent = len
+              ? ('IPA на сервере · ' + (len / 1048576).toFixed(1) + ' МБ')
+              : 'IPA на сервере';
+            btn.classList.remove('is-disabled');
+          } else {
+            metaEl.textContent = 'IPA ещё не загружен на сервер. Соберите в CodeMagic и залейте AuthorToday.ipa сюда.';
+          }
+        } catch (e) {
+          metaEl.textContent = 'Не удалось проверить файл. Откройте страницу с HTTPS или позже.';
+        }
+      }
+    }
+    refreshMeta();
+  </script>
+</body>
+</html>

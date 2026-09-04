@@ -48,14 +48,25 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 
 В завершённом билде → **Artifacts** → `AuthorToday.ipa`
 
-### 5. Установить на iPhone (Windows)
+### 5. Установить на iPhone / iPad
+
+**Вариант A — SideStore (на устройстве):**  
+страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — скачать IPA и поставить через SideStore. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
+
+**Вариант B — Sideloadly (ПК):**
 
 1. [Sideloadly](https://sideloadly.io/)  
-2. iPhone по USB  
+2. iPhone/iPad по USB  
 3. IPA + бесплатный Apple ID → Start  
-4. На iPhone: **Настройки → Основные → VPN и управление устройством** → доверить
+4. На устройстве: **Настройки → Основные → VPN и управление устройством** → доверить
 
-Подпись ~7 дней, потом переподпись тем же IPA.
+Подпись ~7 дней, потом Refresh в SideStore или переподпись в Sideloadly.
+
+Обновить IPA на сервере после сборки:
+
+```bash
+./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa
+```
 
 > Платный Apple Developer не нужен для личного устройства. Для App Store — нужен (~$99/год).
 
