@@ -1049,6 +1049,7 @@ struct ReaderView: View {
         )
         modelContext.insert(bm)
         try? modelContext.save()
+        BookVaultSync.shared.enqueueBookmarksUpload(modelContext: modelContext)
         withAnimation {
             bookmarkFlash = "Закладка сохранена"
         }

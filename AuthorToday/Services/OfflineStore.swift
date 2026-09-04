@@ -15,7 +15,7 @@ final class OfflineStore: ObservableObject {
     @Published var lastSyncError: String?
     @Published var lastSyncCount: Int = 0
 
-    private var modelContext: ModelContext?
+    private(set) var modelContext: ModelContext?
     private var lastLibrarySync: Date? {
         get { UserDefaults.standard.object(forKey: "at.lastLibrarySync") as? Date }
         set { UserDefaults.standard.set(newValue, forKey: "at.lastLibrarySync") }
@@ -889,9 +889,13 @@ final class OfflineStore: ObservableObject {
             )
         }
         try? modelContext.save()
+        BookVaultSync.shared.enqueueChapterUpload(
+            workId: workId,
+            chapterId: chapterId,
+            title: title,
+            html: html
+        )
     }
-
-    func markDownloaded(workId: Int, fully: Bool) {
         guard let modelContext else { return }
         let descriptor = FetchDescriptor<CachedWork>(
             predicate: #Predicate { $0.workId == workId }
@@ -978,6 +982,7 @@ final class OfflineStore: ObservableObject {
             }
         }
         try? modelContext.save()
+        BookVaultSync.shared.enqueueProgressUpload(workId: workId, store: self)
     }
 
     /// Site / computed book-level progress (0…1) for library %.

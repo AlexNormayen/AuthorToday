@@ -402,6 +402,7 @@ struct BookDetailView: View {
         do {
             if downloads.online {
                 // Portal may be blocked even when the path looks online — keep the saved page.
+                let remote = try await APIClient.shared.workDetails(id: workId)
                 details = remote
                 offline.cacheWorkDetails(remote)
                 offline.adoptRemoteResumeIfNeeded(
@@ -427,13 +428,22 @@ struct BookDetailView: View {
                 }
                 error = nil
             } else if details == nil {
-                error = offline.hasOfflineBookPage(workId: workId)
-                    ? "Нет сети и нет оглавления. Откройте книгу онлайн хотя бы раз или скачайте главы."
-                    : "Нет сети и нет локальной копии"
+                if let vault = await BookVaultSync.shared.fetchWorkDetails(workId: workId) {
+                    details = vault
+                    offline.cacheWorkDetails(vault)
+                    error = nil
+                } else {
+                    error = offline.hasOfflineBookPage(workId: workId)
+                        ? "Нет сети и нет оглавления. Откройте книгу онлайн хотя бы раз или скачайте главы."
+                        : "Нет сети и нет локальной копии"
+                }
             }
         } catch {
             if details == nil, let cached = offline.workDetailsFromCache(workId: workId) {
                 details = cached
+            } else if details == nil, let vault = await BookVaultSync.shared.fetchWorkDetails(workId: workId) {
+                details = vault
+                offline.cacheWorkDetails(vault)
             } else if details == nil {
                 self.error = error.localizedDescription
             }

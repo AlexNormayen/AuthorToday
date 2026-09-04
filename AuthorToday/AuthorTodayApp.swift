@@ -39,6 +39,9 @@ struct AuthorTodayApp: App {
                     enforceFreeTierIfNeeded()
                     if auth.isAuthenticated {
                         notifications.startPolling()
+                        if BookVaultSettings.shared.isEnabled {
+                            Task { await BookVaultSync.shared.pullProgressAndBookmarks(store: offlineStore) }
+                        }
                     }
                 }
                 .onChange(of: auth.isAuthenticated) { _, loggedIn in

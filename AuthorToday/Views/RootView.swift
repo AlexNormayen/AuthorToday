@@ -278,6 +278,18 @@ struct SettingsHubView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        BookVaultSettingsView()
+                    } label: {
+                        Label("Облачная полка (VPS)", systemImage: "externaldrive.badge.icloud")
+                    }
+                } header: {
+                    Text("Резервная копия")
+                } footer: {
+                    Text("Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами.")
+                }
+
                 Section("Аккаунт") {
                     Button("Обновить профиль") {
                         Task { await auth.refreshProfile() }

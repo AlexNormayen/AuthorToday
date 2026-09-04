@@ -112,6 +112,7 @@ struct BookmarksNotesView: View {
             modelContext.delete(bookmarks[i])
         }
         try? modelContext.save()
+        BookVaultSync.shared.enqueueBookmarksUpload(modelContext: modelContext)
     }
 
     private func deleteNotes(at offsets: IndexSet) {

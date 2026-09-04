@@ -261,25 +261,57 @@ final class DownloadManager: ObservableObject {
                ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
                 return (cached.title, cached.htmlText)
             }
+            if let vaultHTML = await BookVaultSync.shared.fetchChapterHTML(
+                workId: workId,
+                chapterId: chapter.id
+            ), ChapterDecryptor.looksLikePlaintext(vaultHTML) {
+                let title = chapter.displayTitle
+                store.saveChapter(
+                    workId: workId,
+                    chapterId: chapter.id,
+                    title: title,
+                    html: vaultHTML,
+                    sortIndex: sortIndex
+                )
+                return (title, vaultHTML)
+            }
             throw APIError.message("Эта глава не скачана. Нужен интернет или скачайте книгу целиком на карточке книги.")
         }
 
-        let (remoteTitle, html) = try await APIClient.shared.chapterText(
-            workId: workId,
-            chapterId: chapter.id
-        )
-        guard ChapterDecryptor.looksLikePlaintext(html) else {
-            throw APIError.message("Получен повреждённый текст главы")
+        do {
+            let (remoteTitle, html) = try await APIClient.shared.chapterText(
+                workId: workId,
+                chapterId: chapter.id
+            )
+            guard ChapterDecryptor.looksLikePlaintext(html) else {
+                throw APIError.message("Получен повреждённый текст главы")
+            }
+            let title = remoteTitle ?? chapter.displayTitle
+            store.saveChapter(
+                workId: workId,
+                chapterId: chapter.id,
+                title: title,
+                html: html,
+                sortIndex: sortIndex
+            )
+            return (title, html)
+        } catch {
+            if let vaultHTML = await BookVaultSync.shared.fetchChapterHTML(
+                workId: workId,
+                chapterId: chapter.id
+            ), ChapterDecryptor.looksLikePlaintext(vaultHTML) {
+                let title = chapter.displayTitle
+                store.saveChapter(
+                    workId: workId,
+                    chapterId: chapter.id,
+                    title: title,
+                    html: vaultHTML,
+                    sortIndex: sortIndex
+                )
+                return (title, vaultHTML)
+            }
+            throw error
         }
-        let title = remoteTitle ?? chapter.displayTitle
-        store.saveChapter(
-            workId: workId,
-            chapterId: chapter.id,
-            title: title,
-            html: html,
-            sortIndex: sortIndex
-        )
-        return (title, html)
     }
 
     func downloadEntireBook(details: WorkDetails, store: OfflineStore) async {
@@ -336,5 +368,8 @@ final class DownloadManager: ObservableObject {
         statusMessage = complete
             ? "«\(details.displayTitle)» скачана"
             : "Скачано \(ready) из \(expectedIds.count) глав — повторите, когда будет сеть"
+        if ready > 0 {
+            BookVaultSync.shared.enqueueWorkUpload(workId: workId, store: store)
+        }
     }
 }
