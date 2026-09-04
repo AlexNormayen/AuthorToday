@@ -1,20 +1,16 @@
 {
   "apps": {
     "chitalnya": {
-      "file": "AuthorToday.ipa",
       "title": "Читальня",
-      "version": "1.0",
-      "build": "manual",
-      "updatedAt": "2026-09-04T22:11:00Z",
-      "sizeBytes": 8725219
+      "file": "AuthorToday.ipa",
+      "latestId": null,
+      "versions": []
     },
     "tubevault": {
-      "file": "TubeVault.ipa",
       "title": "TubeVault",
-      "version": "1.0",
-      "build": "manual",
-      "updatedAt": "2026-09-04T22:11:00Z",
-      "sizeBytes": 1779021
+      "file": "TubeVault.ipa",
+      "latestId": null,
+      "versions": []
     }
   }
 }

@@ -51,7 +51,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 ### 5. Установить на iPhone / iPad
 
 **Вариант A — SideStore (на устройстве):**  
-страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — Читальня и TubeVault, инструкция и скачивание IPA. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
+страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — Читальня и TubeVault, инструкция, последняя и прошлые IPA. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
 
 **Вариант B — Sideloadly (ПК):**
 
@@ -62,7 +62,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 
 Подпись ~7 дней, потом Refresh в SideStore или переподпись в Sideloadly.
 
-Обновить IPA на сервере после сборки:
+После успешного unsigned-билда CodeMagic IPA **сам** появляется на странице (нужны env `CHITALNYA_SSH_KEY` и `CHITALNYA_VPS_HOST` — см. docs). Вручную:
 
 ```bash
 ./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa ~/Downloads/TubeVault.ipa

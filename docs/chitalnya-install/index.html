@@ -75,6 +75,7 @@
       font-weight: 650;
       font-size: 1rem;
       text-decoration: none;
+      cursor: pointer;
     }
     .btn:hover { filter: brightness(1.06); }
     .btn.tubevault { background: var(--accent2); color: #061410; }
@@ -87,6 +88,21 @@
     .btn[disabled], .btn.is-disabled {
       opacity: 0.45;
       pointer-events: none;
+    }
+    label.field {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 14px 0 6px;
+    }
+    select.version {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0c1117;
+      color: var(--text);
+      font-size: 0.95rem;
     }
     ol { margin: 0; padding-left: 1.2rem; color: var(--muted); }
     ol li { margin: 0.45rem 0; }
@@ -121,7 +137,7 @@
 <body>
   <main>
     <h1>Установка приложений</h1>
-    <p class="lead">IPA для iPhone / iPad. Ставятся через SideStore на устройстве или Sideloadly на ПК. Apple Developer не нужен.</p>
+    <p class="lead">IPA для iPhone / iPad. Ставятся через SideStore на устройстве или Sideloadly на ПК. Apple Developer не нужен. Можно скачать любую сохранённую сборку.</p>
 
     <section class="card">
       <h2>Установка через SideStore</h2>
@@ -149,7 +165,12 @@
       <h3>Читальня</h3>
       <p class="app-desc">Неофициальный клиент Author.Today — библиотека, читалка, лента, офлайн.</p>
       <p class="meta" id="meta-chitalnya">Проверяем наличие сборки…</p>
-      <a class="btn is-disabled" id="btn-chitalnya" href="AuthorToday.ipa" download>Скачать Читальню (AuthorToday.ipa)</a>
+      <a class="btn is-disabled" id="btn-latest-chitalnya" href="AuthorToday.ipa" download>Скачать последнюю</a>
+      <label class="field" for="sel-chitalnya">Версия</label>
+      <select class="version" id="sel-chitalnya" disabled>
+        <option>Нет сборок</option>
+      </select>
+      <a class="btn secondary is-disabled" id="btn-ver-chitalnya" href="#" download>Скачать выбранную</a>
       <p class="note">Bundle ID: <code>ru.chitalnya.reader</code></p>
     </section>
 
@@ -157,68 +178,128 @@
       <h3>TubeVault</h3>
       <p class="app-desc">Клиент для облачной полки и связанного сервиса на этом сервере.</p>
       <p class="meta" id="meta-tubevault">Проверяем наличие сборки…</p>
-      <a class="btn tubevault is-disabled" id="btn-tubevault" href="TubeVault.ipa" download>Скачать TubeVault.ipa</a>
+      <a class="btn tubevault is-disabled" id="btn-latest-tubevault" href="TubeVault.ipa" download>Скачать последнюю</a>
+      <label class="field" for="sel-tubevault">Версия</label>
+      <select class="version" id="sel-tubevault" disabled>
+        <option>Нет сборок</option>
+      </select>
+      <a class="btn secondary is-disabled" id="btn-ver-tubevault" href="#" download>Скачать выбранную</a>
     </section>
 
     <footer>
       Читальня не связана с Author.Today. Книги и оплата контента — только на author.today.<br />
+      Новые сборки CodeMagic появляются здесь автоматически.<br />
       Страница: <code>tv.theinquisitor.ru/chitalnya/</code>
     </footer>
   </main>
   <script>
-    function formatMeta(entry, fallbackName) {
-      if (!entry) return null;
-      const sizeMb = entry.sizeBytes ? (entry.sizeBytes / 1048576).toFixed(1) + ' МБ' : '';
-      const when = entry.updatedAt ? new Date(entry.updatedAt).toLocaleString('ru-RU') : '';
-      const ver = entry.version ? ('версия ' + entry.version) : '';
-      const parts = [ver, sizeMb, when && ('обновлено ' + when)].filter(Boolean);
-      return parts.join(' · ') || (fallbackName + ' готов к скачиванию');
+    function formatSize(bytes) {
+      if (!bytes) return '';
+      return (bytes / 1048576).toFixed(1) + ' МБ';
     }
 
-    async function probeIpa(fileName) {
-      const head = await fetch(fileName, { method: 'HEAD', cache: 'no-store' });
-      if (!head.ok) return null;
-      const len = Number(head.headers.get('content-length') || 0);
-      return {
-        sizeBytes: len || null,
-        updatedAt: null,
-      };
-    }
-
-    async function refreshApp(key, fileName) {
-      const metaEl = document.getElementById('meta-' + key);
-      const btn = document.getElementById('btn-' + key);
+    function formatWhen(iso) {
+      if (!iso) return '';
       try {
-        const res = await fetch('meta.json', { cache: 'no-store' });
-        if (res.ok) {
-          const meta = await res.json();
-          const entry = (meta.apps && meta.apps[key]) || (key === 'chitalnya' ? meta : null);
-          const text = formatMeta(entry, fileName);
-          if (text && entry && (entry.sizeBytes || entry.updatedAt || entry.file)) {
-            metaEl.textContent = text;
-            btn.classList.remove('is-disabled');
-            return;
-          }
-        }
-      } catch (_) { /* fall through */ }
-
-      try {
-        const probed = await probeIpa(fileName);
-        if (probed) {
-          metaEl.textContent = probed.sizeBytes
-            ? ('IPA на сервере · ' + (probed.sizeBytes / 1048576).toFixed(1) + ' МБ')
-            : 'IPA на сервере';
-          btn.classList.remove('is-disabled');
-        } else {
-          metaEl.textContent = 'IPA ещё не загружен на сервер.';
-        }
+        return new Date(iso).toLocaleString('ru-RU');
       } catch (_) {
-        metaEl.textContent = 'Не удалось проверить файл. Откройте страницу по HTTPS.';
+        return iso;
       }
     }
 
-    refreshApp('chitalnya', 'AuthorToday.ipa');
-    refreshApp('tubevault', 'TubeVault.ipa');
+    function optionLabel(v) {
+      const bits = [v.label || v.id];
+      const size = formatSize(v.sizeBytes);
+      const when = formatWhen(v.updatedAt);
+      if (size) bits.push(size);
+      if (when) bits.push(when);
+      return bits.join(' · ');
+    }
+
+    function wireApp(key, latestFile) {
+      const metaEl = document.getElementById('meta-' + key);
+      const latestBtn = document.getElementById('btn-latest-' + key);
+      const sel = document.getElementById('sel-' + key);
+      const verBtn = document.getElementById('btn-ver-' + key);
+
+      function setSelected(file) {
+        if (!file) {
+          verBtn.classList.add('is-disabled');
+          verBtn.removeAttribute('href');
+          return;
+        }
+        verBtn.href = file;
+        verBtn.classList.remove('is-disabled');
+      }
+
+      sel.addEventListener('change', () => setSelected(sel.value || null));
+
+      return { metaEl, latestBtn, sel, verBtn, setSelected, latestFile };
+    }
+
+    async function probeIpa(fileName) {
+      try {
+        const head = await fetch(fileName, { method: 'HEAD', cache: 'no-store' });
+        if (!head.ok) return null;
+        return Number(head.headers.get('content-length') || 0) || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function refresh() {
+      const apps = {
+        chitalnya: wireApp('chitalnya', 'AuthorToday.ipa'),
+        tubevault: wireApp('tubevault', 'TubeVault.ipa'),
+      };
+
+      let meta = null;
+      try {
+        const res = await fetch('meta.json', { cache: 'no-store' });
+        if (res.ok) meta = await res.json();
+      } catch (_) { /* ignore */ }
+
+      for (const [key, ui] of Object.entries(apps)) {
+        const entry = meta && meta.apps && meta.apps[key];
+        const versions = (entry && entry.versions) || [];
+
+        if (versions.length) {
+          const latest = versions.find(v => v.id === entry.latestId) || versions[0];
+          const size = formatSize(latest.sizeBytes || entry.sizeBytes);
+          const when = formatWhen(latest.updatedAt || entry.updatedAt);
+          ui.metaEl.textContent = ['Последняя: ' + (latest.label || latest.id), size, when && ('обновлено ' + when)]
+            .filter(Boolean).join(' · ');
+          ui.latestBtn.classList.remove('is-disabled');
+
+          ui.sel.innerHTML = '';
+          ui.sel.disabled = false;
+          for (const v of versions) {
+            const opt = document.createElement('option');
+            opt.value = v.file;
+            opt.textContent = optionLabel(v);
+            ui.sel.appendChild(opt);
+          }
+          ui.setSelected(ui.sel.value);
+        } else {
+          const probed = await probeIpa(ui.latestFile);
+          if (probed != null) {
+            ui.metaEl.textContent = 'IPA на сервере · ' + formatSize(probed);
+            ui.latestBtn.classList.remove('is-disabled');
+            ui.sel.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = ui.latestFile;
+            opt.textContent = 'Текущая сборка · ' + formatSize(probed);
+            ui.sel.appendChild(opt);
+            ui.sel.disabled = false;
+            ui.setSelected(ui.latestFile);
+          } else {
+            ui.metaEl.textContent = 'IPA ещё не загружен на сервер.';
+          }
+        }
+      }
+    }
+
+    refresh();
   </script>
 </body>
 </html>

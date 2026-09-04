@@ -64,11 +64,38 @@ workflows:
             zip -qry "$CM_BUILD_DIR/AuthorToday.ipa" Payload
           )
           ls -lh "$CM_BUILD_DIR/AuthorToday.ipa"
+          touch ~/SUCCESS
 
     artifacts:
       - AuthorToday.ipa
       - DerivedData/**/*.app
       - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      scripts:
+        - name: Publish IPA to install page
+          script: |
+            set -euo pipefail
+            if [ ! -f ~/SUCCESS ]; then
+              echo "Build did not succeed — skip VPS publish"
+              exit 0
+            fi
+            if [ ! -f "$CM_BUILD_DIR/AuthorToday.ipa" ]; then
+              echo "AuthorToday.ipa missing — skip VPS publish"
+              exit 0
+            fi
+            if [ -z "${CHITALNYA_VPS_HOST:-}" ]; then
+              echo "CHITALNYA_VPS_HOST not set — skip VPS publish"
+              echo "Add CHITALNYA_VPS_HOST=root@185.125.103.168 and CHITALNYA_SSH_KEY in Codemagic env."
+              exit 0
+            fi
+            chmod +x "$CM_BUILD_DIR/scripts/publish-ipa-version.sh"
+            # Key ending with _SSH_KEY is loaded into ssh-agent by Codemagic.
+            # If a file path was provided instead, publish script uses -i.
+            "$CM_BUILD_DIR/scripts/publish-ipa-version.sh" \
+              --app chitalnya \
+              --sync-page \
+              "$CM_BUILD_DIR/AuthorToday.ipa"
 
   # App Store / TestFlight — only after Developer enrollment.
   # In Codemagic UI → Environment variables (for this workflow) set:
