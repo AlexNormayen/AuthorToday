@@ -51,7 +51,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 ### 5. Установить на iPhone / iPad
 
 **Вариант A — SideStore (на устройстве):**  
-страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — скачать IPA и поставить через SideStore. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
+страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — Читальня и TubeVault, инструкция и скачивание IPA. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
 
 **Вариант B — Sideloadly (ПК):**
 
@@ -65,7 +65,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 Обновить IPA на сервере после сборки:
 
 ```bash
-./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa
+./scripts/upload-ipa-to-vps.sh ~/Downloads/AuthorToday.ipa ~/Downloads/TubeVault.ipa
 ```
 
 > Платный Apple Developer не нужен для личного устройства. Для App Store — нужен (~$99/год).
