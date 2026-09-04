@@ -896,6 +896,8 @@ final class OfflineStore: ObservableObject {
             html: html
         )
     }
+
+    func markDownloaded(workId: Int, fully: Bool) {
         guard let modelContext else { return }
         let descriptor = FetchDescriptor<CachedWork>(
             predicate: #Predicate { $0.workId == workId }
