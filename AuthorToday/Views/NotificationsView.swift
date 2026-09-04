@@ -217,12 +217,16 @@ struct NotificationsView: View {
                         .multilineTextAlignment(.leading)
                         .lineLimit(expanded ? nil : 6)
 
-                    if !expanded && item.displayText.count > 220 {
-                        Text("Показать полностью")
+                    if item.resolvedPostId != nil {
+                        Text("Открыть пост")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.moss)
-                    } else if item.isBlogPost || item.resolvedWorkId != nil {
-                        Text(item.isBlogPost ? "Открыть пост" : "Открыть книгу")
+                    } else if item.resolvedWorkId != nil {
+                        Text("Открыть книгу")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.moss)
+                    } else if !expanded && item.displayText.count > 220 {
+                        Text("Показать полностью")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.moss)
                     }
@@ -237,18 +241,15 @@ struct NotificationsView: View {
 
     private func openOrExpand(_ item: NotificationItem) {
         notifications.markItemRead(item)
-        if let postId = item.postId {
+        if let postId = item.resolvedPostId {
             path.append(FeedRoute.post(postId))
-            return
-        }
-        if item.isBlogPost, let id = item.id {
-            path.append(FeedRoute.post(id))
             return
         }
         if let workId = item.resolvedWorkId {
             path.append(FeedRoute.work(workId))
             return
         }
+        // Prefer opening something over expand-only when long text already shows fully.
         if expandedIds.contains(item.stableId) {
             expandedIds.remove(item.stableId)
         } else {

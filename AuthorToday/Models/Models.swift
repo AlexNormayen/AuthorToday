@@ -599,12 +599,23 @@ struct NotificationItem: Codable, Identifiable, Hashable, Sendable {
     let authorUserName: String?
     let coverURL: String?
 
-    var resolvedWorkId: Int? { workId ?? workID }
+    var resolvedWorkId: Int? {
+        if let workId { return workId }
+        if let workID { return workID }
+        return FeedLinkParser.entityId(in: url ?? link, kind: .work)
+            ?? FeedLinkParser.entityId(in: text ?? message ?? content ?? html, kind: .work)
+    }
+
+    var resolvedPostId: Int? {
+        if let postId { return postId }
+        return FeedLinkParser.entityId(in: url ?? link, kind: .post)
+            ?? FeedLinkParser.entityId(in: text ?? message ?? content ?? html, kind: .post)
+    }
 
     var isBlogPost: Bool {
-        if postId != nil { return true }
+        if resolvedPostId != nil { return true }
         let t = (feedType ?? category ?? "").lowercased()
-        return t.contains("post") || t == "newpost"
+        return t.contains("post") || t.contains("blog")
     }
 
     var stableId: String {
@@ -748,6 +759,8 @@ struct FeedEntry: Codable, Sendable {
     let notificationId: String?
     let itemId: Int?
     let id: Int?
+    let workId: Int?
+    let workID: Int?
     let title: String?
     let previewText: String?
     let text: String?
@@ -763,6 +776,8 @@ struct FeedEntry: Codable, Sendable {
     let coverUrl: String?
     let imageUrl: String?
     let images: [String]?
+    let url: String?
+    let link: String?
     let category: FeedCategory?
 
     struct FeedCategory: Codable, Sendable {
@@ -771,19 +786,38 @@ struct FeedEntry: Codable, Sendable {
     }
 
     func asNotificationItem() -> NotificationItem {
-        let workRelated = ["WorkUpdate", "NewChapter", "DiscountStart", "DiscountEnd", "PriceChange"]
         let typeName = type ?? actionType ?? ""
-        let isPost = ["NewPost", "Post", "BlogPost", "DiscussionPost"].contains(typeName)
-            || (category?.code?.lowercased().contains("post") == true)
+        let typeLower = typeName.lowercased()
+        let categoryCode = category?.code?.lowercased() ?? ""
+        let isPost = typeLower.contains("post")
+            || typeLower.contains("blog")
+            || categoryCode.contains("post")
+            || categoryCode.contains("blog")
 
-        let resolvedPost: Int? = isPost ? (itemId ?? id) : nil
+        // API often puts the entity id in `itemId` for posts; for works `id` is the workId
+        // (itemId may be a chapter id on NewChapter).
+        let postEntityId = itemId ?? id
+        let workEntityId = id ?? itemId
+        let explicitWork = workId ?? workID
+
+        let resolvedPost: Int? = isPost ? postEntityId : nil
         let resolvedWork: Int? = {
             if resolvedPost != nil { return nil }
-            if workRelated.contains(typeName) || workRelated.contains(actionType ?? "") {
-                return id
+            if let explicitWork { return explicitWork }
+            let workHints = [
+                "work", "chapter", "discount", "price", "publish", "release", "novel", "book",
+            ]
+            let looksLikeWork = workHints.contains { typeLower.contains($0) }
+                || chapterId != nil
+                || chapterTitle != nil
+                || coverUrl != nil
+                || imageUrl != nil
+            if looksLikeWork {
+                return workEntityId
             }
-            if chapterId != nil || chapterTitle != nil { return id }
-            return nil
+            // Last resort: parse deep links from payload text/url.
+            let blob = [url, link, text, previewText, title].compactMap { $0 }.joined(separator: "\n")
+            return FeedLinkParser.entityId(in: blob, kind: .work)
         }()
 
         var lines: [String] = []
@@ -802,13 +836,15 @@ struct FeedEntry: Codable, Sendable {
         let combined = lines.joined(separator: "\n")
         let cover = WorkMeta.normalizeCover(coverUrl ?? imageUrl ?? images?.first)
         let deepLink: String? = {
+            if let url, !url.isEmpty { return url }
+            if let link, !link.isEmpty { return link }
             if let resolvedPost { return "https://author.today/post/\(resolvedPost)" }
             if let resolvedWork { return "https://author.today/work/\(resolvedWork)" }
             return nil
         }()
 
         return NotificationItem(
-            id: itemId ?? id,
+            id: postEntityId ?? workEntityId,
             text: combined,
             title: title,
             message: previewText ?? text,
@@ -820,7 +856,7 @@ struct FeedEntry: Codable, Sendable {
             workId: resolvedWork,
             workID: nil,
             url: deepLink,
-            link: nil,
+            link: link,
             category: category?.title ?? typeName,
             notificationId: notificationId,
             feedType: typeName,
@@ -852,6 +888,37 @@ struct NotificationList: Codable, Sendable {
 
     var all: [NotificationItem] {
         notifications ?? data ?? items ?? []
+    }
+}
+
+enum FeedLinkParser {
+    enum EntityKind { case work, post }
+
+    static func entityId(in raw: String?, kind: EntityKind) -> Int? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let patterns: [String]
+        switch kind {
+        case .work:
+            patterns = [
+                #"(?i)(?:https?://[^/\s]+)?/work/(\d+)"#,
+                #"(?i)/content/card/(\d+)"#,
+                #"(?i)workId["\s:=]+(\d+)"#,
+            ]
+        case .post:
+            patterns = [
+                #"(?i)(?:https?://[^/\s]+)?/post/(\d+)"#,
+                #"(?i)postId["\s:=]+(\d+)"#,
+            ]
+        }
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+            guard let match = regex.firstMatch(in: raw, range: range), match.numberOfRanges > 1,
+                  let idRange = Range(match.range(at: 1), in: raw),
+                  let id = Int(raw[idRange]) else { continue }
+            return id
+        }
+        return nil
     }
 }
 

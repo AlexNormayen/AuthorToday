@@ -24,6 +24,7 @@ struct FeedPostDetailView: View {
     @State private var replyTo: WorkComment?
     @State private var isSendingComment = false
     @State private var openAuthor = false
+    @State private var openWorkId: Int?
 
     var body: some View {
         Group {
@@ -135,6 +136,9 @@ struct FeedPostDetailView: View {
         .navigationDestination(isPresented: $openAuthor) {
             authorDestination
         }
+        .navigationDestination(item: $openWorkId) { workId in
+            BookDetailView(workId: workId)
+        }
         .fullScreenCover(item: Binding(
             get: { previewImage.map(IdentifiableURL.init) },
             set: { previewImage = $0?.url }
@@ -165,6 +169,10 @@ struct FeedPostDetailView: View {
     private func handleLink(_ url: URL) -> OpenURLAction.Result {
         if MediaURL.isVideo(url) {
             activeVideo = IdentifiableURL(url: MediaURL.embedURL(for: url))
+            return .handled
+        }
+        if let workId = FeedLinkParser.entityId(in: url.absoluteString, kind: .work) {
+            openWorkId = workId
             return .handled
         }
         // Keep author.today deep content inside the app browser (cookies / no App Store jump).
