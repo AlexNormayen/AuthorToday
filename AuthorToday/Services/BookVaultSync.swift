@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 import Combine
 
-/// Orchestrates push/pull between OfflineStore and the VPS book shelf.
+/// Orchestrates push/pull between OfflineStore / LocalLibrary and the VPS book shelf.
 @MainActor
 final class BookVaultSync: ObservableObject {
     static let shared = BookVaultSync()
@@ -12,6 +12,9 @@ final class BookVaultSync: ObservableObject {
 
     private var progressDebounce: Task<Void, Never>?
     private var uploadWork = Set<Int>()
+    private var uploadLocal = Set<UUID>()
+    /// Suppress vault re-upload while restoring from VPS.
+    private var isRestoring = false
     private let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
@@ -30,6 +33,7 @@ final class BookVaultSync: ObservableObject {
     // MARK: - Push hooks
 
     func enqueueChapterUpload(workId: Int, chapterId: Int, title: String, html: String) {
+        guard !isRestoring else { return }
         guard BookVaultSettings.shared.isEnabled else { return }
         guard let userId = resolvedUserId else { return }
         Task {
@@ -48,6 +52,7 @@ final class BookVaultSync: ObservableObject {
     }
 
     func enqueueWorkUpload(workId: Int, store: OfflineStore) {
+        guard !isRestoring else { return }
         guard BookVaultSettings.shared.isEnabled else { return }
         guard resolvedUserId != nil else { return }
         guard !uploadWork.contains(workId) else { return }
@@ -55,6 +60,18 @@ final class BookVaultSync: ObservableObject {
         Task {
             defer { uploadWork.remove(workId) }
             await pushWork(workId: workId, store: store)
+        }
+    }
+
+    func enqueueLocalBookUpload(_ book: LocalBook) {
+        guard !isRestoring else { return }
+        guard BookVaultSettings.shared.isEnabled else { return }
+        guard resolvedUserId != nil else { return }
+        guard !uploadLocal.contains(book.id) else { return }
+        uploadLocal.insert(book.id)
+        Task {
+            defer { uploadLocal.remove(book.id) }
+            await pushLocalBook(book)
         }
     }
 
@@ -75,7 +92,8 @@ final class BookVaultSync: ObservableObject {
 
     // MARK: - Full sync
 
-    func pushAllDownloaded(store: OfflineStore) async {
+    /// Push AT downloads + «Мои книги». Used by button and auto-backfill.
+    func pushAllDownloaded(store: OfflineStore, localStore: LocalLibraryStore? = nil) async {
         guard BookVaultSettings.shared.isEnabled else {
             statusText = "Облачная полка выключена"
             return
@@ -86,19 +104,52 @@ final class BookVaultSync: ObservableObject {
         }
         isSyncing = true
         defer { isSyncing = false }
+
         let works = store.downloadedWorks
-        statusText = "Выгрузка \(works.count) книг…"
+        let locals = localStore?.books ?? LocalLibraryStore.shared.books
+        let total = works.count + locals.count
+        statusText = "Выгрузка \(total) книг…"
+
+        var okAT = 0
         for (idx, work) in works.enumerated() {
-            statusText = "Выгрузка \(idx + 1)/\(works.count): \(work.title)"
+            statusText = "Author.Today \(idx + 1)/\(works.count): \(work.title)"
             await pushWork(workId: work.workId, store: store)
             await pushProgress(workId: work.workId, store: store)
+            okAT += 1
         }
+
+        var okLocal = 0
+        for (idx, book) in locals.enumerated() {
+            statusText = "Мои книги \(idx + 1)/\(locals.count): \(book.title)"
+            await pushLocalBook(book)
+            okLocal += 1
+        }
+
         if let ctx = store.modelContext {
             await pushBookmarks(modelContext: ctx)
         }
         BookVaultSettings.shared.lastSyncAt = .now
-        BookVaultSettings.shared.lastStatus = "Выгружено \(works.count) книг"
+        BookVaultSettings.shared.lastStatus = "Выгружено: AT \(okAT), локальных \(okLocal)"
         statusText = BookVaultSettings.shared.lastStatus
+    }
+
+    /// If local shelf has more than remote, push automatically (once per session debounce via status).
+    func autoBackfillIfNeeded(store: OfflineStore, localStore: LocalLibraryStore) async {
+        guard BookVaultSettings.shared.isEnabled else { return }
+        guard let userId = resolvedUserId else { return }
+        guard !isSyncing else { return }
+        do {
+            let manifest = try await BookVaultClient.shared.manifest(userId: userId)
+            let remoteAT = manifest.works.count
+            let remoteLocal = manifest.localBooks?.count ?? 0
+            let localAT = store.downloadedWorks.count
+            let localMine = localStore.books.count
+            if localAT > remoteAT || localMine > remoteLocal {
+                await pushAllDownloaded(store: store, localStore: localStore)
+            }
+        } catch {
+            // Quiet — user can push manually.
+        }
     }
 
     func pullProgressAndBookmarks(store: OfflineStore) async {
@@ -118,7 +169,7 @@ final class BookVaultSync: ObservableObject {
         }
     }
 
-    func pullAndRestore(store: OfflineStore) async {
+    func pullAndRestore(store: OfflineStore, localStore: LocalLibraryStore? = nil) async {
         guard BookVaultSettings.shared.isEnabled else {
             statusText = "Облачная полка выключена"
             return
@@ -128,16 +179,32 @@ final class BookVaultSync: ObservableObject {
             return
         }
         isSyncing = true
-        defer { isSyncing = false }
+        isRestoring = true
+        defer {
+            isSyncing = false
+            isRestoring = false
+        }
         do {
             statusText = "Чтение манифеста…"
             let manifest = try await BookVaultClient.shared.manifest(userId: userId)
+            let localItems = manifest.localBooks ?? []
+            let total = manifest.works.count + localItems.count
             let sizeMb = Double(manifest.sizeBytes ?? 0) / 1_048_576
-            statusText = "Восстановление \(manifest.works.count) книг (\(String(format: "%.1f", sizeMb)) МБ)…"
+            statusText = "Восстановление \(total) книг (\(String(format: "%.1f", sizeMb)) МБ)…"
 
+            var restoredAT = 0
             for (idx, item) in manifest.works.enumerated() {
-                statusText = "Книга \(idx + 1)/\(manifest.works.count)…"
-                await restoreWork(userId: userId, workId: item.id, store: store)
+                statusText = "Author.Today \(idx + 1)/\(manifest.works.count)…"
+                let ok = await restoreWork(userId: userId, workId: item.id, store: store)
+                if ok { restoredAT += 1 }
+            }
+
+            var restoredLocal = 0
+            let locals = localStore ?? LocalLibraryStore.shared
+            for (idx, item) in localItems.enumerated() {
+                statusText = "Мои книги \(idx + 1)/\(localItems.count)…"
+                let ok = await restoreLocalBook(userId: userId, bookId: item.id, localStore: locals)
+                if ok { restoredLocal += 1 }
             }
 
             let progressItems = try await BookVaultClient.shared.listProgress(userId: userId)
@@ -150,12 +217,38 @@ final class BookVaultSync: ObservableObject {
             }
 
             BookVaultSettings.shared.lastSyncAt = .now
-            BookVaultSettings.shared.lastStatus = "Восстановлено \(manifest.works.count) книг"
+            BookVaultSettings.shared.lastStatus =
+                "Восстановлено: AT \(restoredAT)/\(manifest.works.count), локальных \(restoredLocal)/\(localItems.count)"
             statusText = BookVaultSettings.shared.lastStatus
             store.reloadLibrary()
+            locals.reload()
         } catch {
             statusText = error.localizedDescription
             BookVaultSettings.shared.lastStatus = error.localizedDescription
+        }
+    }
+
+    func deleteLocalBookEverywhere(_ book: LocalBook, localStore: LocalLibraryStore) async {
+        let id = book.id
+        localStore.delete(book)
+        guard BookVaultSettings.shared.isEnabled, let userId = resolvedUserId else { return }
+        do {
+            try await BookVaultClient.shared.deleteLocalBook(userId: userId, bookId: id.uuidString.lowercased())
+            BookVaultSettings.shared.lastStatus = "Удалено с устройства и VPS"
+        } catch {
+            BookVaultSettings.shared.lastStatus = "С устройства удалено; VPS: \(error.localizedDescription)"
+        }
+    }
+
+    /// Remove offline AT download from device (+ VPS). Does not change author.today library.
+    func deleteOfflineATWork(workId: Int, store: OfflineStore) async {
+        store.removeDownloadedWork(workId: workId)
+        guard BookVaultSettings.shared.isEnabled, let userId = resolvedUserId else { return }
+        do {
+            try await BookVaultClient.shared.deleteWork(userId: userId, workId: workId)
+            BookVaultSettings.shared.lastStatus = "Скачанная копия удалена (устройство + VPS)"
+        } catch {
+            BookVaultSettings.shared.lastStatus = "С устройства удалено; VPS: \(error.localizedDescription)"
         }
     }
 
@@ -232,6 +325,44 @@ final class BookVaultSync: ObservableObject {
         }
     }
 
+    private func pushLocalBook(_ book: LocalBook) async {
+        guard let userId = resolvedUserId else { return }
+        let meta = BookVaultLocalMeta(
+            id: book.id.uuidString.lowercased(),
+            title: book.title,
+            author: book.author,
+            format: book.format.rawValue,
+            addedAt: isoFormatter.string(from: book.addedAt),
+            lastChapterIndex: book.lastChapterIndex,
+            progress: book.progress,
+            chapterOffsetY: book.chapterOffsetY,
+            chapterFraction: book.chapterFraction,
+            chapterPageIndex: book.chapterPageIndex
+        )
+        do {
+            try await BookVaultClient.shared.putLocalMeta(userId: userId, meta: meta)
+        } catch {
+            BookVaultSettings.shared.lastStatus = error.localizedDescription
+            return
+        }
+        let chapters = book.chapters.sorted { $0.index < $1.index }
+        for ch in chapters {
+            let body = ch.htmlText.isEmpty ? ch.plainText : ch.htmlText
+            guard !body.isEmpty else { continue }
+            do {
+                try await BookVaultClient.shared.putLocalChapter(
+                    userId: userId,
+                    bookId: meta.id,
+                    chapterIndex: ch.index,
+                    title: ch.title,
+                    text: body
+                )
+            } catch {
+                BookVaultSettings.shared.lastStatus = error.localizedDescription
+            }
+        }
+    }
+
     private func pushProgress(workId: Int, store: OfflineStore) async {
         guard let userId = resolvedUserId else { return }
         guard let prog = store.progress(for: workId) else { return }
@@ -276,17 +407,17 @@ final class BookVaultSync: ObservableObject {
         }
     }
 
-    private func restoreWork(userId: Int, workId: Int, store: OfflineStore) async {
+    @discardableResult
+    private func restoreWork(userId: Int, workId: Int, store: OfflineStore) async -> Bool {
+        var restoredAny = false
         if let data = try? await BookVaultClient.shared.getMeta(userId: userId, workId: workId),
            let details = try? JSONDecoder().decode(WorkDetails.self, from: data) {
-            store.cacheWorkDetails(details)
-            if !store.isInLibrary(workId) {
-                // Keep as local-only cache; user can add to site library separately.
-            }
+            store.cacheWorkDetails(details, shelfState: "Reading")
+            restoredAny = true
         }
 
         let remoteChapters = (try? await BookVaultClient.shared.listChapters(userId: userId, workId: workId)) ?? []
-            for (index, row) in remoteChapters.enumerated() {
+        for (index, row) in remoteChapters.enumerated() {
             let chapterId: Int?
             if let n = row["id"] as? Int {
                 chapterId = n
@@ -296,7 +427,10 @@ final class BookVaultSync: ObservableObject {
                 chapterId = nil
             }
             guard let chapterId else { continue }
-            if store.isChapterCached(workId: workId, chapterId: chapterId) { continue }
+            if store.isChapterCached(workId: workId, chapterId: chapterId) {
+                restoredAny = true
+                continue
+            }
             guard let html = try? await BookVaultClient.shared.getChapter(
                 userId: userId,
                 workId: workId,
@@ -308,10 +442,69 @@ final class BookVaultSync: ObservableObject {
                 chapterId: chapterId,
                 title: title,
                 html: html,
-                sortIndex: index
+                sortIndex: index,
+                uploadToVault: false
             )
+            restoredAny = true
         }
-        store.reconcileFullDownloadStatus(workId: workId)
+
+        if restoredAny, store.cachedWork(workId: workId) == nil {
+            // Meta missing — still surface orphan chapters on the shelf.
+            store.ensureVaultPlaceholderWork(workId: workId, title: "Книга \(workId)")
+        }
+        if restoredAny {
+            store.promoteVaultWorkToShelf(workId: workId)
+            store.reconcileFullDownloadStatus(workId: workId)
+        }
+        return restoredAny
+    }
+
+    @discardableResult
+    private func restoreLocalBook(userId: Int, bookId: String, localStore: LocalLibraryStore) async -> Bool {
+        guard let uuid = UUID(uuidString: bookId) else { return false }
+        if localStore.book(id: uuid) != nil { return true }
+        guard let meta = try? await BookVaultClient.shared.getLocalMeta(userId: userId, bookId: bookId) else {
+            return false
+        }
+        let remoteChapters = (try? await BookVaultClient.shared.listLocalChapters(userId: userId, bookId: bookId)) ?? []
+        var chapters: [(index: Int, title: String, body: String)] = []
+        for row in remoteChapters {
+            let index: Int?
+            if let n = row["index"] as? Int {
+                index = n
+            } else if let n = row["index"] as? NSNumber {
+                index = n.intValue
+            } else {
+                index = nil
+            }
+            guard let index else { continue }
+            guard let body = try? await BookVaultClient.shared.getLocalChapter(
+                userId: userId,
+                bookId: bookId,
+                chapterIndex: index
+            ), !body.isEmpty else { continue }
+            let title = (row["title"] as? String) ?? "Глава \(index + 1)"
+            chapters.append((index, title, body))
+        }
+        guard !chapters.isEmpty else { return false }
+        do {
+            try localStore.restoreFromVault(
+                id: uuid,
+                title: meta.title,
+                author: meta.author,
+                format: LocalBookFormat(rawValue: meta.format) ?? .txt,
+                chapters: chapters,
+                lastChapterIndex: meta.lastChapterIndex ?? 0,
+                progress: meta.progress ?? 0,
+                chapterOffsetY: meta.chapterOffsetY ?? 0,
+                chapterFraction: meta.chapterFraction ?? 0,
+                chapterPageIndex: meta.chapterPageIndex ?? 0
+            )
+            return true
+        } catch {
+            BookVaultSettings.shared.lastStatus = error.localizedDescription
+            return false
+        }
     }
 
     private func applyRemoteProgress(_ remote: BookVaultProgressDTO, store: OfflineStore) {

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import UserNotifications
 
 /// Checks https://tv.theinquisitor.ru/chitalnya/meta.json for a newer IPA.
 /// Sideload cannot self-replace the app — UI only opens the install page.
@@ -12,6 +13,7 @@ final class AppUpdateChecker: ObservableObject {
     static let installPageURL = URL(string: "https://tv.theinquisitor.ru/chitalnya/")!
 
     let appKey = "chitalnya"
+    private let appDisplayName = "Читальня"
 
     @Published private(set) var isChecking = false
     @Published private(set) var updateAvailable = false
@@ -22,6 +24,7 @@ final class AppUpdateChecker: ObservableObject {
 
     private let dismissedKey = "chitalnya.update.dismissedLatestId"
     private let lastCheckKey = "chitalnya.update.lastCheckAt"
+    private let notifiedKey = "chitalnya.update.notifiedLatestId"
     private let minAutoCheckInterval: TimeInterval = 6 * 60 * 60
 
     var localVersion: String {
@@ -97,6 +100,9 @@ final class AppUpdateChecker: ObservableObject {
             if newer && (latest?.id != dismissed || force) {
                 updateAvailable = true
                 statusText = "Доступна новая сборка: \(latestLabel ?? "IPA")"
+                if !force {
+                    await notifyUpdateAvailable(id: latest?.id, label: latestLabel ?? "IPA")
+                }
             } else if newer {
                 updateAvailable = false
                 statusText = "Есть новая сборка (\(latestLabel ?? "IPA")), скрыта"
@@ -111,6 +117,33 @@ final class AppUpdateChecker: ObservableObject {
                 updateAvailable = false
             }
         }
+    }
+
+    private func notifyUpdateAvailable(id: String?, label: String) async {
+        guard let id, !id.isEmpty else { return }
+        if UserDefaults.standard.string(forKey: notifiedKey) == id { return }
+        UserDefaults.standard.set(id, forKey: notifiedKey)
+
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+        }
+        let after = await center.notificationSettings()
+        guard after.authorizationStatus == .authorized || after.authorizationStatus == .provisional else {
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Новая версия · \(appDisplayName)"
+        content.body = "Доступна сборка \(label). Откройте приложение → Обновления IPA → SideStore."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "app.update.\(appKey).\(id)",
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
     }
 
     static func isRemoteNewer(

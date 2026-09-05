@@ -25,11 +25,34 @@ struct BookVaultManifest: Codable, Sendable {
         let chapterCount: Int?
     }
 
+    struct LocalBook: Codable, Sendable {
+        let id: String
+        let title: String?
+        let author: String?
+        let format: String?
+        let updatedAt: String?
+        let chapterCount: Int?
+    }
+
     let works: [Work]
+    let localBooks: [LocalBook]?
     let progressUpdatedAt: String?
     let bookmarksUpdatedAt: String?
     let sizeBytes: Int64?
     let generatedAt: String?
+}
+
+struct BookVaultLocalMeta: Codable, Sendable {
+    var id: String
+    var title: String
+    var author: String
+    var format: String
+    var addedAt: String?
+    var lastChapterIndex: Int?
+    var progress: Double?
+    var chapterOffsetY: Double?
+    var chapterFraction: Double?
+    var chapterPageIndex: Int?
 }
 
 struct BookVaultProgressDTO: Codable, Sendable {
@@ -283,5 +306,96 @@ actor BookVaultClient {
         )
         try validate(data, http)
         return try JSONDecoder().decode(BookVaultBookmarksPayload.self, from: data)
+    }
+
+    func deleteWork(userId: Int, workId: Int) async throws {
+        let uid = try requireUserId(userId)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/works/\(workId)",
+            userId: uid,
+            method: "DELETE",
+            contentType: nil
+        )
+        try validate(data, http)
+    }
+
+    func putLocalMeta(userId: Int, meta: BookVaultLocalMeta) async throws {
+        let uid = try requireUserId(userId)
+        let body = try JSONEncoder().encode(meta)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(meta.id)/meta",
+            userId: uid,
+            method: "PUT",
+            body: body
+        )
+        try validate(data, http)
+    }
+
+    func getLocalMeta(userId: Int, bookId: String) async throws -> BookVaultLocalMeta {
+        let uid = try requireUserId(userId)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(bookId)/meta",
+            userId: uid,
+            method: "GET"
+        )
+        try validate(data, http)
+        return try JSONDecoder().decode(BookVaultLocalMeta.self, from: data)
+    }
+
+    func putLocalChapter(
+        userId: Int,
+        bookId: String,
+        chapterIndex: Int,
+        title: String,
+        text: String
+    ) async throws {
+        let uid = try requireUserId(userId)
+        guard let body = text.data(using: .utf8) else { throw BookVaultError.empty }
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(bookId)/chapters/\(chapterIndex)",
+            userId: uid,
+            method: "PUT",
+            body: body,
+            contentType: "text/html; charset=utf-8",
+            extraHeaders: ["X-Chapter-Title": title]
+        )
+        try validate(data, http)
+    }
+
+    func getLocalChapter(userId: Int, bookId: String, chapterIndex: Int) async throws -> String {
+        let uid = try requireUserId(userId)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(bookId)/chapters/\(chapterIndex)",
+            userId: uid,
+            method: "GET"
+        )
+        try validate(data, http)
+        guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
+            throw BookVaultError.empty
+        }
+        return text
+    }
+
+    func listLocalChapters(userId: Int, bookId: String) async throws -> [[String: Any]] {
+        let uid = try requireUserId(userId)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(bookId)/chapters",
+            userId: uid,
+            method: "GET"
+        )
+        try validate(data, http)
+        let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return (obj["chapters"] as? [[String: Any]]) ?? []
+    }
+
+    func deleteLocalBook(userId: Int, bookId: String) async throws {
+        let uid = try requireUserId(userId)
+        let (data, http) = try await authorizedRequest(
+            path: "/books/\(uid)/local/\(bookId)",
+            userId: uid,
+            method: "DELETE",
+            contentType: nil
+        )
+        try validate(data, http)
     }
 }

@@ -651,7 +651,8 @@ final class OfflineStore: ObservableObject {
     }
 
     /// Updates chapter list / cover for a book without adding it to the site library shelf.
-    func cacheWorkDetails(_ details: WorkDetails) {
+    /// - Parameter shelfState: when non-nil, used for newly inserted rows (e.g. `"Reading"` after VPS restore).
+    func cacheWorkDetails(_ details: WorkDetails, shelfState: String? = nil) {
         guard let modelContext else { return }
         let id = details.id
         let descriptor = FetchDescriptor<CachedWork>(
@@ -673,6 +674,9 @@ final class OfflineStore: ObservableObject {
             if let remoteChapter = details.resolvedLastReadChapterId {
                 existing.lastReadChapterId = existing.lastReadChapterId ?? remoteChapter
             }
+            if let shelfState {
+                existing.libraryState = shelfState
+            }
             existing.updatedAt = .now
             NotificationPoller.shared.rememberChapterCount(
                 workId: details.id,
@@ -685,7 +689,6 @@ final class OfflineStore: ObservableObject {
                 existing.isFullyDownloaded = expectedIds.allSatisfy { readable.contains($0) }
             }
         } else {
-            // Keep offline metadata, but hide from library shelf via localonly
             modelContext.insert(
                 CachedWork(
                     workId: details.id,
@@ -694,7 +697,7 @@ final class OfflineStore: ObservableObject {
                     authorUserName: details.authorUserName,
                     coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
-                    libraryState: "localonly",
+                    libraryState: shelfState ?? "localonly",
                     lastReadChapterId: details.resolvedLastReadChapterId,
                     chaptersJSON: chaptersData,
                     detailsJSON: snapshot
@@ -706,9 +709,61 @@ final class OfflineStore: ObservableObject {
             )
         }
         try? modelContext.save()
-        if library.contains(where: { $0.workId == id }) {
+        reloadLibrary()
+    }
+
+    func promoteVaultWorkToShelf(workId: Int) {
+        guard let modelContext else { return }
+        let descriptor = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        guard let work = try? modelContext.fetch(descriptor).first else { return }
+        let state = (work.libraryState ?? "").lowercased()
+        if state == "localonly" || state == "none" || state.isEmpty {
+            work.libraryState = "Reading"
+            work.updatedAt = .now
+            try? modelContext.save()
             reloadLibrary()
         }
+    }
+
+    func ensureVaultPlaceholderWork(workId: Int, title: String) {
+        guard let modelContext else { return }
+        let descriptor = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        if (try? modelContext.fetch(descriptor).first) != nil { return }
+        modelContext.insert(
+            CachedWork(
+                workId: workId,
+                title: title,
+                author: "",
+                libraryState: "Reading",
+                isFullyDownloaded: false
+            )
+        )
+        try? modelContext.save()
+        reloadLibrary()
+    }
+
+    /// Deletes offline chapters/work cache for an AT book. Does not touch author.today library.
+    func removeDownloadedWork(workId: Int) {
+        guard let modelContext else { return }
+        clearCachedChapters(workId: workId)
+        let descriptor = FetchDescriptor<CachedWork>(
+            predicate: #Predicate { $0.workId == workId }
+        )
+        if let work = try? modelContext.fetch(descriptor).first {
+            // Keep shelf row if it came from the site; only strip download flags.
+            let state = (work.libraryState ?? "").lowercased()
+            work.isFullyDownloaded = false
+            work.updatedAt = .now
+            if state == "localonly" {
+                modelContext.delete(work)
+            }
+        }
+        try? modelContext.save()
+        reloadLibrary()
     }
 
     /// Import portal last-read chapter/position when this device has no local resume yet.
@@ -865,7 +920,8 @@ final class OfflineStore: ObservableObject {
         chapterId: Int,
         title: String,
         html: String,
-        sortIndex: Int
+        sortIndex: Int,
+        uploadToVault: Bool = true
     ) {
         guard let modelContext else { return }
         let key = "\(workId)-\(chapterId)"
@@ -889,12 +945,14 @@ final class OfflineStore: ObservableObject {
             )
         }
         try? modelContext.save()
-        BookVaultSync.shared.enqueueChapterUpload(
-            workId: workId,
-            chapterId: chapterId,
-            title: title,
-            html: html
-        )
+        if uploadToVault {
+            BookVaultSync.shared.enqueueChapterUpload(
+                workId: workId,
+                chapterId: chapterId,
+                title: title,
+                html: html
+            )
+        }
     }
 
     func markDownloaded(workId: Int, fully: Bool) {

@@ -40,9 +40,16 @@ struct AuthorTodayApp: App {
                     if auth.isAuthenticated {
                         notifications.startPolling()
                         if BookVaultSettings.shared.isEnabled {
-                            Task { await BookVaultSync.shared.pullProgressAndBookmarks(store: offlineStore) }
+                            Task {
+                                await BookVaultSync.shared.pullProgressAndBookmarks(store: offlineStore)
+                                await BookVaultSync.shared.autoBackfillIfNeeded(
+                                    store: offlineStore,
+                                    localStore: localLibrary
+                                )
+                            }
                         }
                     }
+                    _ = localLibrary.importNewFilesFromDocuments()
                     await AppUpdateChecker.shared.checkIfDue()
                 }
                 .onChange(of: auth.isAuthenticated) { _, loggedIn in

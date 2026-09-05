@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BookVaultSettingsView: View {
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var localLibrary: LocalLibraryStore
     @EnvironmentObject private var appearance: AppAppearanceStore
     @StateObject private var settings = BookVaultSettings.shared
     @StateObject private var sync = BookVaultSync.shared
@@ -11,6 +12,12 @@ struct BookVaultSettingsView: View {
         List {
             Section {
                 Toggle("Включить облачную полку", isOn: $settings.isEnabled)
+                    .onChange(of: settings.isEnabled) { _, on in
+                        guard on else { return }
+                        Task {
+                            await sync.autoBackfillIfNeeded(store: offline, localStore: localLibrary)
+                        }
+                    }
                 TextField("URL сервера", text: $settings.baseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -22,7 +29,7 @@ struct BookVaultSettingsView: View {
             } header: {
                 Text("Подключение")
             } footer: {
-                Text("Книги хранятся на вашем VPS отдельно для каждого аккаунта Author.Today. После скачивания главы уходят в облако; другой телефон может восстановить их и прогресс.")
+                Text("Скачанные книги Author.Today и TXT/EPUB из «Мои книги» хранятся на VPS отдельно для каждого аккаунта. После переустановки приложения — «Восстановить с VPS».")
             }
 
             Section("Синхронизация") {
@@ -40,13 +47,16 @@ struct BookVaultSettingsView: View {
                 }
                 .disabled(!settings.isEnabled || sync.isSyncing)
 
-                Button("Выгрузить скачанное") {
-                    Task { await sync.pushAllDownloaded(store: offline) }
+                Button("Выгрузить всё локальное") {
+                    Task {
+                        _ = localLibrary.importNewFilesFromDocuments()
+                        await sync.pushAllDownloaded(store: offline, localStore: localLibrary)
+                    }
                 }
-                .disabled(!settings.isEnabled || sync.isSyncing || offline.downloadedWorks.isEmpty)
+                .disabled(!settings.isEnabled || sync.isSyncing)
 
                 Button("Восстановить с VPS") {
-                    Task { await sync.pullAndRestore(store: offline) }
+                    Task { await sync.pullAndRestore(store: offline, localStore: localLibrary) }
                 }
                 .disabled(!settings.isEnabled || sync.isSyncing)
 
@@ -63,11 +73,12 @@ struct BookVaultSettingsView: View {
                     LabeledContent("Последний синк", value: at.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
                 }
-                LabeledContent("Скачано локально", value: "\(offline.downloadedWorks.count)")
+                LabeledContent("Скачано AT", value: "\(offline.downloadedWorks.count)")
+                LabeledContent("Мои книги", value: "\(localLibrary.books.count)")
             }
 
             Section {
-                Text("Личная полка, не зеркало Author.Today. TXT/EPUB из «Мои книги» не синкаются.")
+                Text("Удаление в «Мои книги» снимает файл с устройства и с VPS. Удаление в «Скачанные» убирает только офлайн-копию, не библиотеку Author.Today.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -75,5 +86,9 @@ struct BookVaultSettingsView: View {
         .navigationTitle("Облачная полка")
         .navigationBarTitleDisplayMode(.inline)
         .themedGroupedFill()
+        .task {
+            guard settings.isEnabled else { return }
+            await sync.autoBackfillIfNeeded(store: offline, localStore: localLibrary)
+        }
     }
 }

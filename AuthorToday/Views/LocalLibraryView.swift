@@ -39,7 +39,7 @@ struct LocalLibraryPane: View {
                 ContentUnavailableView {
                     Label("Мои книги", systemImage: "tray.and.arrow.down")
                 } description: {
-                    Text("Добавьте TXT или EPUB с устройства. Книги хранятся только локально и не синхронизируются с Author.Today.")
+                    Text("Добавьте TXT или EPUB. Книги можно выгрузить на облачную полку VPS и восстановить после переустановки. Также подхватываются файлы из папки «Читальня» в Файлах.")
                 } actions: {
                     Button("Добавить файл") { showImporter = true }
                         .buttonStyle(.borderedProminent)
@@ -54,7 +54,12 @@ struct LocalLibraryPane: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
-                                localLibrary.delete(book)
+                                Task {
+                                    await BookVaultSync.shared.deleteLocalBookEverywhere(
+                                        book,
+                                        localStore: localLibrary
+                                    )
+                                }
                             } label: {
                                 Label("Удалить", systemImage: "trash")
                             }
@@ -104,14 +109,20 @@ struct LocalLibraryPane: View {
                 LocalReaderView(bookId: item.id)
             }
         }
-        .onAppear { localLibrary.reload() }
+        .onAppear {
+            localLibrary.reload()
+            let n = localLibrary.importNewFilesFromDocuments()
+            if n > 0 {
+                importError = "Добавлено из Файлов: \(n)"
+            }
+        }
     }
 
     private var freeGate: some View {
         ContentUnavailableView {
             Label("Мои книги — Pro", systemImage: "lock.fill")
         } description: {
-            Text("Импорт своих TXT и EPUB и чтение в Читальне доступны в «Читальня Pro». Файлы остаются только на устройстве.")
+            Text("Импорт своих TXT и EPUB и чтение в Читальне доступны в «Читальня Pro». С Pro книги можно выгружать на облачную полку VPS.")
         } actions: {
             Button("Открыть Pro") { showPaywall = true }
                 .buttonStyle(.borderedProminent)

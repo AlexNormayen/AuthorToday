@@ -2,6 +2,12 @@ import Foundation
 import SwiftData
 import Combine
 
+private extension URL {
+    var fileSizeForImport: Int {
+        (try? resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    }
+}
+
 @MainActor
 final class LocalLibraryStore: ObservableObject {
     static let shared = LocalLibraryStore()
@@ -78,7 +84,96 @@ final class LocalLibraryStore: ObservableObject {
         }
         try modelContext.save()
         reload()
+        BookVaultSync.shared.enqueueLocalBookUpload(book)
         return book
+    }
+
+    /// Rebuild a local book from VPS payload (same UUID).
+    func restoreFromVault(
+        id: UUID,
+        title: String,
+        author: String,
+        format: LocalBookFormat,
+        chapters: [(index: Int, title: String, body: String)],
+        lastChapterIndex: Int,
+        progress: Double,
+        chapterOffsetY: Double,
+        chapterFraction: Double,
+        chapterPageIndex: Int
+    ) throws {
+        guard let modelContext else { throw LocalBookImportError.copyFailed }
+        if book(id: id) != nil { return }
+
+        let folder = LocalBookImporter.booksDirectory.appendingPathComponent(id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let relativePath = "\(id.uuidString)/book.\(format.rawValue)"
+
+        let book = LocalBook(
+            id: id,
+            title: title,
+            author: author,
+            format: format,
+            relativePath: relativePath,
+            lastChapterIndex: lastChapterIndex,
+            progress: progress,
+            chapterOffsetY: chapterOffsetY,
+            chapterFraction: chapterFraction,
+            chapterPageIndex: chapterPageIndex
+        )
+        modelContext.insert(book)
+        for ch in chapters.sorted(by: { $0.index < $1.index }) {
+            let looksHTML = ch.body.contains("<") && ch.body.contains(">")
+            let chapter = LocalChapter(
+                index: ch.index,
+                title: ch.title,
+                htmlText: looksHTML ? ch.body : "",
+                plainText: looksHTML ? HTMLText.readerPlain(from: ch.body) : ch.body
+            )
+            chapter.book = book
+            modelContext.insert(chapter)
+        }
+        try modelContext.save()
+        reload()
+    }
+
+    /// Import any TXT/EPUB dropped into the app Documents folder (Files / Finder sharing).
+    @discardableResult
+    func importNewFilesFromDocuments() -> Int {
+        guard ProFeatures.localLibraryRequiresPro == false
+                || ProEntitlementStore.shared.isProUnlocked else { return 0 }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let docs else { return 0 }
+        let inbox = docs.appendingPathComponent("Inbox", isDirectory: true)
+        var imported = 0
+        let roots = [docs, inbox]
+        let key = "localBooks.importedDocumentNames"
+        var seen = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        for root in roots {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for url in files {
+                let ext = url.pathExtension.lowercased()
+                guard ext == "txt" || ext == "epub" else { continue }
+                let marker = "\(url.lastPathComponent)|\(url.fileSizeForImport)"
+                if seen.contains(marker) { continue }
+                do {
+                    _ = try importFile(from: url)
+                    seen.insert(marker)
+                    imported += 1
+                    // Remove from Inbox after successful import to avoid duplicates.
+                    if url.path.contains("/Inbox/") {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                } catch {
+                    lastError = error.localizedDescription
+                }
+            }
+        }
+        UserDefaults.standard.set(Array(seen), forKey: key)
+        return imported
     }
 
     func delete(_ book: LocalBook) {

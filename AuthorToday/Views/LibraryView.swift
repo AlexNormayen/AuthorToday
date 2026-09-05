@@ -765,32 +765,39 @@ struct DownloadedLibraryView: View {
                         description: Text("Скачайте книгу на её странице — она появится здесь и будет доступна без сети.")
                     )
                 } else {
-                    VStack(spacing: 0) {
-                        Picker("Сортировка", selection: $sort) {
-                            ForEach(AuthorSortMode.allCases) { item in
-                                Text(item.title).tag(item)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(filteredWorks, id: \.workId) { work in
-                                    Button {
-                                        path.append(LibraryRoute.details(workId: work.workId))
-                                    } label: {
-                                        LibraryRow(work: work)
-                                    }
-                                    .buttonStyle(.plain)
-                                    Divider().padding(.leading, 88)
+                    List {
+                        Section {
+                            Picker("Сортировка", selection: $sort) {
+                                ForEach(AuthorSortMode.allCases) { item in
+                                    Text(item.title).tag(item)
                                 }
                             }
-                            .padding(.vertical, 8)
+                            .pickerStyle(.menu)
+                        }
+
+                        ForEach(filteredWorks, id: \.workId) { work in
+                            Button {
+                                path.append(LibraryRoute.details(workId: work.workId))
+                            } label: {
+                                LibraryRow(work: work)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await BookVaultSync.shared.deleteOfflineATWork(
+                                            workId: work.workId,
+                                            store: offline
+                                        )
+                                    }
+                                } label: {
+                                    Label("Удалить копию", systemImage: "trash")
+                                }
+                            }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
             .background {
