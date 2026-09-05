@@ -1,9 +1,10 @@
-# Publish IPA from Codemagic without putting secrets in the public repo.
-# Codemagic uploads the IPA to a short-lived host and triggers this workflow
-# OR we publish via repository_dispatch with the IPA attached as an artifact upload from a trusted caller.
+# Publishes IPA to https://tv.theinquisitor.ru/chitalnya/
+# Prefer SSH (port 22) — CodeMagic→VPS :443 is flaky from some regions.
 #
-# Primary path used by Codemagic (AuthorToday): workflow_dispatch with artifact_url from 0x0.st / litterbox,
-# authenticated by repository secrets on the Actions runner (not in yaml source).
+# Triggers:
+# - workflow_dispatch (manual / Codemagic litterbox URL)
+# - release (Codemagic native GitHub release publishing)
+# - repository_dispatch type publish-ipa
 
 name: Publish IPA to install page
 
@@ -16,7 +17,8 @@ on:
         default: chitalnya
       artifact_url:
         description: Direct URL to the .ipa file
-        required: true
+        required: false
+        default: ""
       build_number:
         description: CodeMagic build number
         required: false
@@ -29,34 +31,110 @@ on:
         description: Branch name
         required: false
         default: ""
+  release:
+    types: [published, prereleased]
+  repository_dispatch:
+    types: [publish-ipa]
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Download IPA
+      - name: Resolve inputs
+        id: meta
         run: |
           set -euo pipefail
-          curl -fL --retry 3 -o app.ipa "${{ inputs.artifact_url }}"
+          APP="chitalnya"
+          URL=""
+          BUILD=""
+          COMMIT=""
+          BRANCH=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            APP="${{ inputs.app }}"
+            URL="${{ inputs.artifact_url }}"
+            BUILD="${{ inputs.build_number }}"
+            COMMIT="${{ inputs.commit }}"
+            BRANCH="${{ inputs.branch }}"
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            APP='${{ github.event.client_payload.app }}'
+            URL='${{ github.event.client_payload.artifact_url }}'
+            BUILD='${{ github.event.client_payload.build_number }}'
+            COMMIT='${{ github.event.client_payload.commit }}'
+            BRANCH='${{ github.event.client_payload.branch }}'
+            APP="${APP:-chitalnya}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            APP="chitalnya"
+            BUILD="${{ github.event.release.tag_name }}"
+            BRANCH="${{ github.event.release.target_commitish }}"
+          fi
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Download IPA (URL)
+        if: steps.meta.outputs.url != ''
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --connect-timeout 30 --max-time 300 -o app.ipa "${{ steps.meta.outputs.url }}"
           file app.ipa
           test -s app.ipa
 
-      - name: Upload to install page
+      - name: Download IPA (GitHub Release asset)
+        if: steps.meta.outputs.url == '' && github.event_name == 'release'
         env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            -p "*.ipa" -D .
+          IPA=$(ls -1 *.ipa | head -n 1)
+          test -n "$IPA"
+          mv "$IPA" app.ipa
+          ls -lh app.ipa
+
+      - name: Publish via SSH to VPS
+        env:
+          SSH_KEY: ${{ secrets.CHITALNYA_SSH_KEY }}
+          VPS_HOST: ${{ secrets.CHITALNYA_VPS_HOST }}
           TOKEN: ${{ secrets.CHITALNYA_PUBLISH_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${TOKEN}" ]; then
-            echo "Missing CHITALNYA_PUBLISH_TOKEN secret"
-            exit 1
+          test -f app.ipa
+          APP="${{ steps.meta.outputs.app }}"
+          BUILD="${{ steps.meta.outputs.build }}"
+          COMMIT="${{ steps.meta.outputs.commit }}"
+          BRANCH="${{ steps.meta.outputs.branch }}"
+          HOST="${VPS_HOST:-185.125.103.168}"
+
+          if [ -n "${SSH_KEY:-}" ]; then
+            KEY=/tmp/chitalnya_key
+            printf '%s\n' "$SSH_KEY" > "$KEY"
+            chmod 600 "$KEY"
+            REMOTE="/tmp/app-${GITHUB_RUN_ID}.ipa"
+            scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
+              app.ipa "root@${HOST}:${REMOTE}"
+            ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
+              "root@${HOST}" \
+              "/opt/chitalnya/publish-local.sh '${APP}' '${REMOTE}' '${BUILD}' '${COMMIT}' '${BRANCH}' && rm -f '${REMOTE}'"
+            rm -f "$KEY"
+            echo "Published via SSH"
+            exit 0
           fi
-          curl -fL --retry 3 \
+
+          echo "No SSH key — HTTPS fallback"
+          test -n "${TOKEN:-}"
+          FNAME="AuthorToday.ipa"
+          if [ "$APP" = "tubevault" ]; then FNAME="TubeVault.ipa"; fi
+          curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
             -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
             -H "Authorization: Bearer $TOKEN" \
-            -F "app=${{ inputs.app }}" \
-            -F "buildNumber=${{ inputs.build_number }}" \
-            -F "commit=${{ inputs.commit }}" \
-            -F "branch=${{ inputs.branch }}" \
-            -F "ipa=@app.ipa;filename=app.ipa;type=application/octet-stream"
+            -F "app=${APP}" \
+            -F "buildNumber=${BUILD}" \
+            -F "commit=${COMMIT}" \
+            -F "branch=${BRANCH}" \
+            -F "ipa=@app.ipa;filename=${FNAME};type=application/octet-stream"
           echo
-          echo "Done: https://tv.theinquisitor.ru/chitalnya/"
+          echo "Published via HTTPS"
