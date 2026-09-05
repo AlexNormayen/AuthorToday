@@ -15,6 +15,23 @@ workflows:
         CHITALNYA_VPS_HOST: "185.125.103.168"
         CHITALNYA_SSH_USER: chitalnya-publish
         CHITALNYA_SSH_KEY_B64: "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNDNGRNYmRRNGtqVzJNZDJFZWhaUUZXSXU0eHF4MzNWTmVuVEh5UXRZQjNWd0FBQUtEaTVVVEw0dVZFCnl3QUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQzRkTWJkUTRralcyTWQyRWVoWlFGV0l1NHhxeDMzVk5lblRIeVF0WUIzVncKQUFBRUFlV2ljelcyQVoyWlhjV3J0VEx6dlZXN0NlSlpERXA3ZmgrcXNVaEIzWFM3aDB4dDFEaVNOYll4M1lSNkZsQVZZaQo3akdySGZkVTE2ZE1mSkMxZ0hkWEFBQUFHMk5vYVhSaGJHNTVZUzFqYjJSbGJXRm5hV010Y0hWaWJHbHphQUVDCi0tLS0tRU5EIE9QRU5TU0ggUFJJVkFURSBLRVktLS0tLQo="
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+    when:
+      changeset:
+        includes:
+          - "AuthorToday/**"
+          - "AuthorToday.xcodeproj/**"
+          - "codemagic.yaml"
+        excludes:
+          - "**/*.md"
+          - "docs/**"
     scripts:
       - name: Show Xcode
         script: |

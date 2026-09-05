@@ -37,6 +37,8 @@ struct ReaderView: View {
     @State private var scrollOffset: Double = 0
     @State private var scrollFraction: Double = 0
     @State private var charOffset: Int = 0
+    /// Sticky «next chapter» affordance so it does not flicker at the bottom edge.
+    @State private var endCTALatched = false
     @State private var didAddToLibrary = false
     @State private var pageCountForChapter = 1
     @State private var pendingRestore = false
@@ -261,7 +263,9 @@ struct ReaderView: View {
                 left: settings.marginHorizontal,
                 bottom: settings.marginVertical
                     + (showChrome ? 56 : 12)
-                    + (showEndOfChapterCTA && !showChrome ? 108 : 0),
+                    // Stable reserve — toggling inset with the CTA used to fight scroll restore
+                    // (“at end → CTA → inset grows → snap → can't scroll back up”).
+                    + readerEndCTABottomReserve,
                 right: settings.marginHorizontal
             ),
             restoreFraction: restoreFraction,
@@ -295,6 +299,7 @@ struct ReaderView: View {
 
         scrollOffset = offsetY
         scrollFraction = fraction
+        updateEndCTALatch(fraction: fraction)
         // Keep restoreFraction in sync with live reading so a later text reflow
         // does not snap back to the position from when the chapter was opened.
         if fraction > 0.005 {
@@ -506,18 +511,41 @@ struct ReaderView: View {
         }
     }
 
+    /// Bottom padding reserved for the «next chapter» bar — must not depend on scroll
+    /// position, or inset changes re-trigger restore and the text view jerks.
+    private var readerEndCTABottomReserve: CGFloat {
+        guard !showChrome else { return 0 }
+        guard nearestReadableIndex(from: chapterIndex, direction: 1) != nil else { return 0 }
+        return 108
+    }
+
     /// Near the end of the current chapter (scroll or last page).
     private var isAtChapterEnd: Bool {
         guard !pendingRestore, !plainText.isEmpty else { return false }
         if settings.pageTurnMode == .verticalScroll {
-            // Require a clear bottom reach — avoid early CTA that used to cover the scroll view.
-            return scrollFraction >= 0.97 || (chapterContentFits && scrollFraction >= 0.5)
+            return endCTALatched
         }
         return pageCountForChapter > 0 && pageIndex + 1 >= pageCountForChapter
     }
 
     private var showEndOfChapterCTA: Bool {
         isAtChapterEnd && nearestReadableIndex(from: chapterIndex, direction: 1) != nil
+    }
+
+    private func updateEndCTALatch(fraction: Double) {
+        guard settings.pageTurnMode == .verticalScroll else {
+            endCTALatched = false
+            return
+        }
+        guard nearestReadableIndex(from: chapterIndex, direction: 1) != nil else {
+            endCTALatched = false
+            return
+        }
+        if fraction >= 0.97 || (chapterContentFits && fraction >= 0.5) {
+            endCTALatched = true
+        } else if fraction < 0.88 {
+            endCTALatched = false
+        }
     }
 
     private var endOfChapterBar: some View {
@@ -840,6 +868,7 @@ struct ReaderView: View {
             scrollOffset = 0
             scrollFraction = 0
             charOffset = 0
+            endCTALatched = false
             chapterContentFits = false
             pendingRestore = false
             restoreOffsetY = 0

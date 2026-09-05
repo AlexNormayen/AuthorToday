@@ -76,23 +76,23 @@ struct ReaderTextScrollView: UIViewRepresentable {
                 context.coordinator.scheduleFitsCheck(on: tv)
             }
         } else if insetChanged {
-            // Chrome show/hide changes insets and maxY — keep the same reading place.
-            let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
-            let preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
-            let preservedChar = context.coordinator.approximateCharOffset(in: tv) ?? 0
+            // Chrome show/hide changes insets. Adjust offset by top delta and clamp —
+            // do NOT queueRestore to live restoreFraction (near 1.0 at chapter end that
+            // fights the user when they try to scroll back up after a bottom-inset toggle).
+            let oldInset = context.coordinator.lastInset
+            let oldY = tv.contentOffset.y
             tv.textContainerInset = contentInset
             context.coordinator.lastInset = contentInset
-            let targetFraction = max(preservedFraction, restoreFraction > 0.005 ? restoreFraction : 0)
-            let targetChar = max(preservedChar, restoreCharOffset)
-            if targetFraction > 0.005 || targetChar > 40 {
-                context.coordinator.queueRestore(
-                    fraction: targetFraction,
-                    charOffset: targetChar,
-                    on: tv
-                )
-            } else {
-                context.coordinator.scheduleFitsCheck(on: tv)
+            tv.layoutIfNeeded()
+            let topDelta = contentInset.top - oldInset.top
+            let maxY = max(tv.contentSize.height - tv.bounds.height, 0)
+            let newY = min(max(oldY + topDelta, 0), maxY)
+            if abs(newY - oldY) > 0.5 {
+                context.coordinator.isProgrammaticScroll = true
+                tv.setContentOffset(CGPoint(x: 0, y: newY), animated: false)
+                context.coordinator.isProgrammaticScroll = false
             }
+            context.coordinator.scheduleFitsCheck(on: tv)
         } else {
             context.coordinator.scheduleFitsCheck(on: tv)
         }

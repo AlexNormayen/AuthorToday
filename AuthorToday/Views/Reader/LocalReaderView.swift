@@ -24,6 +24,7 @@ struct LocalReaderView: View {
     @State private var scrollOffset: Double = 0
     @State private var scrollFraction: Double = 0
     @State private var charOffset: Int = 0
+    @State private var endCTALatched = false
     @State private var pageCountForChapter = 1
     @State private var pendingRestore = false
     @State private var restorePageIndex = 0
@@ -174,7 +175,8 @@ struct LocalReaderView: View {
                     left: settings.marginHorizontal,
                     bottom: settings.marginVertical
                         + (showChrome ? 56 : 12)
-                        + (showEndOfChapterCTA && !showChrome ? 108 : 0),
+                        // Stable reserve — do not toggle with CTA (scroll restore fights).
+                        + readerEndCTABottomReserve,
                     right: settings.marginHorizontal
                 ),
                 restoreFraction: restoreFraction,
@@ -326,16 +328,38 @@ struct LocalReaderView: View {
         }
     }
 
+    private var readerEndCTABottomReserve: CGFloat {
+        guard !showChrome else { return 0 }
+        guard chapterIndex + 1 < chapters.count else { return 0 }
+        return 108
+    }
+
     private var isAtChapterEnd: Bool {
         guard !pendingRestore, !plainText.isEmpty else { return false }
         if settings.pageTurnMode == .verticalScroll {
-            return scrollFraction >= 0.97 || (chapterContentFits && scrollFraction >= 0.5)
+            return endCTALatched
         }
         return pageCountForChapter > 0 && pageIndex + 1 >= pageCountForChapter
     }
 
     private var showEndOfChapterCTA: Bool {
         isAtChapterEnd && chapterIndex + 1 < chapters.count
+    }
+
+    private func updateEndCTALatch(fraction: Double) {
+        guard settings.pageTurnMode == .verticalScroll else {
+            endCTALatched = false
+            return
+        }
+        guard chapterIndex + 1 < chapters.count else {
+            endCTALatched = false
+            return
+        }
+        if fraction >= 0.97 || (chapterContentFits && fraction >= 0.5) {
+            endCTALatched = true
+        } else if fraction < 0.88 {
+            endCTALatched = false
+        }
     }
 
     private var endOfChapterBar: some View {
@@ -495,6 +519,7 @@ struct LocalReaderView: View {
         scrollOffset = 0
         scrollFraction = 0
         charOffset = 0
+        endCTALatched = false
         chapterContentFits = false
 
         if restore, let book = book ?? localLibrary.book(id: bookId), book.lastChapterIndex == index {
@@ -526,6 +551,7 @@ struct LocalReaderView: View {
         }
         scrollOffset = offsetY
         scrollFraction = fraction
+        updateEndCTALatch(fraction: fraction)
         if fraction > 0.005 {
             restoreFraction = fraction
             restoreOffsetY = offsetY
