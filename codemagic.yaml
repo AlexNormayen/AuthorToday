@@ -42,6 +42,7 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=NO \
+            CURRENT_PROJECT_VERSION="${PROJECT_BUILD_NUMBER:-1}" \
             build 2>&1 | tee "$LOG"
           STATUS=${PIPESTATUS[0]}
           set -e
@@ -62,6 +63,20 @@ workflows:
             exit 1
           fi
           echo "Packaging: $APP"
+          # Align CFBundleVersion / publish id with meta.json (b{BUILD}-{commit}).
+          PLIST="$APP/Info.plist"
+          BUILD_NUM="${PROJECT_BUILD_NUMBER:-}"
+          COMMIT_SHORT="$(printf '%s' "${CM_COMMIT:-}" | cut -c1-7)"
+          if [ -n "$BUILD_NUM" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$PLIST" \
+              || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUM" "$PLIST"
+          fi
+          if [ -n "$BUILD_NUM" ] && [ -n "$COMMIT_SHORT" ]; then
+            PUB_ID="b${BUILD_NUM}-${COMMIT_SHORT}"
+            /usr/libexec/PlistBuddy -c "Set :ChitalnyaPublishId $PUB_ID" "$PLIST" \
+              || /usr/libexec/PlistBuddy -c "Add :ChitalnyaPublishId string $PUB_ID" "$PLIST"
+            echo "Stamped ChitalnyaPublishId=$PUB_ID"
+          fi
           STAGE="$CM_BUILD_DIR/ipa_stage"
           rm -rf "$STAGE"
           mkdir -p "$STAGE/Payload"

@@ -300,10 +300,24 @@ struct SettingsHubView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var notifications: NotificationPoller
+    @StateObject private var updates = AppUpdateChecker.shared
 
     var body: some View {
         NavigationStack {
             List {
+                if updates.updateAvailable {
+                    Section {
+                        Button {
+                            updates.openInstallPage()
+                        } label: {
+                            Label(
+                                "Доступна новая сборка: \(updates.latestLabel ?? "IPA")",
+                                systemImage: "arrow.down.circle.fill"
+                            )
+                        }
+                    }
+                }
+
                 Section {
                     if let user = auth.user {
                         VStack(alignment: .leading, spacing: 4) {
@@ -408,6 +422,7 @@ struct SettingsHubView: View {
 
                 Section("О приложении") {
                     LabeledContent("Приложение", value: "Читальня")
+                    LabeledContent("Версия", value: updates.localDisplay)
                     LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)")
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
@@ -418,6 +433,8 @@ struct SettingsHubView: View {
                         LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)")
                     }
                 }
+
+                AppUpdateSettingsSection(checker: updates)
 
                 Section {
                     Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
@@ -433,6 +450,9 @@ struct SettingsHubView: View {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .task {
+                await updates.checkIfDue()
+            }
         }
     }
 }
