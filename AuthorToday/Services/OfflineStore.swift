@@ -724,10 +724,10 @@ final class OfflineStore: ObservableObject {
                     libraryState: shelfState ?? "localonly",
                     lastReadChapterId: details.resolvedLastReadChapterId,
                     chaptersJSON: chaptersData,
-                    detailsJSON: snapshot,
                     seriesId: details.seriesId,
                     seriesTitle: details.displaySeriesTitle,
-                    seriesOrder: details.seriesOrder
+                    seriesOrder: details.seriesOrder,
+                    detailsJSON: snapshot
                 )
             )
             NotificationPoller.shared.rememberChapterCount(
