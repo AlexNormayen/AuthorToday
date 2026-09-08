@@ -1085,14 +1085,18 @@ actor APIClient {
             "rootId": rootId,
             "rootType": rootType,
             "text": text,
-            "isPinned": false
+            "isPinned": false,
+            "id": NSNull(),
+            "isIgnored": false
         ]
         if let parentId {
             payload["parentId"] = parentId
             payload["threadId"] = threadId ?? parentId
             payload["level"] = max(level, 1)
-            payload["id"] = NSNull()
-            payload["isIgnored"] = false
+        } else {
+            payload["parentId"] = NSNull()
+            payload["threadId"] = NSNull()
+            payload["level"] = 0
         }
 
         try await webJSONPost(
@@ -1953,19 +1957,27 @@ actor APIClient {
 
     private static func commentFromChunk(id: Int, level: Int, threadId: Int, chunk: String) -> WorkComment {
         let author = Self.firstMatch(#"comment-user-name\">([^<]+)<"#, in: chunk)
+            ?? Self.firstMatch(#"class=\"[^\"]*user-name[^\"]*\"[^>]*>([^<]+)<"#, in: chunk)
             ?? Self.firstMatch(#"/u/([^\"/]+)\"[^>]*>\s*<span"#, in: chunk)
+            ?? Self.firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
             ?? "Пользователь"
         let userName = Self.firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
-        let textHTML = Self.firstMatch(#"(?s)class=\"rich-content[^\"]*\">([\s\S]*?)</div>"#, in: chunk)
+        let textHTML = Self.firstMatch(#"(?s)class=\"[^\"]*rich-content[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)class=\"[^\"]*comment-text[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)class=\"[^\"]*comment-body[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
             ?? Self.firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)<p[^>]*>([\s\S]*?)</p>"#, in: chunk)
             ?? ""
         let created = Self.firstMatch(#"data-time=\"([^\"]+)\""#, in: chunk)
         let pinned = chunk.contains("data-is-pinned=\"true\"") || chunk.contains("is-pinned")
         let isAuthor = chunk.contains(">автор<") || chunk.contains("label-primary")
         let ratingStr = Self.firstMatch(#"comment-rating-count[^>]*>\s*([+\-]?\d+)"#, in: chunk)
+        // Reply parent is the comment being answered; thread stays the root thread id.
+        let parentId = Int(Self.firstMatch(#"data-parent=\"(\d+)\""#, in: chunk) ?? "")
+            ?? (level > 0 ? threadId : nil)
         return WorkComment(
             id: id,
-            parentId: level > 0 ? threadId : nil,
+            parentId: parentId,
             threadId: threadId,
             level: level,
             authorName: HTMLText.plain(from: author),

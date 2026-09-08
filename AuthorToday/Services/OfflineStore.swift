@@ -144,17 +144,31 @@ final class OfflineStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Books read recently in the app or on the portal, newest first.
+    /// Books read recently in the app (and optionally still-active portal shelf), newest first.
+    /// Finished books drop out unless they were opened in-app within the last 14 days —
+    /// so an old 100% title cannot sit under a book you just finished reading.
     var recentlyRead: [CachedWork] {
         guard let modelContext else { return [] }
         let all = (try? modelContext.fetch(FetchDescriptor<CachedWork>())) ?? []
         let localDates = localProgressDates()
+        let recentCutoff = Date().addingTimeInterval(-14 * 24 * 3600)
         return all
             .filter { work in
-                work.lastReadAt != nil
-                    || work.lastReadChapterId != nil
-                    || work.progress > 0.001
-                    || localDates[work.workId] != nil
+                let date = effectiveLastReadAt(work, localDates: localDates)
+                guard date > .distantPast else { return false }
+                let finished = work.progress >= 0.98
+                    || (work.libraryState ?? "").lowercased() == "finished"
+                if finished {
+                    // Only keep finished titles that were actually opened in-app recently.
+                    guard let local = localDates[work.workId], local > recentCutoff else {
+                        return false
+                    }
+                }
+                // Prefer real in-app activity; portal-only ranks must still look "active".
+                if localDates[work.workId] == nil {
+                    guard date > recentCutoff else { return false }
+                }
+                return true
             }
             .sorted {
                 effectiveLastReadAt($0, localDates: localDates)
@@ -168,8 +182,9 @@ final class OfflineStore: ObservableObject {
     }
 
     private func effectiveLastReadAt(_ work: CachedWork, localDates: [Int: Date]) -> Date {
+        // Never let a portal synthetic stamp outrank a real local checkpoint.
         if let local = localDates[work.workId] {
-            return max(local, work.lastReadAt ?? .distantPast)
+            return local
         }
         return work.lastReadAt ?? .distantPast
     }
@@ -631,8 +646,8 @@ final class OfflineStore: ObservableObject {
     func applyPortalLastReadOrder(_ orderedIDs: [Int], context: ModelContext? = nil) {
         let ctx = context ?? modelContext
         guard let ctx, !orderedIDs.isEmpty else { return }
-        // Keep very recent in-app reads above portal ranks that haven't caught up yet.
-        let base = Date().addingTimeInterval(-5 * 60)
+        // Sit portal ranks a day behind "just now" so today's in-app reads stay on top.
+        let base = Date().addingTimeInterval(-24 * 3600)
         for (index, workId) in orderedIDs.enumerated() {
             let descriptor = FetchDescriptor<CachedWork>(
                 predicate: #Predicate { $0.workId == workId }
@@ -645,8 +660,8 @@ final class OfflineStore: ObservableObject {
                 work.lastReadChapterId = work.lastReadChapterId ?? local.chapterId
                 continue
             }
-            // Synthetic timestamps preserve portal order; refresh every sync.
-            work.lastReadAt = base.addingTimeInterval(-Double(index) * 120)
+            // Synthetic timestamps preserve portal order without looking like "minutes ago".
+            work.lastReadAt = base.addingTimeInterval(-Double(index) * 900)
         }
     }
 
@@ -666,6 +681,15 @@ final class OfflineStore: ObservableObject {
             existing.author = details.displayAuthor
             if let uname = details.authorUserName, !uname.isEmpty {
                 existing.authorUserName = uname
+            }
+            if let seriesTitle = details.displaySeriesTitle {
+                existing.seriesTitle = seriesTitle
+            }
+            if let seriesId = details.seriesId {
+                existing.seriesId = seriesId
+            }
+            if let seriesOrder = details.seriesOrder {
+                existing.seriesOrder = seriesOrder
             }
             existing.coverURL = WorkMeta.normalizeCover(details.coverUrl)
             existing.annotation = details.annotation
@@ -700,7 +724,10 @@ final class OfflineStore: ObservableObject {
                     libraryState: shelfState ?? "localonly",
                     lastReadChapterId: details.resolvedLastReadChapterId,
                     chaptersJSON: chaptersData,
-                    detailsJSON: snapshot
+                    detailsJSON: snapshot,
+                    seriesId: details.seriesId,
+                    seriesTitle: details.displaySeriesTitle,
+                    seriesOrder: details.seriesOrder
                 )
             )
             NotificationPoller.shared.rememberChapterCount(
@@ -884,7 +911,10 @@ final class OfflineStore: ObservableObject {
             lastChapterId: cached.lastReadChapterId,
             lastChapterProgress: nil,
             textLengthLastRead: nil,
-            textLength: nil
+            textLength: nil,
+            seriesId: cached.seriesId,
+            seriesTitle: cached.seriesTitle,
+            seriesOrder: cached.seriesOrder
         ).mergingOfflineChapters(cachedChapters(workId: cached.workId), workId: cached.workId)
     }
 
@@ -1042,6 +1072,7 @@ final class OfflineStore: ObservableObject {
             }
         }
         try? modelContext.save()
+        reloadLibrary()
         BookVaultSync.shared.enqueueProgressUpload(workId: workId, store: self)
     }
 

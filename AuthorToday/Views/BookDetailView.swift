@@ -17,6 +17,7 @@ struct BookDetailView: View {
     @State private var showPurchase = false
     @State private var showTOC = false
     @State private var openAuthorProfile = false
+    @State private var openSeries = false
     @State private var showPaywall = false
     @State private var paywallReason: String?
 
@@ -33,6 +34,16 @@ struct BookDetailView: View {
         if let name = details?.authorUserName, !name.isEmpty { return name }
         if let name = offline.cachedWork(workId: workId)?.authorUserName, !name.isEmpty { return name }
         return nil
+    }
+
+    private var resolvedSeriesTitle: String? {
+        if let title = details?.displaySeriesTitle { return title }
+        let cached = offline.cachedWork(workId: workId)?.displaySeriesFolder ?? ""
+        return cached.isEmpty || cached == "Без серии" ? nil : cached
+    }
+
+    private var resolvedSeriesId: Int? {
+        details?.seriesId ?? offline.cachedWork(workId: workId)?.seriesId
     }
 
     var body: some View {
@@ -65,6 +76,9 @@ struct BookDetailView: View {
         }
         .navigationDestination(isPresented: $openAuthorProfile) {
             authorDestination
+        }
+        .navigationDestination(isPresented: $openSeries) {
+            seriesDestination
         }
         .sheet(isPresented: $showPurchase, onDismiss: {
             Task { await load() }
@@ -122,6 +136,24 @@ struct BookDetailView: View {
     }
 
     @ViewBuilder
+    private var seriesDestination: some View {
+        if let seriesTitle = resolvedSeriesTitle {
+            SeriesDetailView(
+                seriesTitle: seriesTitle,
+                seriesId: resolvedSeriesId,
+                authorUserName: resolvedAuthorUserName,
+                authorDisplayName: details?.displayAuthor
+            )
+        } else {
+            ContentUnavailableView(
+                "Нет серии",
+                systemImage: "books.vertical",
+                description: Text("У этой книги не указана серия.")
+            )
+        }
+    }
+
+    @ViewBuilder
     private var purchaseSheet: some View {
         if let details {
             PurchaseWebView(url: details.purchaseURL, title: "Покупка")
@@ -148,6 +180,7 @@ struct BookDetailView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .themedGroupedFill()
     }
 
@@ -175,6 +208,23 @@ struct BookDetailView: View {
                     .foregroundStyle(resolvedAuthorUserName != nil ? appearance.accent : Color.secondary)
                 }
                 .disabled(resolvedAuthorUserName == nil)
+
+                if let seriesTitle = resolvedSeriesTitle {
+                    Button {
+                        openSeries = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "books.vertical")
+                                .font(.caption)
+                            Text("Серия: \(seriesTitle)")
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(appearance.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if let genre = details.genreName {
                     Text([genre, details.secondGenreName].compactMap { $0 }.joined(separator: " · "))
@@ -411,8 +461,12 @@ struct BookDetailView: View {
                     chapterFraction: remote.resolvedChapterProgress,
                     bookProgress: nil
                 )
-                // meta-info is the most reliable source for last-read chapter + %
+                // meta-info is the most reliable source for series + last-read chapter + %
                 if let meta = try? await APIClient.shared.workMeta(id: workId) {
+                    details = (details ?? remote).mergingSeries(from: meta)
+                    if let merged = details {
+                        offline.cacheWorkDetails(merged)
+                    }
                     if offline.isInLibrary(workId) {
                         offline.upsertWork(from: meta, markFromSite: true)
                     }
@@ -573,6 +627,7 @@ struct BookCommentsSection: View {
     let onLoadMore: () -> Void
 
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -621,6 +676,9 @@ struct BookCommentsSection: View {
                     .buttonStyle(.bordered)
             }
         }
+        .onChange(of: replyTo) { _, next in
+            if next != nil { composerFocused = true }
+        }
     }
 
     private var composer: some View {
@@ -631,8 +689,11 @@ struct BookCommentsSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Отмена") { self.replyTo = nil }
-                        .font(.caption)
+                    Button("Отмена") {
+                        self.replyTo = nil
+                        composerFocused = false
+                    }
+                    .font(.caption)
                 }
             }
             TextField(
@@ -642,18 +703,37 @@ struct BookCommentsSection: View {
             )
             .lineLimit(3...8)
             .textFieldStyle(.roundedBorder)
-
-            Button(action: onSend) {
-                if isSendingComment {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text(replyTo == nil ? "Отправить" : "Ответить")
-                        .frame(maxWidth: .infinity)
+            .focused($composerFocused)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Готово") { composerFocused = false }
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
+
+            HStack(spacing: 10) {
+                if composerFocused {
+                    Button("Скрыть клавиатуру") {
+                        composerFocused = false
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                }
+                Button(action: {
+                    composerFocused = false
+                    onSend()
+                }) {
+                    if isSendingComment {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text(replyTo == nil ? "Отправить" : "Ответить")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
+            }
         }
     }
 
@@ -685,11 +765,16 @@ struct BookCommentsSection: View {
             Text(comment.text)
                 .font(.subheadline)
                 .foregroundStyle(.primary.opacity(0.9))
+                .textSelection(.enabled)
             if canWrite {
-                Button("Ответить") { replyTo = comment }
-                    .font(.caption)
+                Button("Ответить") {
+                    replyTo = comment
+                    composerFocused = true
+                }
+                .font(.caption)
             }
         }
         .padding(.leading, CGFloat(min(comment.level, 4)) * 14)
     }
 }
+

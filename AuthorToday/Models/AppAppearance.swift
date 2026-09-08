@@ -199,15 +199,23 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         isFuturisticFamily || isDaredevilFamily
     }
 
-    /// Dim overlay strength for the living backdrop (lower = more readable lists).
+    /// Whether the photo scrim should bleach toward white (light UI) or darken (dark UI).
+    /// Black overlays on moss/bookshelf make primary text unreadable.
+    var atmosphereUsesLightScrim: Bool {
+        !prefersDark
+    }
+
+    /// Overlay strength for the living backdrop (higher = more readable lists on busy photos).
     var atmosphereOverlayTop: Double {
-        if prefersDark { return 0.35 }
+        if prefersDark { return 0.42 }
+        if backgroundImageName != nil { return 0.58 }
         if isCalmFamily { return 0.03 }
         return 0.12
     }
 
     var atmosphereOverlayBottom: Double {
-        if prefersDark { return 0.55 }
+        if prefersDark { return 0.62 }
+        if backgroundImageName != nil { return 0.78 }
         if isCalmFamily { return 0.06 }
         return 0.22
     }

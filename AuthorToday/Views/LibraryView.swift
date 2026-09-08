@@ -601,7 +601,7 @@ struct RecentReadsView: View {
                     ContentUnavailableView(
                         "Пока пусто",
                         systemImage: "clock",
-                        description: Text("Здесь появятся книги после чтения в приложении или на сайте. Потяните вниз, чтобы обновить порядок с портала.")
+                        description: Text("Здесь появятся книги после чтения в приложении. Завершённые давно книги скрываются. Потяните вниз, чтобы подтянуть порядок с портала.")
                     )
                 } else {
                     ScrollView {
@@ -616,22 +616,28 @@ struct RecentReadsView: View {
                                         if date > .distantPast {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
-                                                .foregroundStyle(.tertiary)
+                                                .foregroundStyle(.secondary)
                                                 .padding(.leading, 88)
                                                 .padding(.bottom, 8)
                                         }
                                     }
                                     .padding(.horizontal, 8)
-                                    .background(.ultraThinMaterial.opacity(0.75))
+                                    .padding(.vertical, 2)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(.regularMaterial)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
                                 }
                                 .buttonStyle(.plain)
-                                Divider().padding(.leading, 88)
                             }
                         }
                         .padding(.vertical, 8)
                     }
                 }
             }
+            .themedGroupedFill()
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
@@ -639,7 +645,7 @@ struct RecentReadsView: View {
                 await offline.syncLibrary(force: true)
             }
             .navigationTitle("Недавние")
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):

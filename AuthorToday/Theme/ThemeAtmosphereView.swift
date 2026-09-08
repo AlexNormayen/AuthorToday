@@ -41,10 +41,13 @@ struct ThemeAtmosphereView: View {
                 }
 
                 LinearGradient(
-                    colors: [
-                        Color.black.opacity(preset.atmosphereOverlayTop * intensity),
-                        Color.black.opacity(preset.atmosphereOverlayBottom * intensity)
-                    ],
+                    colors: {
+                        let ink = preset.atmosphereUsesLightScrim ? Color.white : Color.black
+                        return [
+                            ink.opacity(preset.atmosphereOverlayTop * intensity),
+                            ink.opacity(preset.atmosphereOverlayBottom * intensity)
+                        ]
+                    }(),
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -135,10 +138,13 @@ extension View {
             .background(Color.clear)
     }
 
-    /// Transparent fill so photo theme shows through.
+    /// Soft material fill so photo themes stay visible but body text stays readable.
     func themedGroupedFill() -> some View {
         self.background {
-            Color.clear.ignoresSafeArea()
+            Rectangle()
+                .fill(.thinMaterial)
+                .opacity(0.88)
+                .ignoresSafeArea()
         }
     }
 

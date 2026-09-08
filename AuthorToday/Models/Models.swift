@@ -302,6 +302,9 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     let lastChapterProgress: Double?
     let textLengthLastRead: Int?
     let textLength: Int?
+    let seriesId: Int?
+    let seriesTitle: String?
+    let seriesOrder: Int?
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
@@ -309,6 +312,11 @@ struct WorkDetails: Codable, Identifiable, Sendable {
 
     var displayTitle: String {
         title ?? "Без названия"
+    }
+
+    var displaySeriesTitle: String? {
+        let raw = seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? nil : raw
     }
 
     var availableChapters: [ChapterMeta] {
@@ -342,7 +350,7 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     }
 
     var purchaseURL: URL {
-        // Dedicated work page checkout / buy flow on site (not a blank SPA shell).
+        // Work page with buy intent; PurchaseWebView forces mobile viewport/UA.
         URL(string: "https://author.today/work/\(id)?buy=1")!
     }
 
@@ -403,7 +411,43 @@ struct WorkDetails: Codable, Identifiable, Sendable {
             lastChapterId: lastChapterId,
             lastChapterProgress: lastChapterProgress,
             textLengthLastRead: textLengthLastRead,
-            textLength: textLength
+            textLength: textLength,
+            seriesId: seriesId,
+            seriesTitle: seriesTitle,
+            seriesOrder: seriesOrder
+        )
+    }
+
+    func mergingSeries(from meta: WorkMeta) -> WorkDetails {
+        WorkDetails(
+            id: id,
+            title: title,
+            authorFIO: authorFIO,
+            authorUserName: authorUserName ?? meta.authorUserName,
+            coverUrl: coverUrl,
+            annotation: annotation,
+            chapters: chapters,
+            status: status,
+            genreName: genreName,
+            secondGenreName: secondGenreName,
+            likeCount: likeCount,
+            viewsCount: viewsCount,
+            chapterCount: chapterCount,
+            downloadAllowed: downloadAllowed,
+            isFinished: isFinished,
+            price: price,
+            discount: discount,
+            isPurchased: isPurchased,
+            orderStatus: orderStatus,
+            orderStatusMessage: orderStatusMessage,
+            freeChapterCount: freeChapterCount,
+            lastChapterId: lastChapterId,
+            lastChapterProgress: lastChapterProgress,
+            textLengthLastRead: textLengthLastRead,
+            textLength: textLength,
+            seriesId: seriesId ?? meta.seriesId,
+            seriesTitle: displaySeriesTitle ?? meta.displaySeriesTitle,
+            seriesOrder: seriesOrder ?? meta.seriesOrder
         )
     }
 }

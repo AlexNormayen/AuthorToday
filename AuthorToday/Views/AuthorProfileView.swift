@@ -198,3 +198,178 @@ struct AuthorProfileView: View {
         }
     }
 }
+
+/// Books in a series — from author profile when possible, otherwise library shelf.
+struct SeriesDetailView: View {
+    let seriesTitle: String
+    let seriesId: Int?
+    let authorUserName: String?
+    let authorDisplayName: String?
+
+    @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
+
+    @State private var works: [WorkMeta] = []
+    @State private var isLoading = true
+    @State private var error: String?
+    @State private var addingIds: Set<Int> = []
+
+    var body: some View {
+        Group {
+            if isLoading && works.isEmpty {
+                LoadingStateView(title: "Загрузка серии…")
+            } else if let error, works.isEmpty {
+                ContentUnavailableView(
+                    "Не удалось открыть серию",
+                    systemImage: "books.vertical",
+                    description: Text(error)
+                )
+            } else if works.isEmpty {
+                ContentUnavailableView(
+                    "Пустая серия",
+                    systemImage: "books.vertical",
+                    description: Text("Книги серии пока не найдены.")
+                )
+            } else {
+                List {
+                    Section {
+                        ForEach(works, id: \.id) { work in
+                            workRow(work)
+                        }
+                    } header: {
+                        Text(headerText)
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .themedGroupedFill()
+        .navigationTitle(seriesTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private var headerText: String {
+        if let authorDisplayName, !authorDisplayName.isEmpty {
+            return "\(works.count) кн. · \(authorDisplayName)"
+        }
+        return "\(works.count) кн."
+    }
+
+    @ViewBuilder
+    private func workRow(_ work: WorkMeta) -> some View {
+        let inLibrary = offline.library.contains(where: { $0.workId == work.id })
+        HStack(alignment: .center, spacing: 10) {
+            NavigationLink {
+                BookDetailView(workId: work.id)
+            } label: {
+                HStack(spacing: 12) {
+                    CoverImage(urlString: work.absoluteCoverURL, corner: 6)
+                        .frame(width: 40, height: 56)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(work.displayTitle)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        if let order = work.seriesOrder {
+                            Text("Том \(order)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            if !inLibrary {
+                Button {
+                    Task { await add(work.id) }
+                } label: {
+                    if addingIds.contains(work.id) {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "plus.circle")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(addingIds.contains(work.id))
+            }
+        }
+        .themedListRow()
+    }
+
+    private func add(_ workId: Int) async {
+        addingIds.insert(workId)
+        defer { addingIds.remove(workId) }
+        do {
+            try await offline.addToSiteLibrary(workId: workId, state: "Reading")
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        if let userName = authorUserName, !userName.isEmpty {
+            do {
+                let profile = try await APIClient.shared.authorProfile(
+                    userName: userName,
+                    displayNameHint: authorDisplayName
+                )
+                if let group = profile.series.first(where: { matches($0) }) {
+                    works = group.works
+                    error = nil
+                    return
+                }
+            } catch {
+                // Fall through to library shelf.
+                self.error = error.localizedDescription
+            }
+        }
+
+        let local = offline.library.filter { work in
+            if let seriesId, work.seriesId == seriesId { return true }
+            return work.displaySeriesFolder.caseInsensitiveCompare(seriesTitle) == .orderedSame
+        }
+        .sorted {
+            let oa = $0.seriesOrder ?? Int.max
+            let ob = $1.seriesOrder ?? Int.max
+            if oa != ob { return oa < ob }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        .map {
+            WorkMeta.stub(
+                id: $0.workId,
+                title: $0.title,
+                author: $0.author,
+                coverUrl: $0.coverURL,
+                seriesId: $0.seriesId,
+                seriesTitle: $0.seriesTitle,
+                seriesOrder: $0.seriesOrder
+            )
+        }
+        if !local.isEmpty {
+            works = local
+            error = nil
+        } else if works.isEmpty, error == nil {
+            error = "Не удалось загрузить книги серии"
+        }
+    }
+
+    private func matches(_ group: AuthorSeriesGroup) -> Bool {
+        if let seriesId, group.seriesId == seriesId { return true }
+        return group.title.caseInsensitiveCompare(seriesTitle) == .orderedSame
+    }
+}

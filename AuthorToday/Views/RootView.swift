@@ -384,6 +384,7 @@ struct SettingsHubView: View {
 
                 Section {
                     Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
+                        .tint(.green)
                 } header: {
                     Text("Оповещения")
                 } footer: {
@@ -449,7 +450,8 @@ struct SettingsHubView: View {
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .scrollContentBackground(.hidden)
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
             .task {
                 await updates.checkIfDue()
             }
