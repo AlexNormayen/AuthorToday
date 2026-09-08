@@ -1,3 +1,4 @@
+# Codemagic CI — unsigned Sideloadly IPA + optional signed App Store workflow.
 workflows:
   ios-unsigned-ipa:
     name: AuthorToday iOS IPA (unsigned)
