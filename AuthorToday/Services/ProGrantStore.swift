@@ -108,6 +108,7 @@ final class ProGrantStore: ObservableObject {
     }
 
     func isGranted(email: String?, userName: String?) -> Bool {
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return false }
         let candidates = [normalize(email), normalize(userName)].compactMap { $0 }
         guard !candidates.isEmpty else { return false }
         return grants.contains { grant in

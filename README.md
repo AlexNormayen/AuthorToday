@@ -42,7 +42,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 3. **Start new build** → ветка `main`  
 4. Дождитесь успеха (обычно 10–20 мин)
 
-Для App Store / TestFlight (после Apple Developer + Team ID): workflow **Читальня App Store (signed)** — см. `docs/app-store.md`.
+Для App Store / TestFlight: workflow **Читальня App Store (signed)**, `DEVELOPMENT_TEAM` = `57FVB8DUWX` — см. `docs/app-store.md`.
 
 ### 4. Скачать IPA
 

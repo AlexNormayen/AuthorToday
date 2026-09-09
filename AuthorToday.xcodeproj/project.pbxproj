@@ -65,6 +65,7 @@
 		10000000000000000000004B /* BookVaultSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004C /* BookVaultSettingsView.swift */; };
 		10000000000000000000004C /* PlatformLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004D /* PlatformLayout.swift */; };
 		100000000000000000000062 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004E /* AppUpdateChecker.swift */; };
+		100000000000000000000063 /* ChitalnyaDistribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* ChitalnyaDistribution.swift */; };
 		100000000000000000000048 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* WidgetKit.framework */; };
 		100000000000000000000049 /* ContinueReadingWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* ContinueReadingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		100000000000000000000050 /* ContinueReadingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* ContinueReadingWidget.swift */; };
@@ -153,6 +154,7 @@
 		20000000000000000000004C /* BookVaultSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookVaultSettingsView.swift; sourceTree = "<group>"; };
 		20000000000000000000004D /* PlatformLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformLayout.swift; sourceTree = "<group>"; };
 		20000000000000000000004E /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
+		200000000000000000000054 /* ChitalnyaDistribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChitalnyaDistribution.swift; sourceTree = "<group>"; };
 		200000000000000000000050 /* ContinueReadingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueReadingWidget.swift; sourceTree = "<group>"; };
 		200000000000000000000051 /* WidgetResumeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetResumeStore.swift; sourceTree = "<group>"; };
 		200000000000000000000052 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 				20000000000000000000004A /* BookVaultClient.swift */,
 				20000000000000000000004B /* BookVaultSync.swift */,
 				20000000000000000000004E /* AppUpdateChecker.swift */,
+				200000000000000000000054 /* ChitalnyaDistribution.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -492,6 +495,7 @@
 				10000000000000000000004B /* BookVaultSettingsView.swift in Sources */,
 				10000000000000000000004C /* PlatformLayout.swift in Sources */,
 				100000000000000000000062 /* AppUpdateChecker.swift in Sources */,
+				100000000000000000000063 /* ChitalnyaDistribution.swift in Sources */,
 				10000000000000000000003B /* LocalLibraryModels.swift in Sources */,
 				10000000000000000000003C /* LocalLibraryStore.swift in Sources */,
 				10000000000000000000003D /* LocalBookImporter.swift in Sources */,
@@ -561,12 +565,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = AuthorToday/AuthorToday.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 57FVB8DUWX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AuthorToday/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Читальня";
+				INFOPLIST_KEY_ChitalnyaDistribution = sideload;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -596,12 +601,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = AuthorToday/AuthorToday.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 57FVB8DUWX;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AuthorToday/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Читальня";
+				INFOPLIST_KEY_ChitalnyaDistribution = sideload;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -629,8 +635,8 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ContinueReadingWidget/ContinueReadingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 57FVB8DUWX;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ContinueReadingWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Продолжить";
@@ -657,8 +663,8 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ContinueReadingWidget/ContinueReadingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 57FVB8DUWX;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ContinueReadingWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Продолжить";

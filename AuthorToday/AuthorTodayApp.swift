@@ -50,7 +50,9 @@ struct AuthorTodayApp: App {
                         }
                     }
                     _ = localLibrary.importNewFilesFromDocuments()
-                    await AppUpdateChecker.shared.checkIfDue()
+                    if ChitalnyaDistribution.showsSideloadUpdates {
+                        await AppUpdateChecker.shared.checkIfDue()
+                    }
                 }
                 .onChange(of: auth.isAuthenticated) { _, loggedIn in
                     if loggedIn {
@@ -75,7 +77,9 @@ struct AuthorTodayApp: App {
                         if auth.isAuthenticated {
                             Task { await notifications.handleSceneBecameActive() }
                         }
-                        Task { await AppUpdateChecker.shared.checkIfDue() }
+                        if ChitalnyaDistribution.showsSideloadUpdates {
+                            Task { await AppUpdateChecker.shared.checkIfDue() }
+                        }
                     case .background:
                         notifications.scheduleBackgroundRefresh()
                     default:

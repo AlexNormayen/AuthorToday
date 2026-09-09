@@ -8,10 +8,22 @@ final class BookVaultSettings: ObservableObject {
 
     enum BuiltIn {
         static let apiViaHTTPS = "https://tv.theinquisitor.ru"
+        /// Sideload-only fallbacks (cleartext). App Store builds use HTTPS only.
         static let apiPublic = "http://185.125.103.168:8787"
         static let apiViaVPN = "http://172.29.172.1:8787"
-        static let apiToken = "4db49ebc4117e7a44602e94dc5ea43bb"
-        static let candidates = [apiViaHTTPS, apiPublic, apiViaVPN]
+
+        static var apiToken: String {
+            ChitalnyaDistribution.embedsBookVaultBuiltInToken
+                ? "4db49ebc4117e7a44602e94dc5ea43bb"
+                : ""
+        }
+
+        static var candidates: [String] {
+            if ChitalnyaDistribution.isAppStore {
+                return [apiViaHTTPS]
+            }
+            return [apiViaHTTPS, apiPublic, apiViaVPN]
+        }
     }
 
     private enum Keys {
@@ -20,12 +32,17 @@ final class BookVaultSettings: ObservableObject {
         static let token = "at.bookvault.token"
         static let lastStatus = "at.bookvault.lastStatus"
         static let lastSyncAt = "at.bookvault.lastSyncAt"
+        /// Once user explicitly toggles vault on App Store, remember choice.
+        static let userChoseEnabled = "at.bookvault.userChoseEnabled"
     }
 
     private let defaults = UserDefaults.standard
 
     @Published var isEnabled: Bool {
-        didSet { defaults.set(isEnabled, forKey: Keys.enabled) }
+        didSet {
+            defaults.set(isEnabled, forKey: Keys.enabled)
+            defaults.set(true, forKey: Keys.userChoseEnabled)
+        }
     }
 
     @Published var baseURL: String {
@@ -51,17 +68,37 @@ final class BookVaultSettings: ObservableObject {
     }
 
     private init() {
-        let enabled = defaults.object(forKey: Keys.enabled) as? Bool ?? true
+        let userChose = defaults.bool(forKey: Keys.userChoseEnabled)
+        let enabled: Bool
+        if userChose, defaults.object(forKey: Keys.enabled) != nil {
+            enabled = defaults.bool(forKey: Keys.enabled)
+        } else {
+            enabled = ChitalnyaDistribution.bookVaultDefaultEnabled
+        }
+
         var url = defaults.string(forKey: Keys.baseURL)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if url.isEmpty {
             url = BuiltIn.apiViaHTTPS
         }
+        // App Store: never keep cleartext defaults from older sideload installs.
+        if ChitalnyaDistribution.isAppStore,
+           url.hasPrefix("http://") {
+            url = BuiltIn.apiViaHTTPS
+        }
+
         var token = defaults.string(forKey: Keys.token)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if token.isEmpty {
+        if token.isEmpty, ChitalnyaDistribution.embedsBookVaultBuiltInToken {
             token = BuiltIn.apiToken
         }
+        // App Store: do not auto-fill baked-in token.
+        if ChitalnyaDistribution.isAppStore,
+           token == "4db49ebc4117e7a44602e94dc5ea43bb",
+           !userChose {
+            token = ""
+        }
+
         isEnabled = enabled
         baseURL = url
         apiToken = token
@@ -83,6 +120,9 @@ final class BookVaultSettings: ObservableObject {
         if !primary.isEmpty { list.append(primary) }
         for c in BuiltIn.candidates where !list.contains(c) {
             list.append(c)
+        }
+        if ChitalnyaDistribution.isAppStore {
+            list = list.filter { $0.lowercased().hasPrefix("https://") }
         }
         return list.compactMap {
             URL(string: $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")))

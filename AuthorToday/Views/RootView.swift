@@ -305,7 +305,7 @@ struct SettingsHubView: View {
     var body: some View {
         NavigationStack {
             List {
-                if updates.updateAvailable {
+                if ChitalnyaDistribution.showsSideloadUpdates, updates.updateAvailable {
                     Section {
                         Button {
                             updates.openInstallPage()
@@ -388,7 +388,7 @@ struct SettingsHubView: View {
                 } header: {
                     Text("Оповещения")
                 } footer: {
-                    Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Настоящие APNs-пуши с сервера недоступны без платного Apple Developer.")
+                    Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today.")
                 }
 
                 Section("Оформление") {
@@ -404,12 +404,21 @@ struct SettingsHubView: View {
                     NavigationLink {
                         BookVaultSettingsView()
                     } label: {
-                        Label("Облачная полка (VPS)", systemImage: "externaldrive.badge.icloud")
+                        Label(
+                            ChitalnyaDistribution.isAppStore
+                                ? "Облачная полка (опционально)"
+                                : "Облачная полка (VPS)",
+                            systemImage: "externaldrive.badge.icloud"
+                        )
                     }
                 } header: {
                     Text("Резервная копия")
                 } footer: {
-                    Text("Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами.")
+                    Text(
+                        ChitalnyaDistribution.isAppStore
+                            ? "По умолчанию выключено. Если включите — книги, прогресс и закладки можно синхронизировать на сервер разработчика (явное согласие)."
+                            : "Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами."
+                    )
                 }
 
                 Section("Аккаунт") {
@@ -424,6 +433,7 @@ struct SettingsHubView: View {
                 Section("О приложении") {
                     LabeledContent("Приложение", value: "Читальня")
                     LabeledContent("Версия", value: updates.localDisplay)
+                    LabeledContent("Канал", value: ChitalnyaDistribution.channelLabel)
                     LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)")
                     LabeledContent("Платформа", value: "author.today")
                     LabeledContent("Режим", value: "онлайн + офлайн")
@@ -435,7 +445,9 @@ struct SettingsHubView: View {
                     }
                 }
 
-                AppUpdateSettingsSection(checker: updates)
+                if ChitalnyaDistribution.showsSideloadUpdates {
+                    AppUpdateSettingsSection(checker: updates)
+                }
 
                 Section {
                     Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
@@ -453,7 +465,9 @@ struct SettingsHubView: View {
             .scrollContentBackground(.hidden)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .task {
-                await updates.checkIfDue()
+                if ChitalnyaDistribution.showsSideloadUpdates {
+                    await updates.checkIfDue()
+                }
             }
         }
     }

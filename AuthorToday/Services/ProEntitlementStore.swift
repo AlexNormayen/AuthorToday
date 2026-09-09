@@ -155,16 +155,24 @@ final class ProEntitlementStore: ObservableObject {
     }
 
     private func refreshUnlockedFlag() {
-        let builtIn = ProFeatures.isOwnerAccount(
-            email: allowlistEmail,
-            userName: allowlistUserName
-        )
-        let granted = ProGrantStore.shared.isGranted(
-            email: allowlistEmail,
-            userName: allowlistUserName
-        )
-        isComplimentaryPro = builtIn || granted
+        var complimentary = false
+        if ChitalnyaDistribution.allowsComplimentaryPro {
+            let builtIn = ProFeatures.isOwnerAccount(
+                email: allowlistEmail,
+                userName: allowlistUserName
+            )
+            let granted = ProGrantStore.shared.isGranted(
+                email: allowlistEmail,
+                userName: allowlistUserName
+            )
+            complimentary = builtIn || granted
+        }
+        isComplimentaryPro = complimentary
+        #if DEBUG
         let debug = UserDefaults.standard.bool(forKey: debugUnlockKey)
+        #else
+        let debug = false
+        #endif
         isProUnlocked = isPro || isComplimentaryPro || debug
     }
 

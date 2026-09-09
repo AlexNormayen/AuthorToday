@@ -1,4 +1,11 @@
-# Codemagic CI — unsigned Sideloadly IPA + optional signed App Store workflow.
+# Codemagic CI — unsigned Sideloadly IPA + App Store / TestFlight signed workflow.
+#
+# Secrets (set in Codemagic UI → Environment variables, NOT in this file):
+#   CHITALNYA_PUBLISH_TOKEN, CHITALNYA_SSH_KEY_B64
+#   CHITALNYA_VPS_HOST, CHITALNYA_SSH_USER (optional overrides)
+# App Store signed workflow also needs:
+#   DEVELOPMENT_TEAM = Team ID (Membership)
+# Optional TestFlight: App Store Connect API key integration / APP_STORE_APPLE_ID
 workflows:
   ios-unsigned-ipa:
     name: AuthorToday iOS IPA (unsigned)
@@ -10,12 +17,9 @@ workflows:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
         CHITALNYA_PUBLISH_URL: https://tv.theinquisitor.ru/chitalnya/api/publish
-        # HTTPS token fallback (CodeMagic→VPS :443 is flaky). Prefer SSH below.
-        CHITALNYA_PUBLISH_TOKEN: 4a581112430aa71109f4cb9b911915cb12c576b1952de7a9
-        # Restricted VPS user `chitalnya-publish` (can only upload IPA). Port 22.
         CHITALNYA_VPS_HOST: "185.125.103.168"
         CHITALNYA_SSH_USER: chitalnya-publish
-        CHITALNYA_SSH_KEY_B64: "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNDNGRNYmRRNGtqVzJNZDJFZWhaUUZXSXU0eHF4MzNWTmVuVEh5UXRZQjNWd0FBQUtEaTVVVEw0dVZFCnl3QUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQzRkTWJkUTRralcyTWQyRWVoWlFGV0l1NHhxeDMzVk5lblRIeVF0WUIzVncKQUFBRUFlV2ljelcyQVoyWlhjV3J0VEx6dlZXN0NlSlpERXA3ZmgrcXNVaEIzWFM3aDB4dDFEaVNOYll4M1lSNkZsQVZZaQo3akdySGZkVTE2ZE1mSkMxZ0hkWEFBQUFHMk5vYVhSaGJHNTVZUzFqYjJSbGJXRm5hV010Y0hWaWJHbHphQUVDCi0tLS0tRU5EIE9QRU5TU0ggUFJJVkFURSBLRVktLS0tLQo="
+        # CHITALNYA_PUBLISH_TOKEN and CHITALNYA_SSH_KEY_B64 — Codemagic encrypted env only
     triggering:
       events:
         - push
@@ -61,6 +65,7 @@ workflows:
             DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=NO \
             CURRENT_PROJECT_VERSION="${PROJECT_BUILD_NUMBER:-1}" \
+            INFOPLIST_KEY_ChitalnyaDistribution=sideload \
             build 2>&1 | tee "$LOG"
           STATUS=${PIPESTATUS[0]}
           set -e
@@ -95,6 +100,8 @@ workflows:
               || /usr/libexec/PlistBuddy -c "Add :ChitalnyaPublishId string $PUB_ID" "$PLIST"
             echo "Stamped ChitalnyaPublishId=$PUB_ID"
           fi
+          /usr/libexec/PlistBuddy -c "Set :ChitalnyaDistribution sideload" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :ChitalnyaDistribution string sideload" "$PLIST"
           STAGE="$CM_BUILD_DIR/ipa_stage"
           rm -rf "$STAGE"
           mkdir -p "$STAGE/Payload"
@@ -148,11 +155,15 @@ workflows:
                 echo "SSH publish failed — will try HTTPS"
               fi
               rm -f "$KEY"
+            else
+              echo "CHITALNYA_SSH_KEY_B64 not set in Codemagic env — skip SSH publish"
             fi
 
             # 2) HTTPS fallback (may time out from CodeMagic → RU VPS).
             if [ "$publish_ok" -ne 1 ]; then
-              if curl -fL --connect-timeout 20 --max-time 90 \
+              if [ -z "${CHITALNYA_PUBLISH_TOKEN:-}" ]; then
+                echo "CHITALNYA_PUBLISH_TOKEN not set — skip HTTPS publish"
+              elif curl -fL --connect-timeout 20 --max-time 90 \
                   --retry 2 --retry-delay 2 \
                   --resolve "tv.theinquisitor.ru:443:${HOST}" \
                   -X POST "$CHITALNYA_PUBLISH_URL" \
@@ -171,31 +182,53 @@ workflows:
               echo "Published: https://tv.theinquisitor.ru/chitalnya/"
             else
               echo "WARNING: auto-publish failed. IPA is still in Codemagic Artifacts."
+              echo "Ensure CHITALNYA_SSH_KEY_B64 / CHITALNYA_PUBLISH_TOKEN are set in Codemagic UI."
               exit 0
             fi
 
-  # App Store / TestFlight — only after Developer enrollment.
-  # In Codemagic UI → Environment variables (for this workflow) set:
-  #   DEVELOPMENT_TEAM = your Team ID (Membership)
-  # Optional: APP_STORE_APPLE_ID, plus App Store Connect API key integration.
-  # Do NOT put empty strings in yaml — Codemagic rejects the whole file.
+  # App Store / TestFlight — Developer Program + Team ID required.
+  # Codemagic UI → Environment variables for this workflow:
+  #   DEVELOPMENT_TEAM = 57FVB8DUWX
+  # Optional: App Store Connect API key integration for TestFlight upload.
+  # Identifiers (Developer portal):
+  #   ru.chitalnya.reader
+  #   ru.chitalnya.reader.ContinueReadingWidget
+  #   App Group group.ru.chitalnya.reader on both
+  #   In-App Purchase on main App ID
   ios-app-store-signed:
     name: Читальня App Store (signed)
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
       xcode: latest
+      groups:
+        - app_store  # UI/API: DEVELOPMENT_TEAM=57FVB8DUWX
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: ru.chitalnya.reader
+        bundle_identifier:
+          - ru.chitalnya.reader
+          - ru.chitalnya.reader.ContinueReadingWidget
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
     scripts:
+      - name: Prepare App Store Info.plist (HTTPS only)
+        script: |
+          set -euo pipefail
+          # Strip cleartext ATS exceptions used only for sideload VPS fallbacks.
+          PLIST="$CM_BUILD_DIR/AuthorToday/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$PLIST" || true
+            echo "Removed NSAppTransportSecurity from Info.plist for App Store build"
+          fi
+
       - name: Set up code signing
         script: |
           set -euo pipefail
           xcode-project use-profiles
+          # Fetch profiles for main app + widget when available
+          echo "Expected bundles: ru.chitalnya.reader , ru.chitalnya.reader.ContinueReadingWidget"
+          echo "App Group: group.ru.chitalnya.reader"
 
       - name: Build signed archive
         script: |
@@ -215,6 +248,9 @@ workflows:
             -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
             -destination "generic/platform=iOS" \
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CURRENT_PROJECT_VERSION="${PROJECT_BUILD_NUMBER:-2}" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="APPSTORE" \
+            INFOPLIST_KEY_ChitalnyaDistribution=appstore \
             PRODUCT_BUNDLE_IDENTIFIER=ru.chitalnya.reader \
             archive
 
@@ -232,17 +268,22 @@ workflows:
             <string>automatic</string>
             <key>uploadSymbols</key>
             <true/>
+            <key>teamID</key>
+            <string>TEAM_ID_PLACEHOLDER</string>
           </dict>
           </plist>
           EOF
           # Strip leading spaces from indented heredoc so plist is valid
           sed -i '' 's/^[[:space:]]*//' "$CM_BUILD_DIR/ExportOptions.plist"
+          /usr/libexec/PlistBuddy -c "Set :teamID $DEVELOPMENT_TEAM" "$CM_BUILD_DIR/ExportOptions.plist"
           xcodebuild -exportArchive \
             -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
             -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist" \
             -exportPath "$CM_BUILD_DIR/export"
           cp "$CM_BUILD_DIR"/export/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
           ls -lh "$CM_BUILD_DIR/Chitalnya.ipa"
+          # Sanity: channel stamp
+          unzip -l "$CM_BUILD_DIR/Chitalnya.ipa" | head -n 40 || true
 
       - name: Upload to TestFlight (optional)
         script: |

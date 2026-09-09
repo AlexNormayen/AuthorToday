@@ -6,18 +6,26 @@ enum ProFeatures {
     /// Fully offline books (all chapters) allowed without Pro.
     static let freeFullDownloadLimit = 2
 
-    /// Always-Pro accounts (no StoreKit). Matched case-insensitively.
-    /// Add emails and/or Author.Today usernames here.
-    static let complimentaryEmails: Set<String> = [
-        "fowl_348@mail.ru",
-    ]
+    /// Always-Pro accounts (no StoreKit). Debug builds only — not in App Store / Release.
+    static var complimentaryEmails: Set<String> {
+        #if DEBUG
+        ["fowl_348@mail.ru"]
+        #else
+        []
+        #endif
+    }
 
-    static let complimentaryUserNames: Set<String> = [
-        "dark_tarkhan",
-    ]
+    static var complimentaryUserNames: Set<String> {
+        #if DEBUG
+        ["dark_tarkhan"]
+        #else
+        []
+        #endif
+    }
 
-    /// Owner allowlist (complimentary Pro + optional internal tools).
+    /// Owner allowlist (complimentary Pro + optional internal tools). Debug only.
     static func isOwnerAccount(email: String?, userName: String?) -> Bool {
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return false }
         if let email = normalize(email), complimentaryEmails.contains(email) {
             return true
         }
@@ -28,6 +36,7 @@ enum ProFeatures {
     }
 
     static func isComplimentaryAccount(email: String?, userName: String?) -> Bool {
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return false }
         if isOwnerAccount(email: email, userName: userName) {
             return true
         }
@@ -57,10 +66,14 @@ enum ProFeatures {
         AppThemePreset.allCases.filter { !requiresPro($0) }
     }
 
-    /// Optional promo codes. Paid Pro is App Store IAP.
-    static let sideloadInviteCodes: Set<String> = [
-        "CHITALNYA-FRIENDS",
-    ]
+    /// Optional promo codes. Debug only — paid Pro is App Store IAP in Release.
+    static var sideloadInviteCodes: Set<String> {
+        #if DEBUG
+        ["CHITALNYA-FRIENDS"]
+        #else
+        []
+        #endif
+    }
 
     /// Local file shelf (TXT/EPUB) — Pro only.
     static let localLibraryRequiresPro = true

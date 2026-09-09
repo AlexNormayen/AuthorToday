@@ -9,9 +9,11 @@ struct ProPaywallView: View {
 
     var reason: String?
 
+#if DEBUG
     @State private var showRedeem = false
     @State private var redeemCode = ""
     @State private var redeemMessage: String?
+#endif
 
     var body: some View {
         NavigationStack {
@@ -40,8 +42,8 @@ struct ProPaywallView: View {
                         )
                     )
                     .font(.footnote)
-#endif
                     redeemBlock
+#endif
                     legal
                 }
                 .padding(20)
@@ -118,7 +120,7 @@ struct ProPaywallView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             } else if pro.products.isEmpty {
-                Text("Тарифы появятся после публикации продуктов в App Store Connect. Пока можно восстановить покупки или ввести промокод.")
+                Text("Тарифы появятся после публикации продуктов в App Store Connect. Можно восстановить уже купленные.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -190,6 +192,7 @@ struct ProPaywallView: View {
         product.price
     }
 
+#if DEBUG
     private var redeemBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -263,6 +266,7 @@ struct ProPaywallView: View {
             redeemMessage = "Код принят. Если Pro не включился — перезайдите в аккаунт."
         }
     }
+#endif
 
     private func productButton(_ product: Product, badge: String?, subtitleHint: String?) -> some View {
         Button {

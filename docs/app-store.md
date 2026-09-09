@@ -18,8 +18,11 @@
 | Subtitle (полная формулировка) | Клиент Author.Today (неофициальный) |
 | Subtitle в Connect (лимит 30 символов) | `Клиент Author.Today (неофиц.)` |
 | Bundle ID | `ru.chitalnya.reader` |
+| Widget Bundle ID | `ru.chitalnya.reader.ContinueReadingWidget` |
+| App Group | `group.ru.chitalnya.reader` |
+| Team ID | `57FVB8DUWX` |
 | Категория | Books |
-| Privacy Policy URL | хостинг `docs/privacy.html` (GitHub Pages / свой URL) |
+| Privacy Policy URL | `https://tv.theinquisitor.ru/chitalnya/privacy.html` (файл: `docs/privacy.html` / `docs/chitalnya-install/privacy.html`) |
 
 Полную фразу «Клиент Author.Today (неофициальный)» ставим в **Promotional Text / первую строку Description** и в UI приложения; в поле Subtitle Connect — укороченный вариант из‑за лимита 30.
 
@@ -88,11 +91,12 @@ Author.Today не отвечает за работу этого клиента.
 
 ## Пошагово: от письма Apple до TestFlight
 
-### 1. Дозавершить enrollment
-1. В письме Apple Developer нажать **Complete your enrollment now**.
-2. Войти тем же Apple ID, оплатить программу (~$99/год).
-3. Дождаться статуса **Active** на [developer.apple.com/account](https://developer.apple.com/account) → Membership.
-4. Скопировать **Team ID** (10 символов) — понадобится в Codemagic.
+### 1. Enrollment — готово
+1. ~~Complete enrollment / оплата~~ — Membership **Active**.
+2. **Team ID:** `57FVB8DUWX` (Membership на developer.apple.com).
+3. В Codemagic → workflow **Читальня App Store (signed)** → Environment variables:  
+   `DEVELOPMENT_TEAM` = `57FVB8DUWX`  
+   (то же значение уже в `project.pbxproj` для Xcode).
 
 ### 2. Agreements в App Store Connect
 1. Открыть [appstoreconnect.apple.com](https://appstoreconnect.apple.com).
@@ -100,7 +104,9 @@ Author.Today не отвечает за работу этого клиента.
 3. Без этого In-App Purchase и платные билды не заработают.
 
 ### 3. Приложение и Bundle ID
-1. Certificates, Identifiers & Profiles → Identifiers → создать App ID `ru.chitalnya.reader` (если ещё нет), с capabilities: In-App Purchase.
+1. Certificates, Identifiers & Profiles → Identifiers:
+   - App ID `ru.chitalnya.reader` — capabilities: **In-App Purchase**, **App Groups** (`group.ru.chitalnya.reader`).
+   - App ID `ru.chitalnya.reader.ContinueReadingWidget` — **App Groups** (тот же group).
 2. App Store Connect → My Apps → **+** → New App:
    - Platform: iOS
    - Name: **Читальня**
@@ -119,18 +125,20 @@ Author.Today не отвечает за работу этого клиента.
 Цены и локализации (RU) — в Connect. После создания продукты должны быть в статусе **Ready to Submit** вместе с билдом.
 
 ### 5. Подпись и Codemagic
-1. В Codemagic → приложение AuthorToday → workflow **`ios-app-store-signed`**.
-2. Environment variables: `DEVELOPMENT_TEAM` = Team ID.
+1. В Codemagic → приложение AuthorToday → workflow **`ios-app-store-signed`** (Читальня App Store).
+2. Environment variables: `DEVELOPMENT_TEAM` = `57FVB8DUWX`.
 3. Подключить **App Store Connect API key** (Users and Access → Keys → App Store Connect API) и сертификаты/профили (или automatic code signing через integration).
-4. Запустить билд → артефакт уйдёт в TestFlight (если настроен upload).
+4. Запустить билд → артефакт `Chitalnya.ipa`; при настроенном API key — upload в TestFlight.
+5. Сборка ставит `APPSTORE` + `ChitalnyaDistribution=appstore` (без SideStore-обновлений, Book Vault opt-in, без promo в Release).
 
-Альтернатива без Codemagic: собрать Archive в Xcode на Mac с тем же Team ID и Upload to App Store Connect.
+Альтернатива без Codemagic: Archive в Xcode на Mac с Team `57FVB8DUWX` → Upload to App Store Connect.
 
 ### 6. Листинг и Review
 1. Заполнить Name / Subtitle / Description / Keywords (черновик выше).
-2. Privacy Policy URL (задеплоить `docs/privacy.html`).
+2. Privacy Policy URL: **`https://tv.theinquisitor.ru/chitalnya/privacy.html`**  
+   (задеплоить `docs/chitalnya-install/privacy.html` на VPS рядом с install page, если ещё не лежит).
 3. Скриншоты 6.7" (логин с дисклеймером «неофициальный», библиотека, читалка).
-4. Age Rating, App Privacy (данные логина AT — указать честно).
+4. Age Rating, App Privacy (логин AT; опциональная облачная полка — только если пользователь включил).
 5. Review Notes (шаблон выше) + демо-аккаунт AT.
 6. Выбрать билд из TestFlight → **Submit for Review**.
 
@@ -141,7 +149,8 @@ Author.Today не отвечает за работу этого клиента.
 
 ## Оплата Pro
 
-Временная оплата через СБП **убрана**. Pro продаётся только через **Apple In-App Purchase** (StoreKit 2). Промокоды в UI остаются опционально.
+Временная оплата через СБП **убрана**. Pro продаётся только через **Apple In-App Purchase** (StoreKit 2).  
+Промокоды / complimentary allowlist в **Release и App Store отключены** (остаются только в DEBUG).
 
 ### Intro offer и Family Sharing (Connect)
 
@@ -160,13 +169,22 @@ Author.Today не отвечает за работу этого клиента.
 
 В коде: `AuthorToday.entitlements` и `ContinueReadingWidget.entitlements`. Deep link: `chitalnya://resume/{workId}?chapter=…`.
 
-## Что нужно перед сабмитом
+## Чеклист перед первым TestFlight
 
-1. ~~Ответ support@author.today~~ — получено (см. выше).
-2. Apple Developer Program оплачен → **Team ID** из Membership.
-3. В App Store Connect создать приложение с bundle `ru.chitalnya.reader`.
-4. В Codemagic: App Store Connect API key + сертификаты для workflow `ios-app-store-signed`.
-5. Скриншоты iPhone 6.7" (логин с дисклеймером / библиотека / читалка).
-6. Публичный URL Privacy Policy (`docs/privacy.html`).
-7. IAP продукты созданы + банковские agreements.
-8. TestFlight → Submit for Review.
+1. ~~Разрешение Author.Today~~ — есть.
+2. ~~Team ID~~ — `57FVB8DUWX` → Codemagic `DEVELOPMENT_TEAM`.
+3. Paid Apps + Tax/Banking в App Store Connect.
+4. Identifiers: main + widget + App Group + IAP.
+5. New App «Читальня» в Connect.
+6. IAP products Ready to Submit.
+7. Privacy URL живой: `https://tv.theinquisitor.ru/chitalnya/privacy.html`.
+8. Codemagic: secrets для **unsigned** publish (`CHITALNYA_SSH_KEY_B64` / `CHITALNYA_PUBLISH_TOKEN`) — только в UI, не в git.
+9. Запуск workflow **Читальня App Store (signed)** → TestFlight.
+10. Скриншоты 6.7" + Review Notes + демо AT-аккаунт → Submit for Review.
+
+## Каналы сборки (код)
+
+| Канал | Как | Обновления IPA | Book Vault | Pro promo |
+|-------|-----|----------------|------------|-----------|
+| Sideload | unsigned Codemagic / Xcode без `APPSTORE` | да | default on | только DEBUG |
+| App Store | signed workflow / `APPSTORE` | нет | default off, opt-in | только DEBUG |

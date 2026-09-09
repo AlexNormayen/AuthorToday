@@ -59,6 +59,7 @@ final class AppUpdateChecker: ObservableObject {
 
     /// Quiet check on launch / become active (throttled).
     func checkIfDue() async {
+        guard ChitalnyaDistribution.showsSideloadUpdates else { return }
         let last = UserDefaults.standard.double(forKey: lastCheckKey)
         if last > 0, Date().timeIntervalSince1970 - last < minAutoCheckInterval {
             return
@@ -67,6 +68,7 @@ final class AppUpdateChecker: ObservableObject {
     }
 
     func check(force: Bool = true) async {
+        guard ChitalnyaDistribution.showsSideloadUpdates else { return }
         guard !isChecking else { return }
         isChecking = true
         lastError = nil
