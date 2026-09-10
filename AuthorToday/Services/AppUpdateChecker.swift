@@ -257,10 +257,10 @@ struct AppUpdateSettingsSection: View {
                     .themedPanelRow()
             }
         } header: {
-            Text("Обновления IPA").themedReadableText()
+            Text("Обновления IPA").themedSectionChrome()
         } footer: {
             Text("Приложение само себя не переустанавливает. Новая IPA ставится через SideStore со страницы установки.")
-                .themedReadableText()
+                .themedSectionChrome()
         }
     }
 }

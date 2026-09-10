@@ -41,30 +41,26 @@ struct LocalLibraryPane: View {
     var body: some View {
         Group {
             if localLibrary.books.isEmpty {
-                ContentUnavailableView {
-                    Label("Мои книги", systemImage: "tray.and.arrow.down")
-                } description: {
-                    Text(emptyDescription)
-                } actions: {
-                    Button(emptyPrimaryTitle) {
+                ThemedEmptyStateView(
+                    title: "Мои книги",
+                    systemImage: "tray.and.arrow.down",
+                    description: emptyDescription,
+                    actionTitle: emptyPrimaryTitle,
+                    action: {
                         if canImportMore {
                             showImporter = true
                         } else {
                             showPaywall = true
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                }
-                .themedEmptyStateCard()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                )
             } else {
                 List {
                     if !pro.isProUnlocked {
                         Section {
                             Text(quotaHint)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .themedReadableText()
+                                .font(.footnote.weight(.medium))
+                                .themedSecondaryText()
                                 .themedPanelRow()
                         }
                         .listRowSeparator(.hidden)
@@ -93,6 +89,7 @@ struct LocalLibraryPane: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .environment(\.themePreset, appearance.themePreset)
+                .environment(\.themeAccent, appearance.accent)
             }
         }
         .toolbar {
@@ -195,14 +192,14 @@ struct LocalLibraryPane: View {
                         .background(appearance.accent.opacity(0.22), in: Capsule())
                     if !book.author.isEmpty {
                         Text(book.author)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption.weight(.medium))
+                            .themedSecondaryText()
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
                     Text("\(book.displayProgressPercent)%")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit().weight(.medium))
+                        .themedSecondaryText()
                 }
             }
         }

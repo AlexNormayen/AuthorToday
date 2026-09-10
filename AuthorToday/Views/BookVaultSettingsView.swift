@@ -30,14 +30,14 @@ struct BookVaultSettingsView: View {
                     .font(.footnote.monospaced())
                     .themedPanelRow()
             } header: {
-                Text("Подключение").themedReadableText()
+                Text("Подключение").themedSectionChrome()
             } footer: {
                 Text(
                     ChitalnyaDistribution.isAppStore
                         ? "По умолчанию выключено. Включая полку, вы соглашаетесь отправлять скачанные книги, прогресс и закладки на сервер разработчика Читальни (HTTPS). Токен выдаёт разработчик — в App Store-сборке он не зашит в приложение."
                         : "Скачанные книги Author.Today и TXT/EPUB из «Мои книги» хранятся на VPS отдельно для каждого аккаунта. После переустановки приложения — «Восстановить с VPS»."
                 )
-                .themedReadableText()
+                .themedSectionChrome()
             }
 
             Section {
@@ -93,7 +93,7 @@ struct BookVaultSettingsView: View {
                 LabeledContent("Мои книги", value: "\(localLibrary.books.count)")
                     .themedPanelRow()
             } header: {
-                Text("Синхронизация").themedReadableText()
+                Text("Синхронизация").themedSectionChrome()
             }
 
             Section {
@@ -105,6 +105,7 @@ struct BookVaultSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .environment(\.themePreset, appearance.themePreset)
+        .environment(\.themeAccent, appearance.accent)
         .navigationTitle("Облачная полка")
         .navigationBarTitleDisplayMode(.inline)
         .themedScreenChrome()

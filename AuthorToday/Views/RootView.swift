@@ -23,9 +23,13 @@ struct RootView: View {
         }
         .environmentObject(downloads)
         .environment(\.themePreset, appearance.themePreset)
+        .environment(\.themeAccent, appearance.accent)
         .onAppear {
             configureTranslucentChrome()
             configureSegmentedChrome(for: appearance.themePreset)
+            if appearance.themePreset.chromeInk == .onDark, appearance.colorMode == .light {
+                appearance.colorMode = .dark
+            }
         }
         .onChange(of: appearance.themePreset) { _, preset in
             configureSegmentedChrome(for: preset)
@@ -346,8 +350,8 @@ struct SettingsHubView: View {
                                 .font(AppTheme.headlineFont)
                             if let email = user.email {
                                 Text(email)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                    .font(.subheadline.weight(.medium))
+                                    .themedSecondaryText()
                             }
                         }
                         .padding(.vertical, 4)
@@ -363,7 +367,7 @@ struct SettingsHubView: View {
                     }
                     .themedPanelRow()
                 } header: {
-                    Text("Общение").themedReadableText()
+                    Text("Общение").themedSectionChrome()
                 }
 
                 Section {
@@ -383,16 +387,16 @@ struct SettingsHubView: View {
                             Spacer()
                             if pro.isComplimentaryPro {
                                 Text("По аккаунту")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption.weight(.semibold))
+                                    .themedSecondaryText()
                             } else if pro.isProUnlocked {
                                 Text("Активен")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption.weight(.semibold))
+                                    .themedSecondaryText()
                             } else {
                                 Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption.weight(.semibold))
+                                    .themedSecondaryText()
                             }
                         }
                     }
@@ -404,10 +408,10 @@ struct SettingsHubView: View {
                     }
                     .themedPanelRow()
                 } header: {
-                    Text("Поддержка").themedReadableText()
+                    Text("Поддержка").themedSectionChrome()
                 } footer: {
                     Text("Pro улучшает клиент Читальня (темы, офлайн, закладки, свои TXT/EPUB). Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
-                        .themedReadableText()
+                         .themedSectionChrome()
                 }
 
                 Section {
@@ -415,10 +419,10 @@ struct SettingsHubView: View {
                         .tint(.green)
                         .themedPanelRow()
                 } header: {
-                    Text("Оповещения").themedReadableText()
+                    Text("Оповещения").themedSectionChrome()
                 } footer: {
                     Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today.")
-                        .themedReadableText()
+                         .themedSectionChrome()
                 }
 
                 Section {
@@ -431,7 +435,7 @@ struct SettingsHubView: View {
                     }
                     .themedPanelRow()
                 } header: {
-                    Text("Оформление").themedReadableText()
+                    Text("Оформление").themedSectionChrome()
                 }
 
                 Section {
@@ -447,14 +451,14 @@ struct SettingsHubView: View {
                     }
                     .themedPanelRow()
                 } header: {
-                    Text("Резервная копия").themedReadableText()
+                    Text("Резервная копия").themedSectionChrome()
                 } footer: {
                     Text(
                         ChitalnyaDistribution.isAppStore
                             ? "По умолчанию выключено. Если включите — книги, прогресс и закладки можно синхронизировать на сервер разработчика (явное согласие)."
                             : "Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами."
                     )
-                    .themedReadableText()
+                     .themedSectionChrome()
                 }
 
                 Section {
@@ -467,7 +471,7 @@ struct SettingsHubView: View {
                     }
                     .themedPanelRow()
                 } header: {
-                    Text("Аккаунт").themedReadableText()
+                    Text("Аккаунт").themedSectionChrome()
                 }
 
                 Section {
@@ -484,7 +488,7 @@ struct SettingsHubView: View {
                         LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)").themedPanelRow()
                     }
                 } header: {
-                    Text("О приложении").themedReadableText()
+                    Text("О приложении").themedSectionChrome()
                 }
 
                 if ChitalnyaDistribution.showsSideloadUpdates {
@@ -493,15 +497,16 @@ struct SettingsHubView: View {
 
                 Section {
                     Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(.footnote.weight(.medium))
+                        .themedSecondaryText()
                         .themedPanelRow()
                 } header: {
-                    Text("Важно").themedReadableText()
+                    Text("Важно").themedSectionChrome()
                 }
             }
             .listStyle(.insetGrouped)
             .environment(\.themePreset, appearance.themePreset)
+            .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
             .themedScreenChrome()
             .background {

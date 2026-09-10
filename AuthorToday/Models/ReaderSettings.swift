@@ -374,5 +374,23 @@ extension Color {
         )
     }
 
+    /// Mix toward another color (`amount` 0 = self, 1 = other).
+    func blended(toward other: Color, amount: Double) -> Color {
+        let t = min(max(amount, 0), 1)
+        let a = UIColor(self)
+        let b = UIColor(other)
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        return Color(
+            .sRGB,
+            red: Double(ar + (br - ar) * t),
+            green: Double(ag + (bg - ag) * t),
+            blue: Double(ab + (bb - ab) * t),
+            opacity: Double(aa + (ba - aa) * t)
+        )
+    }
+
     func uiColor() -> UIColor { UIColor(self) }
 }

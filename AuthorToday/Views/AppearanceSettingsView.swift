@@ -20,9 +20,8 @@ struct AppearanceSettingsView: View {
                             .foregroundStyle(.primary)
                             .themedReadableText()
                         Text("Живой фон темы")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .themedReadableText()
+                            .font(.caption.weight(.medium))
+                            .themedSecondaryText()
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 14)
@@ -32,7 +31,7 @@ struct AppearanceSettingsView: View {
                 .listRowBackground(Color.clear)
             }
 
-            Section("Тема приложения") {
+            Section {
                 Picker("Режим", selection: $appearance.colorMode) {
                     ForEach(AppColorMode.allCases) { mode in
                         Text(mode.title).tag(mode)
@@ -125,9 +124,11 @@ struct AppearanceSettingsView: View {
                     )
                     .themedPanelRow()
                 }
+            } header: {
+                Text("Тема приложения").themedSectionChrome()
             }
 
-            Section("Читалка") {
+            Section {
                 NavigationLink("Шрифт, фон, отступы") {
                     ReaderSettingsView()
                 }
@@ -153,23 +154,36 @@ struct AppearanceSettingsView: View {
                         showPaywall = true
                     }
                 }
+            } header: {
+                Text("Читалка").themedSectionChrome()
             }
 
             Section {
                 Text("Бесплатно: спокойные темы Бумага / Облако / Камень и Author.Today (без фото-фона, удобнее читать списки), плюс Мох, Океан, Вино, Графит, Песок. Futuristic, фото-темы и свой цвет — в Pro. Тема задаёт фон и акцент; фон читалки настраивается отдельно.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.medium))
+                    .themedSecondaryText()
                     .themedPanelRow()
             }
         }
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.themePreset, appearance.themePreset)
+        .environment(\.themeAccent, appearance.accent)
         .themedScreenChrome()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }
         .toolbarBackground(.hidden, for: .navigationBar)
+        .onAppear {
+            if appearance.themePreset.chromeInk == .onDark, appearance.colorMode == .light {
+                appearance.colorMode = .dark
+            }
+        }
+        .onChange(of: appearance.colorMode) { _, mode in
+            if mode == .light, appearance.themePreset.chromeInk == .onDark {
+                appearance.colorMode = .dark
+            }
+        }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)

@@ -29,16 +29,17 @@ struct OfflineQuotaStatusView: View {
                 HStack {
                     Text("Скачано целиком")
                         .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                        .foregroundStyle(appearance.themePreset.chromePrimaryText)
                     Spacer()
                     Text("\(used)/\(limit)")
                         .font(compact ? .caption.monospacedDigit().weight(.bold) : .subheadline.monospacedDigit().weight(.bold))
-                        .foregroundStyle(exhausted ? AppTheme.danger : .primary)
+                        .foregroundStyle(exhausted ? AppTheme.danger : appearance.accent)
                 }
                 ProgressView(value: fraction)
                     .tint(exhausted ? AppTheme.danger : appearance.accent)
                 Text("Открытые главы кэшируются без лимита. Pro снимает потолок на «скачать все».")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.medium))
+                    .themedSecondaryText()
                 if exhausted, let onUpgrade {
                     Button("Открыть Pro") { onUpgrade() }
                         .font(.caption.weight(.semibold))
@@ -49,9 +50,10 @@ struct OfflineQuotaStatusView: View {
             .padding(compact ? 10 : 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                ThemedPanelBackground(cornerRadius: 14)
+                ThemedPanelBackground(cornerRadius: 14, elevated: true)
             }
             .environment(\.themePreset, appearance.themePreset)
+            .environment(\.themeAccent, appearance.accent)
             .themedReadableText()
         }
     }

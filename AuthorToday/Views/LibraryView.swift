@@ -82,6 +82,7 @@ struct LibraryView: View {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .environment(\.themePreset, appearance.themePreset)
+            .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -200,13 +201,11 @@ struct LibraryView: View {
         if offline.library.isEmpty && offline.isSyncing {
             ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
         } else if offline.library.isEmpty {
-            ContentUnavailableView(
-                "Библиотека пуста",
+            ThemedEmptyStateView(
+                title: "Библиотека пуста",
                 systemImage: "books.vertical",
-                description: Text(emptyLibraryMessage)
+                description: emptyLibraryMessage
             )
-            .themedEmptyStateCard()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             authorsList
         }
@@ -217,13 +216,11 @@ struct LibraryView: View {
         if offline.library.isEmpty && offline.isSyncing {
             ProgressView(offline.syncStatusText.map { "Синхронизация… \($0)" } ?? "Синхронизация библиотеки…")
         } else if filteredWorks.isEmpty {
-            ContentUnavailableView(
-                "Библиотека пуста",
+            ThemedEmptyStateView(
+                title: "Библиотека пуста",
                 systemImage: "books.vertical",
-                description: Text(emptyLibraryMessage)
+                description: emptyLibraryMessage
             )
-            .themedEmptyStateCard()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             booksList(works: filteredWorks)
         }
@@ -255,9 +252,8 @@ struct LibraryView: View {
                                 .multilineTextAlignment(.leading)
                                 .themedReadableText()
                             Text(authorSubtitle(group))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .themedReadableText()
+                                .font(.caption.weight(.medium))
+                                .themedSecondaryText()
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
@@ -602,10 +598,10 @@ struct RecentReadsView: View {
         NavigationStack(path: $path) {
             Group {
                 if offline.recentlyRead.isEmpty {
-                    ContentUnavailableView(
-                        "Пока пусто",
+                    ThemedEmptyStateView(
+                        title: "Пока пусто",
                         systemImage: "clock",
-                        description: Text("Здесь появятся книги после чтения в приложении. Завершённые давно книги скрываются. Потяните вниз, чтобы подтянуть порядок с портала.")
+                        description: "Здесь появятся книги после чтения в приложении. Завершённые давно книги скрываются. Потяните вниз, чтобы подтянуть порядок с портала."
                     )
                 } else {
                     ScrollView {
@@ -698,10 +694,9 @@ struct LibraryRow: View {
 
                 if showAuthor {
                     Text(work.author)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.medium))
+                        .themedSecondaryText()
                         .lineLimit(1)
-                        .themedReadableText()
                 }
 
                 HStack(spacing: 8) {
@@ -771,10 +766,10 @@ struct DownloadedLibraryView: View {
         NavigationStack(path: $path) {
             Group {
                 if offline.downloadedWorks.isEmpty {
-                    ContentUnavailableView(
-                        "Нет скачанных книг",
+                    ThemedEmptyStateView(
+                        title: "Нет скачанных книг",
                         systemImage: "arrow.down.circle",
-                        description: Text("Скачайте книгу на её странице — она появится здесь и будет доступна без сети.")
+                        description: "Скачайте книгу на её странице — она появится здесь и будет доступна без сети."
                     )
                 } else {
                     List {

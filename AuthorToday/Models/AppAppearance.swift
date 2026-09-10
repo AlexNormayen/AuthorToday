@@ -207,12 +207,14 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         isFuturisticFamily || isDaredevilFamily
     }
 
-    /// Ink on chrome: dark labels on pale grounds, light labels on dark/busy photos.
+    /// Ink on chrome: dark labels on pale flat grounds; light labels on photo / neon.
     var chromeInk: ThemeChromeInk {
         switch self {
-        case .moss, .ocean, .authorToday, .paper, .cloud, .stone, .custom:
+        case .authorToday, .paper, .cloud, .stone, .custom:
             return .onLight
-        case .sand, .wine, .graphite:
+        // All photo themes are busy/dark enough that pale plates + dark ink fail
+        // (Мох forest, Песок dunes, Океан, Вино, Графит, Futuristic, DD).
+        case .moss, .ocean, .sand, .wine, .graphite:
             return .onDark
         case _ where prefersDark:
             return .onDark
@@ -221,31 +223,31 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Soft plates / chips / empty-state cards (never system white).
+    /// Soft plates / chips / empty-state cards — tinted glass, never system white.
     var chromePanelFill: Color {
         switch self {
         case .moss:
-            return Color(red: 0.86, green: 0.92, blue: 0.88).opacity(0.88)
+            return Color(red: 0.05, green: 0.13, blue: 0.09).opacity(0.82)
         case .ocean:
-            return Color(red: 0.86, green: 0.92, blue: 0.96).opacity(0.88)
+            return Color(red: 0.05, green: 0.12, blue: 0.20).opacity(0.80)
         case .authorToday:
-            return Color(red: 0.90, green: 0.93, blue: 0.97).opacity(0.90)
+            return Color(red: 0.90, green: 0.93, blue: 0.97).opacity(0.92)
         case .paper:
-            return Color(red: 0.96, green: 0.95, blue: 0.92).opacity(0.92)
+            return Color(red: 0.96, green: 0.95, blue: 0.92).opacity(0.94)
         case .cloud:
-            return Color(red: 0.92, green: 0.94, blue: 0.96).opacity(0.90)
+            return Color(red: 0.92, green: 0.94, blue: 0.96).opacity(0.92)
         case .stone:
-            return Color(red: 0.93, green: 0.93, blue: 0.94).opacity(0.90)
+            return Color(red: 0.93, green: 0.93, blue: 0.94).opacity(0.92)
         case .sand:
-            return Color(red: 0.18, green: 0.12, blue: 0.08).opacity(0.58)
+            return Color(red: 0.14, green: 0.09, blue: 0.05).opacity(0.78)
         case .wine:
-            return Color(red: 0.22, green: 0.08, blue: 0.12).opacity(0.62)
+            return Color(red: 0.16, green: 0.05, blue: 0.09).opacity(0.80)
         case .graphite:
-            return Color(red: 0.12, green: 0.13, blue: 0.15).opacity(0.58)
+            return Color(red: 0.09, green: 0.10, blue: 0.12).opacity(0.78)
         case .neon, .plasma, .orbit, .hologram, .ion:
-            return Color.white.opacity(0.14)
+            return Color.white.opacity(0.16)
         case _ where isDaredevilFamily:
-            return Color(red: 0.35, green: 0.06, blue: 0.08).opacity(0.55)
+            return Color(red: 0.24, green: 0.04, blue: 0.06).opacity(0.72)
         case .custom:
             return Color.primary.opacity(0.08)
         default:
@@ -253,31 +255,66 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Primary labels on themed chrome.
+    var chromePrimaryText: Color {
+        switch chromeInk {
+        case .onDark:
+            return Color.white.opacity(0.96)
+        case .onLight:
+            return Color(red: 0.10, green: 0.12, blue: 0.13)
+        }
+    }
+
+    /// Small / secondary copy — accent-tinted for contrast on photo themes.
+    func chromeSecondaryText(accent: Color) -> Color {
+        switch chromeInk {
+        case .onDark:
+            // Lift accent toward white so footnotes stay vivid on dark glass.
+            return accent.blended(toward: .white, amount: 0.70)
+        case .onLight:
+            return accent.blended(toward: .black, amount: 0.48)
+        }
+    }
+
+    func chromePanelHighlight(accent: Color) -> Color {
+        switch chromeInk {
+        case .onDark:
+            return accent.blended(toward: .white, amount: 0.25).opacity(0.55)
+        case .onLight:
+            return accent.opacity(0.22)
+        }
+    }
+
+    func chromePanelBorder(accent: Color) -> Color {
+        switch chromeInk {
+        case .onDark:
+            return accent.blended(toward: .white, amount: 0.35).opacity(0.55)
+        case .onLight:
+            return accent.opacity(0.28)
+        }
+    }
+
+    func chromePanelShadow(accent: Color) -> Color {
+        switch chromeInk {
+        case .onDark:
+            return Color.black.opacity(0.50)
+        case .onLight:
+            return accent.opacity(0.22)
+        }
+    }
+
     /// Selected segment / chip highlight tint (UIKit).
     var chromeSegmentSelectedUIColor: UIColor {
+        let accent = UIColor(self.accent)
         switch self {
-        case .moss:
-            return UIColor(red: 0.78, green: 0.88, blue: 0.82, alpha: 0.95)
-        case .ocean:
-            return UIColor(red: 0.78, green: 0.88, blue: 0.94, alpha: 0.95)
-        case .authorToday:
-            return UIColor(red: 0.82, green: 0.88, blue: 0.94, alpha: 0.95)
-        case .paper:
-            return UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 0.96)
-        case .cloud:
-            return UIColor(red: 0.88, green: 0.91, blue: 0.94, alpha: 0.95)
-        case .stone:
-            return UIColor(red: 0.90, green: 0.90, blue: 0.91, alpha: 0.95)
-        case .sand:
-            return UIColor(white: 1, alpha: 0.28)
-        case .wine:
-            return UIColor(red: 0.55, green: 0.22, blue: 0.30, alpha: 0.85)
-        case .graphite:
-            return UIColor(white: 1, alpha: 0.26)
+        case .moss, .ocean, .sand, .wine, .graphite:
+            return accent.withAlphaComponent(0.78)
+        case .authorToday, .paper, .cloud, .stone:
+            return UIColor.secondarySystemGroupedBackground
         case _ where prefersDark:
-            return UIColor(white: 1, alpha: 0.28)
+            return UIColor.white.withAlphaComponent(0.28)
         case .custom:
-            return UIColor(white: 1, alpha: 0.85)
+            return accent.withAlphaComponent(0.85)
         default:
             return UIColor.secondarySystemGroupedBackground
         }
@@ -293,12 +330,7 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     }
 
     var chromeSegmentTitleUIColor: UIColor {
-        switch chromeInk {
-        case .onLight:
-            return UIColor(red: 0.12, green: 0.14, blue: 0.15, alpha: 0.92)
-        case .onDark:
-            return UIColor.white.withAlphaComponent(0.90)
-        }
+        UIColor(chromeSecondaryText(accent: accent))
     }
 
     /// Prefer this scheme so `.primary` / `.secondary` match the ink.
