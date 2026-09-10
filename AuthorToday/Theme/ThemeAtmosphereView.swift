@@ -35,21 +35,19 @@ struct ThemeAtmosphereView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
-                }
 
-                // Tiny contrast only — never a frosted / washed look.
-                LinearGradient(
-                    colors: {
+                    let top = preset.atmosphereOverlayTop * intensity
+                    let bottom = preset.atmosphereOverlayBottom * intensity
+                    if top > 0.001 || bottom > 0.001 {
                         let ink = preset.atmosphereUsesLightScrim ? Color.white : Color.black
-                        return [
-                            ink.opacity(preset.atmosphereOverlayTop * intensity),
-                            ink.opacity(preset.atmosphereOverlayBottom * intensity)
-                        ]
-                    }(),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .allowsHitTesting(false)
+                        LinearGradient(
+                            colors: [ink.opacity(top), ink.opacity(bottom)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .allowsHitTesting(false)
+                    }
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
