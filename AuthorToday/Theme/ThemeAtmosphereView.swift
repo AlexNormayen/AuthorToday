@@ -106,53 +106,15 @@ extension EnvironmentValues {
     }
 }
 
-/// Soft inset plate matching the active theme — accent wash + border + depth.
+/// Soft inset plate — kept for rare callers; chrome UI no longer uses plates by default.
 struct ThemedPanelBackground: View {
     var cornerRadius: CGFloat = 12
-    /// Stronger shadow for floating cards (empty states); softer for list rows.
     var elevated: Bool = false
-    @Environment(\.themePreset) private var preset
-    @Environment(\.themeAccent) private var accent
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        shape
-            .fill(
-                LinearGradient(
-                    colors: [
-                        preset.chromePanelFill,
-                        preset.chromePanelFill.opacity(0.92),
-                        accent.opacity(preset.chromeInk == .onDark ? 0.28 : 0.12)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay {
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            preset.chromePanelBorder(accent: accent),
-                            accent.opacity(preset.chromeInk == .onDark ? 0.18 : 0.10)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: elevated ? 1.2 : 1
-                )
-            }
-            .shadow(
-                color: preset.chromePanelShadow(accent: accent),
-                radius: elevated ? 14 : 5,
-                x: 0,
-                y: elevated ? 6 : 2
-            )
-            .shadow(
-                color: accent.opacity(preset.chromeInk == .onDark ? 0.22 : 0.12),
-                radius: elevated ? 6 : 2,
-                x: 0,
-                y: 1
-            )
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityHidden(true)
     }
 }
 
@@ -173,16 +135,19 @@ struct ThemedEmptyStateView: View {
                 .font(.system(size: 44, weight: .light))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+                .themedReadableText()
             Text(title)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(preset.chromePrimaryText)
                 .multilineTextAlignment(.center)
+                .themedReadableText()
             if let description, !description.isEmpty {
                 Text(description)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(preset.chromeSecondaryText(accent: accent))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .themedReadableText()
             }
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
@@ -193,8 +158,6 @@ struct ThemedEmptyStateView: View {
         }
         .padding(22)
         .frame(maxWidth: 360)
-        .background { ThemedPanelBackground(cornerRadius: 18, elevated: true) }
-        .themedReadableText()
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -232,21 +195,18 @@ struct LoadingStateView: View {
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 22)
-            .background {
-                ThemedPanelBackground(cornerRadius: 18, elevated: true)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 extension View {
-    /// Soft halo so labels stay readable on busy photo themes (ink-aware).
+    /// Contrast outline so labels stay readable on busy photo themes (no plates).
     func themedReadableText() -> some View {
         modifier(ThemedReadableTextModifier())
     }
 
-    /// Footnotes / captions with accent-derived contrast (not system gray).
+    /// Footnotes / captions with accent-derived fill + contrast outline.
     func themedSecondaryText() -> some View {
         modifier(ThemedSecondaryTextModifier())
     }
@@ -265,22 +225,21 @@ extension View {
         }
     }
 
-    /// Transparent row — no white plate, no border.
+    /// Transparent row — no plate.
     func themedListRow() -> some View {
         self.listRowBackground(Color.clear)
     }
 
-    /// Form / inset rows with theme-tinted volumetric plates.
+    /// List / form rows without plates; outline keeps text readable.
     func themedPanelRow(cornerRadius: CGFloat = 12) -> some View {
-        self
-            .listRowBackground(
-                ThemedPanelBackground(cornerRadius: cornerRadius, elevated: false)
-                    .padding(.vertical, 2)
-            )
-            .listRowSeparatorTint(Color.primary.opacity(0.18))
+        _ = cornerRadius
+        return self
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(Color.primary.opacity(0.22))
+            .themedReadableText()
     }
 
-    /// Empty states: soft plate + readable text on photo themes.
+    /// Empty states: outlined text only (no floating card).
     func themedEmptyStateCard() -> some View {
         modifier(ThemedEmptyStateModifier())
     }
@@ -292,12 +251,12 @@ extension View {
             .buttonStyle(.borderless)
     }
 
-    /// Capsule chip for menus / sort labels over photo backdrops.
+    /// Sort / menu label with outline, no capsule plate.
     func themedChromeChip() -> some View {
         modifier(ThemedChromeChipModifier())
     }
 
-    /// Section headers / footers that sit on the photo, not inside list rows.
+    /// Section headers / footers: outlined accent text, no plate.
     func themedSectionChrome() -> some View {
         modifier(ThemedSectionChromeModifier())
     }
@@ -305,19 +264,21 @@ extension View {
 
 private struct ThemedReadableTextModifier: ViewModifier {
     @Environment(\.themePreset) private var preset
+    @Environment(\.themeAccent) private var accent
 
     func body(content: Content) -> some View {
-        let shadow = preset.readableTextShadow
+        let outline = preset.chromeTextOutline(accent: accent)
+        let w = preset.chromeTextOutlineWidth
+        let d = w * 0.72
         content
-            .shadow(color: shadow.0, radius: shadow.1, x: 0, y: preset.chromeInk == .onDark ? 1 : 0)
-            .shadow(
-                color: preset.chromeInk == .onLight
-                    ? Color.black.opacity(0.12)
-                    : Color.black.opacity(0.22),
-                radius: preset.chromeInk == .onLight ? 1 : 8,
-                x: 0,
-                y: preset.chromeInk == .onLight ? 0.5 : 0
-            )
+            .shadow(color: outline, radius: 0, x: w, y: 0)
+            .shadow(color: outline, radius: 0, x: -w, y: 0)
+            .shadow(color: outline, radius: 0, x: 0, y: w)
+            .shadow(color: outline, radius: 0, x: 0, y: -w)
+            .shadow(color: outline, radius: 0, x: d, y: d)
+            .shadow(color: outline, radius: 0, x: -d, y: d)
+            .shadow(color: outline, radius: 0, x: d, y: -d)
+            .shadow(color: outline, radius: 0, x: -d, y: -d)
     }
 }
 
@@ -337,9 +298,6 @@ private struct ThemedEmptyStateModifier: ViewModifier {
         content
             .padding(22)
             .frame(maxWidth: 360)
-            .background {
-                ThemedPanelBackground(cornerRadius: 18, elevated: true)
-            }
             .themedReadableText()
             .padding(.horizontal, 20)
     }
@@ -353,26 +311,8 @@ private struct ThemedChromeChipModifier: ViewModifier {
         content
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(preset.chromeSecondaryText(accent: accent))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                preset.chromePanelFill,
-                                accent.opacity(preset.chromeInk == .onDark ? 0.35 : 0.14)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(preset.chromePanelBorder(accent: accent), lineWidth: 1)
-                    }
-                    .shadow(color: preset.chromePanelShadow(accent: accent), radius: 4, y: 2)
-            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
             .themedReadableText()
     }
 }
@@ -385,13 +325,7 @@ private struct ThemedSectionChromeModifier: ViewModifier {
         content
             .font(.footnote.weight(.semibold))
             .foregroundStyle(preset.chromeSecondaryText(accent: accent))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                if preset.needsContrastChrome {
-                    ThemedPanelBackground(cornerRadius: 10, elevated: false)
-                }
-            }
+            .themedReadableText()
     }
 }

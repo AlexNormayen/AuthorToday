@@ -333,6 +333,21 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         UIColor(chromeSecondaryText(accent: accent))
     }
 
+    /// Hard text outline (contrasts ink) for photo readability without plates.
+    func chromeTextOutline(accent: Color) -> Color {
+        switch chromeInk {
+        case .onDark:
+            return accent.blended(toward: .black, amount: 0.82).opacity(0.95)
+        case .onLight:
+            return accent.blended(toward: .white, amount: 0.88).opacity(0.95)
+        }
+    }
+
+    /// Outline radius in points (hard shadow ring).
+    var chromeTextOutlineWidth: CGFloat {
+        needsContrastChrome ? 1.25 : 0.7
+    }
+
     /// Prefer this scheme so `.primary` / `.secondary` match the ink.
     var preferredContentScheme: ColorScheme {
         chromeInk == .onDark ? .dark : .light

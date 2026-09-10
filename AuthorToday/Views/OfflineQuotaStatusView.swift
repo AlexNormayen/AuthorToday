@@ -23,6 +23,7 @@ struct OfflineQuotaStatusView: View {
                 Label("Офлайн без лимита (Pro)", systemImage: "checkmark.seal.fill")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(appearance.accent)
+                    .themedReadableText()
             }
         } else {
             VStack(alignment: .leading, spacing: compact ? 6 : 10) {
@@ -30,10 +31,12 @@ struct OfflineQuotaStatusView: View {
                     Text("Скачано целиком")
                         .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
                         .foregroundStyle(appearance.themePreset.chromePrimaryText)
+                        .themedReadableText()
                     Spacer()
                     Text("\(used)/\(limit)")
                         .font(compact ? .caption.monospacedDigit().weight(.bold) : .subheadline.monospacedDigit().weight(.bold))
                         .foregroundStyle(exhausted ? AppTheme.danger : appearance.accent)
+                        .themedReadableText()
                 }
                 ProgressView(value: fraction)
                     .tint(exhausted ? AppTheme.danger : appearance.accent)
@@ -47,14 +50,10 @@ struct OfflineQuotaStatusView: View {
                         .tint(appearance.accent)
                 }
             }
-            .padding(compact ? 10 : 14)
+            .padding(compact ? 4 : 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                ThemedPanelBackground(cornerRadius: 14, elevated: true)
-            }
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
-            .themedReadableText()
         }
     }
 }
