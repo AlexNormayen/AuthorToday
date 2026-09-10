@@ -58,12 +58,12 @@ final class ProGrantStore: ObservableObject {
             }
         }
 
-        /// Reference label for promo admin UI (not charged via SBP).
+        /// Reference labels aligned with App Store subscription prices (Connect / StoreKit).
         var priceRub: Int {
             switch self {
             case .week: return 149
             case .month: return 349
-            case .year: return 1990
+            case .year: return 2990
             }
         }
 

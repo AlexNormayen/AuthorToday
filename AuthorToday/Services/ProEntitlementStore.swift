@@ -7,12 +7,12 @@ import Combine
 final class ProEntitlementStore: ObservableObject {
     static let shared = ProEntitlementStore()
 
+    static let weeklyProductID = "ru.chitalnya.reader.pro.weekly"
     static let monthlyProductID = "ru.chitalnya.reader.pro.monthly"
     static let yearlyProductID = "ru.chitalnya.reader.pro.yearly"
-    static let lifetimeProductID = "ru.chitalnya.reader.pro.lifetime"
 
     static var allProductIDs: [String] {
-        [monthlyProductID, yearlyProductID, lifetimeProductID]
+        [weeklyProductID, monthlyProductID, yearlyProductID]
     }
 
     @Published private(set) var isPro = false
@@ -52,16 +52,16 @@ final class ProEntitlementStore: ObservableObject {
         applyAccount(email: user?.email, userName: user?.resolvedUserName)
     }
 
+    var weeklyProduct: Product? {
+        products.first { $0.id == Self.weeklyProductID }
+    }
+
     var monthlyProduct: Product? {
         products.first { $0.id == Self.monthlyProductID }
     }
 
     var yearlyProduct: Product? {
         products.first { $0.id == Self.yearlyProductID }
-    }
-
-    var lifetimeProduct: Product? {
-        products.first { $0.id == Self.lifetimeProductID }
     }
 
     func refresh() async {

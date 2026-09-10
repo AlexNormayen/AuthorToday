@@ -4,26 +4,7 @@
 
   ],
   "products" : [
-    {
-      "displayPrice" : "2490",
-      "familyShareable" : false,
-      "internalID" : "LIFETIME001",
-      "localizations" : [
-        {
-          "description" : "Все Pro-удобства клиента навсегда. Не относится к книгам Author.Today.",
-          "displayName" : "Читальня Pro навсегда",
-          "locale" : "ru_RU"
-        },
-        {
-          "description" : "Lifetime client features forever. Not for Author.Today books.",
-          "displayName" : "Chitalnya Pro Lifetime",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "ru.chitalnya.reader.pro.lifetime",
-      "referenceName" : "Pro Lifetime",
-      "type" : "NonConsumable"
-    }
+
   ],
   "settings" : {
     "_failTransactionsEnabled" : false,
@@ -50,9 +31,42 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "199",
+          "displayPrice" : "149",
           "familyShareable" : true,
           "groupNumber" : 1,
+          "internalID" : "WEEKLY001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Темы, офлайн без лимита, режимы читалки. Книги — на author.today.",
+              "displayName" : "Pro на неделю",
+              "locale" : "ru_RU"
+            },
+            {
+              "description" : "Themes, unlimited offline, reader modes.",
+              "displayName" : "Pro Weekly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ru.chitalnya.reader.pro.weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Pro Weekly",
+          "subscriptionGroupID" : "CHITALNYAPRO",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "349",
+          "familyShareable" : true,
+          "groupNumber" : 2,
           "internalID" : "MONTHLY001",
           "introductoryOffer" : null,
           "localizations" : [
@@ -83,9 +97,9 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "1190",
+          "displayPrice" : "2990",
           "familyShareable" : true,
-          "groupNumber" : 2,
+          "groupNumber" : 3,
           "internalID" : "YEARLY001",
           "introductoryOffer" : {
             "displayPrice" : "0",
@@ -96,12 +110,12 @@
           },
           "localizations" : [
             {
-              "description" : "Год Pro со скидкой. Не даёт скидок на книги Author.Today.",
+              "description" : "Год Pro · промо. Книги — на author.today.",
               "displayName" : "Pro на год",
               "locale" : "ru_RU"
             },
             {
-              "description" : "Year of Pro at a discount.",
+              "description" : "Year of Pro · launch promo. Books on author.today.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

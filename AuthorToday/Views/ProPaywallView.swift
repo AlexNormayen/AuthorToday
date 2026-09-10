@@ -126,7 +126,7 @@ struct ProPaywallView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Year first (best value), then month, then lifetime.
+            // Year first (best value), then month, then week — same tiers as former SBP.
             if let yearly = pro.yearlyProduct {
                 productButton(
                     yearly,
@@ -137,8 +137,8 @@ struct ProPaywallView: View {
             if let monthly = pro.monthlyProduct {
                 productButton(monthly, badge: nil, subtitleHint: introHint(for: monthly))
             }
-            if let lifetime = pro.lifetimeProduct {
-                productButton(lifetime, badge: "Навсегда", subtitleHint: "Как примерно 2 года подписки — без продления")
+            if let weekly = pro.weeklyProduct {
+                productButton(weekly, badge: nil, subtitleHint: introHint(for: weekly))
             }
 
             Button {

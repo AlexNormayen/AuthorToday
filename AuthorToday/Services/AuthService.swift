@@ -31,8 +31,11 @@ final class AuthService: ObservableObject {
                 let savedId = UserDefaults.standard.object(forKey: userIdKey) as? Int
                     ?? SessionFileBackup.load()?.userId
                 await APIClient.shared.setUserId(savedId)
+                OfflineStore.shared.prepareForAccount(userId: savedId)
                 await refreshProfile()
             }
+        } else {
+            OfflineStore.shared.prepareForAccount(userId: nil)
         }
     }
 
@@ -169,6 +172,7 @@ final class AuthService: ObservableObject {
             UserDefaults.standard.set(userId, forKey: userIdKey)
             SessionFileBackup.update { $0.userId = userId }
             await APIClient.shared.setUserId(userId)
+            OfflineStore.shared.prepareForAccount(userId: userId)
         }
         isAuthenticated = true
         await refreshProfile()
@@ -251,6 +255,7 @@ final class AuthService: ObservableObject {
             UserDefaults.standard.set(name, forKey: userNameKey)
         }
         UserDefaults.standard.set(profile.id, forKey: userIdKey)
+        OfflineStore.shared.prepareForAccount(userId: profile.id)
         let loginEmail = UserDefaults.standard.string(forKey: loginEmailKey)
             ?? SessionFileBackup.load()?.loginEmail
         SessionFileBackup.update {
@@ -296,6 +301,7 @@ final class AuthService: ObservableObject {
         awaitingTwoFactor = false
         pendingEmail = ""
         pendingPassword = ""
+        OfflineStore.shared.prepareForAccount(userId: nil)
         Task {
             await APIClient.shared.setToken("guest")
             await APIClient.shared.setUserId(nil)

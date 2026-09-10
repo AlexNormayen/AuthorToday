@@ -205,9 +205,8 @@ workflows:
         - app_store  # UI/API: DEVELOPMENT_TEAM=57FVB8DUWX
       ios_signing:
         distribution_type: app_store
-        bundle_identifier:
-          - ru.chitalnya.reader
-          - ru.chitalnya.reader.ContinueReadingWidget
+        # String only — Codemagic also matches extensions (e.g. …ContinueReadingWidget).
+        bundle_identifier: ru.chitalnya.reader
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday

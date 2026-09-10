@@ -340,4 +340,19 @@ final class NotificationPoller: ObservableObject {
             UserDefaults.standard.set(known, forKey: chapterCountsKey)
         }
     }
+
+    /// Drop feed cursors / chapter baselines when switching Author.Today accounts.
+    func clearAccountLocalState() {
+        knownIds = []
+        locallyReadIds = []
+        items = []
+        unreadCount = 0
+        cursor = nil
+        seenStableIds = []
+        hasMore = false
+        lastError = nil
+        UserDefaults.standard.removeObject(forKey: knownKey)
+        UserDefaults.standard.removeObject(forKey: readKey)
+        UserDefaults.standard.removeObject(forKey: chapterCountsKey)
+    }
 }

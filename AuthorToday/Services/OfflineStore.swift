@@ -36,14 +36,96 @@ final class OfflineStore: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "at.librarySyncLastPage") }
     }
 
+    private let boundUserIdKey = "at.offline.boundUserId"
+    private let pendingAccountWipeKey = "at.offline.pendingAccountWipe"
+
     func attach(context: ModelContext) {
         modelContext = context
+        if UserDefaults.standard.bool(forKey: pendingAccountWipeKey) {
+            wipeAuthorTodayLocalData()
+        }
         purgeBadChapterCacheIfNeeded()
         backfillLastReadAtIfNeeded()
         repairLastReadAtFromLocalProgressIfNeeded()
         normalizeStoredProgressIfNeeded()
         seedKnownChapterCounts()
         reloadLibrary()
+    }
+
+    /// Call on login / logout. Offline library, chapters, progress and AT bookmarks
+    /// are device-local and must not leak across Author.Today accounts.
+    func prepareForAccount(userId: Int?) {
+        let scopeKey = "at.offline.accountScope.v1"
+        if !UserDefaults.standard.bool(forKey: scopeKey) {
+            // One-shot: introduce per-account scoping and drop any mixed-account cache.
+            UserDefaults.standard.set(true, forKey: scopeKey)
+            if let userId {
+                UserDefaults.standard.set(userId, forKey: boundUserIdKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: boundUserIdKey)
+            }
+            wipeAuthorTodayLocalData()
+            return
+        }
+
+        let previous = UserDefaults.standard.object(forKey: boundUserIdKey) as? Int
+        guard previous != userId else { return }
+        if let userId {
+            UserDefaults.standard.set(userId, forKey: boundUserIdKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: boundUserIdKey)
+        }
+        wipeAuthorTodayLocalData()
+    }
+
+    /// Clears Author.Today shelf / chapters / reading progress / AT bookmarks.
+    /// Does **not** remove local TXT/EPUB («Мои книги») or Pro entitlements.
+    func wipeAuthorTodayLocalData() {
+        UserDefaults.standard.set(true, forKey: pendingAccountWipeKey)
+        lastLibrarySync = nil
+        librarySyncIncomplete = false
+        pendingExpectedTotal = 0
+        lastSuccessfulLibraryPage = 0
+        UserDefaults.standard.removeObject(forKey: "at.lastLibrarySync")
+        UserDefaults.standard.removeObject(forKey: "at.librarySyncIncomplete")
+        UserDefaults.standard.removeObject(forKey: "at.librarySyncExpected")
+        UserDefaults.standard.removeObject(forKey: "at.librarySyncLastPage")
+
+        downloadProgress = [:]
+        syncStatusText = nil
+        syncLoadedCount = 0
+        syncExpectedTotal = 0
+        lastSyncError = nil
+        lastSyncCount = 0
+        isSyncing = false
+        library = []
+
+        NotificationPoller.shared.clearAccountLocalState()
+
+        guard let modelContext else {
+            objectWillChange.send()
+            return
+        }
+
+        if let works = try? modelContext.fetch(FetchDescriptor<CachedWork>()) {
+            for row in works { modelContext.delete(row) }
+        }
+        if let chapters = try? modelContext.fetch(FetchDescriptor<CachedChapter>()) {
+            for row in chapters { modelContext.delete(row) }
+        }
+        if let progress = try? modelContext.fetch(FetchDescriptor<ReadingProgress>()) {
+            for row in progress { modelContext.delete(row) }
+        }
+        if let bookmarks = try? modelContext.fetch(FetchDescriptor<ReadingBookmark>()) {
+            for row in bookmarks { modelContext.delete(row) }
+        }
+        if let notes = try? modelContext.fetch(FetchDescriptor<ReadingNote>()) {
+            for row in notes { modelContext.delete(row) }
+        }
+        try? modelContext.save()
+        UserDefaults.standard.set(false, forKey: pendingAccountWipeKey)
+        reloadLibrary()
+        objectWillChange.send()
     }
 
     private func seedKnownChapterCounts() {

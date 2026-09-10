@@ -55,15 +55,16 @@ Author.Today не отвечает за работу этого клиента.
 
 ## In-App Purchase — Читальня Pro
 
-Создать в App Store Connect (группа подписок **Chitalnya Pro**):
+Создать в App Store Connect (группа подписок **Chitalnya Pro**). Цены = бывший SBP:
 
-| Product ID | Тип | Назначение |
-|------------|-----|------------|
-| `ru.chitalnya.reader.pro.monthly` | Auto-renewable | Pro на месяц |
-| `ru.chitalnya.reader.pro.yearly` | Auto-renewable | Pro на год |
-| `ru.chitalnya.reader.pro.lifetime` | Non-Consumable | Pro навсегда |
+| Product ID | Тип | Срок | Цена (₽) |
+|------------|-----|------|----------|
+| `ru.chitalnya.reader.pro.weekly` | Auto-renewable | 1 неделя | **149** |
+| `ru.chitalnya.reader.pro.monthly` | Auto-renewable | 1 месяц | **349** |
+| `ru.chitalnya.reader.pro.yearly` | Auto-renewable | 1 год | **2990** (launch-промо; ≈ −29% к 12×месяц) |
 
-Локальный каталог для отладки: `AuthorToday/Products.storekit` (подключить в Scheme → Run → StoreKit Configuration).
+Lifetime / навсегда — **нет**.  
+Локальный каталог: `AuthorToday/Products.storekit` (Scheme → Run → StoreKit Configuration).
 
 **Free:** классические темы (Мох/Океан/Вино/Графит/Песок + спокойные), чтение, синхрон, кэш открытых глав, до **2** книг «скачать все главы», виджет «Продолжить чтение».  
 **Pro:** futuristic + фото-темы + свой цвет приложения; безлимитный full-download; закладки/заметки (только устройство); «Перелистывание»; свой цвет/картинка фона читалки; **«Мои книги»** — импорт своих TXT/EPUB (только на устройстве, без синка с Author.Today).
@@ -79,7 +80,7 @@ Author.Today не отвечает за работу этого клиента.
 Если у аккаунта включено подтверждение устройства — после пароля приложение запрашивает код из письма Author.Today.
 
 Покупки книг открывают официальный сайт author.today (WebView).
-Отдельно: подписка / lifetime «Читальня Pro» через Apple IAP — только удобства клиента
+Отдельно: подписка «Читальня Pro» через Apple IAP — только удобства клиента
 (темы, офлайн-лимит, режимы читалки, локальные TXT/EPUB). Pro НЕ продаёт и НЕ разблокирует книги Author.Today.
 
 Демо-аккаунт: [вставить логин/пароль тестового AT-аккаунта для ревьюеров].
@@ -115,14 +116,8 @@ Author.Today не отвечает за работу этого клиента.
    - Access: Full Access
 
 ### 4. In-App Purchase (Читальня Pro)
-Создать продукты (см. таблицу выше):
-- `ru.chitalnya.reader.pro.monthly`
-- `ru.chitalnya.reader.pro.yearly`
-- `ru.chitalnya.reader.pro.lifetime`
-
-Для подписок: создать Subscription Group **Chitalnya Pro**, привязать month/year.  
-Для lifetime — Non-Consumable.  
-Цены и локализации (RU) — в Connect. После создания продукты должны быть в статусе **Ready to Submit** вместе с билдом.
+Создать Subscription Group **Chitalnya Pro** и три auto-renewable (см. таблицу выше): week / month / year.  
+Цены и локализации (RU) — в Connect. Статус **Ready to Submit** вместе с билдом.
 
 ### 5. Подпись и Codemagic
 1. В Codemagic → приложение AuthorToday → workflow **`ios-app-store-signed`** (Читальня App Store).
@@ -154,11 +149,10 @@ Author.Today не отвечает за работу этого клиента.
 
 ### Intro offer и Family Sharing (Connect)
 
-1. **Introductory offer** на `ru.chitalnya.reader.pro.yearly` (и при желании monthly):  
+1. **Introductory offer** на `ru.chitalnya.reader.pro.yearly` (и при желании month/week):  
    App Store Connect → подписка → Introductory Offers → free trial или pay-up-front/pay-as-you-go.  
    Приложение само покажет intro-цену, если StoreKit её отдаст.
-2. **Family Sharing** для auto-renewable подписок: в Subscription Group включить Share with Family.  
-   Lifetime (non-consumable) шарится отдельно через «Family Sharing» на продукте, если включите.
+2. **Family Sharing** для auto-renewable: в Subscription Group включить Share with Family.
 3. После изменений дождитесь Ready to Submit и привяжите к билду.
 
 ### App Group (виджет «Продолжить»)
