@@ -22,7 +22,14 @@ struct RootView: View {
             }
         }
         .environmentObject(downloads)
-        .onAppear { configureTranslucentChrome() }
+        .environment(\.themePreset, appearance.themePreset)
+        .onAppear {
+            configureTranslucentChrome()
+            configureSegmentedChrome(for: appearance.themePreset)
+        }
+        .onChange(of: appearance.themePreset) { _, preset in
+            configureSegmentedChrome(for: preset)
+        }
         .task {
             offline.attach(context: modelContext)
             localLibrary.attach(context: modelContext)
@@ -66,6 +73,15 @@ struct RootView: View {
         UITableView.appearance().backgroundColor = .clear
         UITableViewCell.appearance().backgroundColor = .clear
         UICollectionView.appearance().backgroundColor = .clear
+    }
+
+    private func configureSegmentedChrome(for preset: AppThemePreset) {
+        let seg = UISegmentedControl.appearance()
+        seg.selectedSegmentTintColor = preset.chromeSegmentSelectedUIColor
+        seg.backgroundColor = preset.chromeSegmentTrackUIColor
+        let title = preset.chromeSegmentTitleUIColor
+        seg.setTitleTextAttributes([.foregroundColor: title], for: .normal)
+        seg.setTitleTextAttributes([.foregroundColor: title], for: .selected)
     }
 }
 
@@ -319,6 +335,7 @@ struct SettingsHubView: View {
                                 systemImage: "arrow.down.circle.fill"
                             )
                         }
+                        .themedPanelRow()
                     }
                 }
 
@@ -334,15 +351,19 @@ struct SettingsHubView: View {
                             }
                         }
                         .padding(.vertical, 4)
+                        .themedPanelRow()
                     }
                 }
 
-                Section("Общение") {
+                Section {
                     NavigationLink {
                         MessagesView()
                     } label: {
                         Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
                     }
+                    .themedPanelRow()
+                } header: {
+                    Text("Общение").themedReadableText()
                 }
 
                 Section {
@@ -375,33 +396,42 @@ struct SettingsHubView: View {
                             }
                         }
                     }
+                    .themedPanelRow()
                     NavigationLink {
                         BookmarksNotesView()
                     } label: {
                         Label("Закладки и заметки", systemImage: "bookmark")
                     }
+                    .themedPanelRow()
                 } header: {
-                    Text("Поддержка")
+                    Text("Поддержка").themedReadableText()
                 } footer: {
                     Text("Pro улучшает клиент Читальня (темы, офлайн, закладки, свои TXT/EPUB). Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
+                        .themedReadableText()
                 }
 
                 Section {
                     Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
                         .tint(.green)
+                        .themedPanelRow()
                 } header: {
-                    Text("Оповещения")
+                    Text("Оповещения").themedReadableText()
                 } footer: {
                     Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today.")
+                        .themedReadableText()
                 }
 
-                Section("Оформление") {
+                Section {
                     NavigationLink("Тема приложения и тёмный режим") {
                         AppearanceSettingsView()
                     }
+                    .themedPanelRow()
                     NavigationLink("Настройки читалки") {
                         ReaderSettingsView()
                     }
+                    .themedPanelRow()
+                } header: {
+                    Text("Оформление").themedReadableText()
                 }
 
                 Section {
@@ -415,38 +445,46 @@ struct SettingsHubView: View {
                             systemImage: "externaldrive.badge.icloud"
                         )
                     }
+                    .themedPanelRow()
                 } header: {
-                    Text("Резервная копия")
+                    Text("Резервная копия").themedReadableText()
                 } footer: {
                     Text(
                         ChitalnyaDistribution.isAppStore
                             ? "По умолчанию выключено. Если включите — книги, прогресс и закладки можно синхронизировать на сервер разработчика (явное согласие)."
                             : "Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами."
                     )
+                    .themedReadableText()
                 }
 
-                Section("Аккаунт") {
+                Section {
                     Button("Обновить профиль") {
                         Task { await auth.refreshProfile() }
                     }
+                    .themedPanelRow()
                     Button("Выйти", role: .destructive) {
                         auth.logout()
                     }
+                    .themedPanelRow()
+                } header: {
+                    Text("Аккаунт").themedReadableText()
                 }
 
-                Section("О приложении") {
-                    LabeledContent("Приложение", value: "Читальня")
-                    LabeledContent("Версия", value: updates.localDisplay)
-                    LabeledContent("Канал", value: ChitalnyaDistribution.channelLabel)
-                    LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)")
-                    LabeledContent("Платформа", value: "author.today")
-                    LabeledContent("Режим", value: "онлайн + офлайн")
+                Section {
+                    LabeledContent("Приложение", value: "Читальня").themedPanelRow()
+                    LabeledContent("Версия", value: updates.localDisplay).themedPanelRow()
+                    LabeledContent("Канал", value: ChitalnyaDistribution.channelLabel).themedPanelRow()
+                    LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)").themedPanelRow()
+                    LabeledContent("Платформа", value: "author.today").themedPanelRow()
+                    LabeledContent("Режим", value: "онлайн + офлайн").themedPanelRow()
                     if let user = auth.user?.resolvedUserName ?? auth.resolvedUserName {
-                        LabeledContent("Профиль", value: "/u/\(user)/library")
+                        LabeledContent("Профиль", value: "/u/\(user)/library").themedPanelRow()
                     }
                     if offline.lastSyncCount > 0 {
-                        LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)")
+                        LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)").themedPanelRow()
                     }
+                } header: {
+                    Text("О приложении").themedReadableText()
                 }
 
                 if ChitalnyaDistribution.showsSideloadUpdates {
@@ -457,10 +495,13 @@ struct SettingsHubView: View {
                     Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .themedPanelRow()
                 } header: {
-                    Text("Важно")
+                    Text("Важно").themedReadableText()
                 }
             }
+            .listStyle(.insetGrouped)
+            .environment(\.themePreset, appearance.themePreset)
             .navigationTitle("Ещё")
             .themedScreenChrome()
             .background {

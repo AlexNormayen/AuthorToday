@@ -208,8 +208,10 @@ struct AppUpdateSettingsSection: View {
     var body: some View {
         Section {
             LabeledContent("Версия", value: checker.localDisplay)
+                .themedPanelRow()
             if let publishId = checker.localPublishId {
                 LabeledContent("Сборка", value: publishId)
+                    .themedPanelRow()
             }
             if checker.updateAvailable {
                 Button {
@@ -217,10 +219,12 @@ struct AppUpdateSettingsSection: View {
                 } label: {
                     Label("Обновить через SideStore", systemImage: "arrow.down.circle.fill")
                 }
+                .themedPanelRow()
                 Button("Скрыть напоминание") {
                     checker.dismissCurrentOffer()
                 }
                 .foregroundStyle(.secondary)
+                .themedPanelRow()
             } else {
                 Button {
                     Task { await checker.check(force: true) }
@@ -234,24 +238,29 @@ struct AppUpdateSettingsSection: View {
                     }
                 }
                 .disabled(checker.isChecking)
+                .themedPanelRow()
             }
             Button("Страница установки") {
                 checker.openInstallPage()
             }
+            .themedPanelRow()
             if let statusText = checker.statusText {
                 Text(statusText)
                     .font(.caption)
                     .foregroundStyle(checker.updateAvailable ? Color.accentColor : Color.secondary)
+                    .themedPanelRow()
             }
             if let lastError = checker.lastError {
                 Text(lastError)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .themedPanelRow()
             }
         } header: {
-            Text("Обновления IPA")
+            Text("Обновления IPA").themedReadableText()
         } footer: {
             Text("Приложение само себя не переустанавливает. Новая IPA ставится через SideStore со страницы установки.")
+                .themedReadableText()
         }
     }
 }

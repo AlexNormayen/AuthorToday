@@ -18,31 +18,36 @@ struct BookVaultSettingsView: View {
                             await sync.autoBackfillIfNeeded(store: offline, localStore: localLibrary)
                         }
                     }
+                    .themedPanelRow()
                 TextField("URL сервера", text: $settings.baseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
+                    .themedPanelRow()
                 SecureField("Токен", text: $settings.apiToken)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
+                    .themedPanelRow()
             } header: {
-                Text("Подключение")
+                Text("Подключение").themedReadableText()
             } footer: {
                 Text(
                     ChitalnyaDistribution.isAppStore
                         ? "По умолчанию выключено. Включая полку, вы соглашаетесь отправлять скачанные книги, прогресс и закладки на сервер разработчика Читальни (HTTPS). Токен выдаёт разработчик — в App Store-сборке он не зашит в приложение."
                         : "Скачанные книги Author.Today и TXT/EPUB из «Мои книги» хранятся на VPS отдельно для каждого аккаунта. После переустановки приложения — «Восстановить с VPS»."
                 )
+                .themedReadableText()
             }
 
-            Section("Синхронизация") {
+            Section {
                 if sync.isSyncing {
                     HStack {
                         ProgressView()
                         Text(sync.statusText.isEmpty ? "Синхронизация…" : sync.statusText)
                             .font(.subheadline)
                     }
+                    .themedPanelRow()
                 }
                 Button("Проверить связь") {
                     Task {
@@ -50,6 +55,7 @@ struct BookVaultSettingsView: View {
                     }
                 }
                 .disabled(!settings.isEnabled || sync.isSyncing)
+                .themedPanelRow()
 
                 Button("Выгрузить всё локальное") {
                     Task {
@@ -58,38 +64,54 @@ struct BookVaultSettingsView: View {
                     }
                 }
                 .disabled(!settings.isEnabled || sync.isSyncing)
+                .themedPanelRow()
 
                 Button("Восстановить с VPS") {
                     Task { await sync.pullAndRestore(store: offline, localStore: localLibrary) }
                 }
                 .disabled(!settings.isEnabled || sync.isSyncing)
+                .themedPanelRow()
 
                 if !pingResult.isEmpty {
                     Text(pingResult)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .themedPanelRow()
                 }
                 if !settings.lastStatus.isEmpty {
                     LabeledContent("Статус", value: settings.lastStatus)
                         .font(.caption)
+                        .themedPanelRow()
                 }
                 if let at = settings.lastSyncAt {
                     LabeledContent("Последний синк", value: at.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
+                        .themedPanelRow()
                 }
                 LabeledContent("Скачано AT", value: "\(offline.downloadedWorks.count)")
+                    .themedPanelRow()
                 LabeledContent("Мои книги", value: "\(localLibrary.books.count)")
+                    .themedPanelRow()
+            } header: {
+                Text("Синхронизация").themedReadableText()
             }
 
             Section {
                 Text("Удаление в «Мои книги» снимает файл с устройства и с VPS. Удаление в «Скачанные» убирает только офлайн-копию, не библиотеку Author.Today.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .themedPanelRow()
             }
         }
+        .listStyle(.insetGrouped)
+        .environment(\.themePreset, appearance.themePreset)
         .navigationTitle("Облачная полка")
         .navigationBarTitleDisplayMode(.inline)
-        .themedGroupedFill()
+        .themedScreenChrome()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             guard settings.isEnabled else { return }
             await sync.autoBackfillIfNeeded(store: offline, localStore: localLibrary)

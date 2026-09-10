@@ -60,6 +60,7 @@ struct LibraryView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .themedChromeChip()
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -80,6 +81,7 @@ struct LibraryView: View {
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
+            .environment(\.themePreset, appearance.themePreset)
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -251,9 +253,11 @@ struct LibraryView: View {
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
+                                .themedReadableText()
                             Text(authorSubtitle(group))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .themedReadableText()
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
@@ -262,11 +266,12 @@ struct LibraryView: View {
                     }
                     .padding(.vertical, 6)
                 }
-                .listRowBackground(Color.clear)
+                .themedPanelRow()
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .environment(\.themePreset, appearance.themePreset)
     }
 
     private func booksList(works: [CachedWork]) -> some View {
@@ -689,12 +694,14 @@ struct LibraryRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
+                    .themedReadableText()
 
                 if showAuthor {
                     Text(work.author)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .themedReadableText()
                 }
 
                 HStack(spacing: 8) {

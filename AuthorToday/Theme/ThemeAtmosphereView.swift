@@ -86,6 +86,28 @@ enum ThemeAtmosphereStyle {
     case daredevil
 }
 
+private struct ThemePresetKey: EnvironmentKey {
+    static let defaultValue: AppThemePreset = .sand
+}
+
+extension EnvironmentValues {
+    var themePreset: AppThemePreset {
+        get { self[ThemePresetKey.self] }
+        set { self[ThemePresetKey.self] = newValue }
+    }
+}
+
+/// Soft inset plate matching the active theme (never system white).
+struct ThemedPanelBackground: View {
+    var cornerRadius: CGFloat = 12
+    @Environment(\.themePreset) private var preset
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(preset.chromePanelFill)
+    }
+}
+
 /// Centered loading placeholder that doesn't collapse into a tiny themed scrap.
 struct LoadingStateView: View {
     let title: String
@@ -114,17 +136,18 @@ struct LoadingStateView: View {
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 22)
+            .background {
+                ThemedPanelBackground(cornerRadius: 18)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 extension View {
-    /// Soft shadow so labels stay readable on busy photo themes (no frosted card).
+    /// Soft halo so labels stay readable on busy photo themes (ink-aware).
     func themedReadableText() -> some View {
-        self
-            .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
-            .shadow(color: .white.opacity(0.35), radius: 1, x: 0, y: 0)
+        modifier(ThemedReadableTextModifier())
     }
 
     /// Lets the living theme atmosphere show through lists / forms / scroll views.
@@ -146,20 +169,16 @@ extension View {
         self.listRowBackground(Color.clear)
     }
 
-    /// Form / inset rows without white cards or outlines.
-    func themedPanelRow(cornerRadius: CGFloat = 14) -> some View {
+    /// Form / inset rows with theme-tinted plates (not system white).
+    func themedPanelRow(cornerRadius: CGFloat = 12) -> some View {
         self
-            .listRowBackground(Color.clear)
-            .listRowSeparatorTint(Color.primary.opacity(0.18))
+            .listRowBackground(ThemedPanelBackground(cornerRadius: cornerRadius))
+            .listRowSeparatorTint(Color.primary.opacity(0.22))
     }
 
-    /// Empty states without a white floating window.
+    /// Empty states: soft plate + readable text on photo themes.
     func themedEmptyStateCard() -> some View {
-        self
-            .padding(22)
-            .frame(maxWidth: 360)
-            .themedReadableText()
-            .padding(.horizontal, 20)
+        modifier(ThemedEmptyStateModifier())
     }
 
     /// Reliable tap target for plain buttons (esp. inside ScrollView).
@@ -167,5 +186,57 @@ extension View {
         self
             .contentShape(Rectangle())
             .buttonStyle(.borderless)
+    }
+
+    /// Capsule chip for menus / sort labels over photo backdrops.
+    func themedChromeChip() -> some View {
+        modifier(ThemedChromeChipModifier())
+    }
+}
+
+private struct ThemedReadableTextModifier: ViewModifier {
+    @Environment(\.themePreset) private var preset
+
+    func body(content: Content) -> some View {
+        let shadow = preset.readableTextShadow
+        content
+            .shadow(color: shadow.0, radius: shadow.1, x: 0, y: preset.chromeInk == .onDark ? 1 : 0)
+            .shadow(
+                color: preset.chromeInk == .onLight
+                    ? Color.black.opacity(0.12)
+                    : Color.black.opacity(0.22),
+                radius: preset.chromeInk == .onLight ? 1 : 8,
+                x: 0,
+                y: preset.chromeInk == .onLight ? 0.5 : 0
+            )
+    }
+}
+
+private struct ThemedEmptyStateModifier: ViewModifier {
+    @Environment(\.themePreset) private var preset
+
+    func body(content: Content) -> some View {
+        content
+            .padding(22)
+            .frame(maxWidth: 360)
+            .background {
+                if preset.needsContrastChrome {
+                    ThemedPanelBackground(cornerRadius: 18)
+                }
+            }
+            .themedReadableText()
+            .padding(.horizontal, 20)
+    }
+}
+
+private struct ThemedChromeChipModifier: ViewModifier {
+    @Environment(\.themePreset) private var preset
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(preset.chromePanelFill))
+            .themedReadableText()
     }
 }

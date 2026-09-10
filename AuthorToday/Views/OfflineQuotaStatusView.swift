@@ -48,10 +48,11 @@ struct OfflineQuotaStatusView: View {
             }
             .padding(compact ? 10 : 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
+            .background {
+                ThemedPanelBackground(cornerRadius: 14)
+            }
+            .environment(\.themePreset, appearance.themePreset)
+            .themedReadableText()
         }
     }
 }

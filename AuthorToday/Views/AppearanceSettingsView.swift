@@ -52,8 +52,13 @@ struct AppearanceSettingsView: View {
                                     return
                                 }
                                 appearance.themePreset = preset
-                                if preset.prefersDark {
+                                switch preset.chromeInk {
+                                case .onDark:
                                     appearance.colorMode = .dark
+                                case .onLight:
+                                    if preset.backgroundImageName != nil {
+                                        appearance.colorMode = .light
+                                    }
                                 }
                             } label: {
                                 VStack(spacing: 6) {
@@ -159,6 +164,7 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.themePreset, appearance.themePreset)
         .themedScreenChrome()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)

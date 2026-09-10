@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 /// Standalone entry (kept for previews / deep links). Main UX embeds `LocalLibraryPane` in `LibraryView`.
 struct LocalLibraryView: View {
@@ -64,8 +65,8 @@ struct LocalLibraryPane: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .themedReadableText()
+                                .themedPanelRow()
                         }
-                        .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
                     ForEach(localLibrary.books, id: \.id) { book in
@@ -74,8 +75,7 @@ struct LocalLibraryPane: View {
                         } label: {
                             bookRow(book)
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparatorTint(Color.primary.opacity(0.2))
+                        .themedPanelRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 Task {
@@ -92,6 +92,7 @@ struct LocalLibraryPane: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .environment(\.themePreset, appearance.themePreset)
             }
         }
         .toolbar {
@@ -180,10 +181,7 @@ struct LocalLibraryPane: View {
 
     private func bookRow(_ book: LocalBook) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: book.format == .epub ? "book.closed" : "doc.plaintext")
-                .font(.title2)
-                .foregroundStyle(appearance.accent)
-                .frame(width: 40)
+            LocalBookCoverView(book: book, width: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(book.title)
                     .font(.body.weight(.semibold))
@@ -194,7 +192,7 @@ struct LocalLibraryPane: View {
                         .font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(appearance.accent.opacity(0.15), in: Capsule())
+                        .background(appearance.accent.opacity(0.22), in: Capsule())
                     if !book.author.isEmpty {
                         Text(book.author)
                             .font(.caption)
@@ -209,6 +207,7 @@ struct LocalLibraryPane: View {
             }
         }
         .padding(.vertical, 4)
+        .themedReadableText()
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
@@ -228,6 +227,73 @@ struct LocalLibraryPane: View {
                 importError = error.localizedDescription
             }
         }
+    }
+}
+
+/// Cover art or a stable gradient + initials placeholder for local TXT/EPUB.
+struct LocalBookCoverView: View {
+    let book: LocalBook
+    var width: CGFloat = 44
+
+    private var height: CGFloat { width * 1.4 }
+
+    var body: some View {
+        Group {
+            if let data = book.coverData, let ui = UIImage(data: data) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: Self.palette(for: book),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    VStack(spacing: 4) {
+                        Text(Self.initials(from: book.title))
+                            .font(.system(size: width * 0.34, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                        Image(systemName: book.format == .epub ? "book.closed.fill" : "doc.plaintext.fill")
+                            .font(.system(size: width * 0.22, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    .padding(6)
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        .accessibilityHidden(true)
+    }
+
+    private static func initials(from title: String) -> String {
+        let words = title
+            .split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
+            .prefix(2)
+        let letters = words.compactMap { $0.first.map { String($0).uppercased() } }
+        if letters.isEmpty { return "К" }
+        return letters.joined()
+    }
+
+    private static func palette(for book: LocalBook) -> [Color] {
+        let seed = book.id.uuidString.hashValue & 0x7FFFFFFF
+        let palettes: [[Color]] = [
+            [Color(red: 0.45, green: 0.28, blue: 0.18), Color(red: 0.72, green: 0.42, blue: 0.22)],
+            [Color(red: 0.18, green: 0.32, blue: 0.42), Color(red: 0.28, green: 0.52, blue: 0.62)],
+            [Color(red: 0.28, green: 0.22, blue: 0.38), Color(red: 0.48, green: 0.32, blue: 0.55)],
+            [Color(red: 0.22, green: 0.36, blue: 0.28), Color(red: 0.35, green: 0.55, blue: 0.40)],
+            [Color(red: 0.42, green: 0.22, blue: 0.24), Color(red: 0.62, green: 0.32, blue: 0.35)],
+            [Color(red: 0.20, green: 0.24, blue: 0.34), Color(red: 0.35, green: 0.40, blue: 0.55)]
+        ]
+        return palettes[seed % palettes.count]
     }
 }
 

@@ -26,6 +26,7 @@ struct AuthorTodayApp: App {
                 .environmentObject(localLibrary)
                 .environmentObject(notifications)
                 .environmentObject(pro)
+                .environment(\.themePreset, appearance.themePreset)
                 .preferredColorScheme(appearance.preferredColorScheme)
                 .tint(appearance.accent)
                 .task {

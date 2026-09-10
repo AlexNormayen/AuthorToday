@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 enum AppColorMode: String, CaseIterable, Identifiable, Codable {
     case system
@@ -23,6 +24,13 @@ enum AppColorMode: String, CaseIterable, Identifiable, Codable {
         case .dark: return .dark
         }
     }
+}
+
+enum ThemeChromeInk: String, Sendable {
+    /// Dark labels on pale / soft grounds (Мох, Бумага, Океан…).
+    case onLight
+    /// Light labels on dark / busy photos (Песок, Неон, Сорвиголова…).
+    case onDark
 }
 
 enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
@@ -197,6 +205,120 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     /// Themes that look best with dark UI chrome.
     var prefersDark: Bool {
         isFuturisticFamily || isDaredevilFamily
+    }
+
+    /// Ink on chrome: dark labels on pale grounds, light labels on dark/busy photos.
+    var chromeInk: ThemeChromeInk {
+        switch self {
+        case .moss, .ocean, .authorToday, .paper, .cloud, .stone, .custom:
+            return .onLight
+        case .sand, .wine, .graphite:
+            return .onDark
+        case _ where prefersDark:
+            return .onDark
+        default:
+            return .onLight
+        }
+    }
+
+    /// Soft plates / chips / empty-state cards (never system white).
+    var chromePanelFill: Color {
+        switch self {
+        case .moss:
+            return Color(red: 0.86, green: 0.92, blue: 0.88).opacity(0.88)
+        case .ocean:
+            return Color(red: 0.86, green: 0.92, blue: 0.96).opacity(0.88)
+        case .authorToday:
+            return Color(red: 0.90, green: 0.93, blue: 0.97).opacity(0.90)
+        case .paper:
+            return Color(red: 0.96, green: 0.95, blue: 0.92).opacity(0.92)
+        case .cloud:
+            return Color(red: 0.92, green: 0.94, blue: 0.96).opacity(0.90)
+        case .stone:
+            return Color(red: 0.93, green: 0.93, blue: 0.94).opacity(0.90)
+        case .sand:
+            return Color(red: 0.18, green: 0.12, blue: 0.08).opacity(0.58)
+        case .wine:
+            return Color(red: 0.22, green: 0.08, blue: 0.12).opacity(0.62)
+        case .graphite:
+            return Color(red: 0.12, green: 0.13, blue: 0.15).opacity(0.58)
+        case .neon, .plasma, .orbit, .hologram, .ion:
+            return Color.white.opacity(0.14)
+        case _ where isDaredevilFamily:
+            return Color(red: 0.35, green: 0.06, blue: 0.08).opacity(0.55)
+        case .custom:
+            return Color.primary.opacity(0.08)
+        default:
+            return Color.primary.opacity(0.07)
+        }
+    }
+
+    /// Selected segment / chip highlight tint (UIKit).
+    var chromeSegmentSelectedUIColor: UIColor {
+        switch self {
+        case .moss:
+            return UIColor(red: 0.78, green: 0.88, blue: 0.82, alpha: 0.95)
+        case .ocean:
+            return UIColor(red: 0.78, green: 0.88, blue: 0.94, alpha: 0.95)
+        case .authorToday:
+            return UIColor(red: 0.82, green: 0.88, blue: 0.94, alpha: 0.95)
+        case .paper:
+            return UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 0.96)
+        case .cloud:
+            return UIColor(red: 0.88, green: 0.91, blue: 0.94, alpha: 0.95)
+        case .stone:
+            return UIColor(red: 0.90, green: 0.90, blue: 0.91, alpha: 0.95)
+        case .sand:
+            return UIColor(white: 1, alpha: 0.28)
+        case .wine:
+            return UIColor(red: 0.55, green: 0.22, blue: 0.30, alpha: 0.85)
+        case .graphite:
+            return UIColor(white: 1, alpha: 0.26)
+        case _ where prefersDark:
+            return UIColor(white: 1, alpha: 0.28)
+        case .custom:
+            return UIColor(white: 1, alpha: 0.85)
+        default:
+            return UIColor.secondarySystemGroupedBackground
+        }
+    }
+
+    var chromeSegmentTrackUIColor: UIColor {
+        switch chromeInk {
+        case .onLight:
+            return UIColor.black.withAlphaComponent(0.10)
+        case .onDark:
+            return UIColor.black.withAlphaComponent(0.38)
+        }
+    }
+
+    var chromeSegmentTitleUIColor: UIColor {
+        switch chromeInk {
+        case .onLight:
+            return UIColor(red: 0.12, green: 0.14, blue: 0.15, alpha: 0.92)
+        case .onDark:
+            return UIColor.white.withAlphaComponent(0.90)
+        }
+    }
+
+    /// Prefer this scheme so `.primary` / `.secondary` match the ink.
+    var preferredContentScheme: ColorScheme {
+        chromeInk == .onDark ? .dark : .light
+    }
+
+    /// Soft plates behind empty states / chips over busy photos.
+    var needsContrastChrome: Bool {
+        backgroundImageName != nil || prefersDark
+    }
+
+    /// Text halo: pale themes get a light lift; dark themes get a dark shadow.
+    var readableTextShadow: (Color, CGFloat) {
+        switch chromeInk {
+        case .onLight:
+            return (Color.white.opacity(0.65), 2.5)
+        case .onDark:
+            return (Color.black.opacity(0.55), 3)
+        }
     }
 
     /// Whether the photo scrim should bleach toward white (light UI) or darken (dark UI).
@@ -385,6 +507,10 @@ final class AppAppearanceStore: ObservableObject {
     }
 
     var preferredColorScheme: ColorScheme? {
+        // Busy / photo themes: lock content scheme to the theme’s ink profile.
+        if themePreset.backgroundImageName != nil || themePreset.prefersDark {
+            return themePreset.preferredContentScheme
+        }
         if let forced = colorMode.colorScheme { return forced }
         return themePreset.prefersDark ? .dark : nil
     }
