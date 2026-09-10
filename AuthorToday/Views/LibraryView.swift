@@ -82,7 +82,7 @@ struct LibraryView: View {
             }
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.regularMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 if mode != .mine {
                     Picker("Где искать", selection: $searchScope) {
@@ -93,7 +93,7 @@ struct LibraryView: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.regularMaterial.opacity(0.92))
+                    .background(Color.clear)
                 }
             }
             .onChange(of: searchScope) { _, scope in
@@ -141,7 +141,7 @@ struct LibraryView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
-                    .background(.ultraThinMaterial.opacity(0.55))
+                    .background(Color.clear)
                 }
             }
             .refreshable {
@@ -170,19 +170,17 @@ struct LibraryView: View {
                 if let msg = downloads.statusMessage {
                     Text(msg)
                         .font(.caption)
+                        .themedReadableText()
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
                         .padding(.bottom, 8)
                 } else if mode != .mine, let err = offline.lastSyncError {
                     Text(err)
                         .font(.caption)
                         .foregroundStyle(.red)
+                        .themedReadableText()
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
                         .padding(.bottom, 8)
                 }
             }
@@ -264,11 +262,7 @@ struct LibraryView: View {
                     }
                     .padding(.vertical, 6)
                 }
-                .listRowBackground(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(.regularMaterial)
-                        .padding(.vertical, 2)
-                )
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)
@@ -630,7 +624,7 @@ struct RecentReadsView: View {
                                     .padding(.vertical, 2)
                                     .background {
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .fill(.regularMaterial)
+                                            .fill(Color.clear)
                                     }
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
@@ -650,7 +644,7 @@ struct RecentReadsView: View {
                 await offline.syncLibrary(force: true)
             }
             .navigationTitle("Недавние")
-            .toolbarBackground(.regularMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):
@@ -816,7 +810,7 @@ struct DownloadedLibraryView: View {
             }
             .navigationTitle("Скачанные")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .searchable(text: $query, prompt: "Название или автор")
             .safeAreaInset(edge: .top) {
                 if !offline.downloadedWorks.isEmpty {
@@ -828,7 +822,7 @@ struct DownloadedLibraryView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
-                    .background(.ultraThinMaterial.opacity(0.55))
+                    .background(Color.clear)
                 }
             }
             .navigationDestination(for: LibraryRoute.self) { route in

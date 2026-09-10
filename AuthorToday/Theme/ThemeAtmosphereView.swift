@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Full-screen living theme backdrop using real background images.
-/// Uses a slow autoreversing animation (not TimelineView) so taps stay responsive.
+/// Photo themes stay sharp and bright — no blur / heavy frost wash.
 struct ThemeAtmosphereView: View {
     let preset: AppThemePreset
     var intensity: Double = 1
@@ -19,14 +19,11 @@ struct ThemeAtmosphereView: View {
                     Image(name)
                         .resizable()
                         .scaledToFill()
-                        .frame(
-                            width: geo.size.width * 1.14,
-                            height: geo.size.height * 1.14
-                        )
-                        .scaleEffect(animated && drift ? 1.12 : 1.07)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .scaleEffect(animated && drift ? 1.04 : 1.0)
                         .offset(
-                            x: animated && drift ? geo.size.width * 0.028 : -geo.size.width * 0.02,
-                            y: animated && drift ? -geo.size.height * 0.018 : geo.size.height * 0.014
+                            x: animated && drift ? geo.size.width * 0.012 : 0,
+                            y: animated && drift ? -geo.size.height * 0.008 : 0
                         )
                         .opacity(intensity)
                 } else {
@@ -40,6 +37,7 @@ struct ThemeAtmosphereView: View {
                     )
                 }
 
+                // Tiny contrast only — never a frosted / washed look.
                 LinearGradient(
                     colors: {
                         let ink = preset.atmosphereUsesLightScrim ? Color.white : Color.black
@@ -51,6 +49,7 @@ struct ThemeAtmosphereView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
+                .allowsHitTesting(false)
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -71,9 +70,8 @@ struct ThemeAtmosphereView: View {
             drift = false
             return
         }
-        // Delay so the first frame is static and the first tap isn't fighting layout.
         DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 16).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
                 drift = true
             }
         }
@@ -90,18 +88,14 @@ enum ThemeAtmosphereStyle {
     case daredevil
 }
 
-/// Centered loading placeholder that doesn't collapse into a tiny themed scrap
-/// (bare `ProgressView("…")` can render broken page-style chrome on photo themes).
+/// Centered loading placeholder that doesn't collapse into a tiny themed scrap.
 struct LoadingStateView: View {
     let title: String
     var subtitle: String? = nil
 
     var body: some View {
         ZStack {
-            // Opaque enough that photo themes don't show through as a tiny scrap.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea()
+            Color.clear.ignoresSafeArea()
 
             VStack(spacing: 14) {
                 ProgressView()
@@ -111,26 +105,30 @@ struct LoadingStateView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
+                    .themedReadableText()
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .themedReadableText()
                 }
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 22)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.regularMaterial)
-            }
-            .padding(28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 extension View {
+    /// Soft shadow so labels stay readable on busy photo themes (no frosted card).
+    func themedReadableText() -> some View {
+        self
+            .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
+            .shadow(color: .white.opacity(0.35), radius: 1, x: 0, y: 0)
+    }
+
     /// Lets the living theme atmosphere show through lists / forms / scroll views.
     func themedScreenChrome() -> some View {
         self
@@ -138,48 +136,31 @@ extension View {
             .background(Color.clear)
     }
 
-    /// Soft material fill so photo themes stay visible but body text stays readable.
+    /// No wash over the photo — content sits on the atmosphere.
     func themedGroupedFill() -> some View {
         self.background {
-            Rectangle()
-                .fill(.regularMaterial)
-                .opacity(0.78)
-                .ignoresSafeArea()
+            Color.clear.ignoresSafeArea()
         }
     }
 
-    /// Soft card behind a list row for readability on photo backgrounds.
+    /// Transparent row — no white plate, no border.
     func themedListRow() -> some View {
-        self.listRowBackground(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.regularMaterial)
-                .padding(.vertical, 2)
-        )
+        self.listRowBackground(Color.clear)
     }
 
-    /// Frosted panel for Form / inset sections (replaces stark solid white cards).
+    /// Form / inset rows without white cards or outlines.
     func themedPanelRow(cornerRadius: CGFloat = 14) -> some View {
-        self.listRowBackground(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.regularMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                }
-                .padding(.vertical, 1)
-        )
+        self
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(Color.primary.opacity(0.18))
     }
 
-    /// Empty / unavailable states stay readable on bright photo themes.
+    /// Empty states without a white floating window.
     func themedEmptyStateCard() -> some View {
         self
             .padding(22)
             .frame(maxWidth: 360)
-            .background {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(.regularMaterial)
-                    .shadow(color: .black.opacity(0.14), radius: 16, y: 6)
-            }
+            .themedReadableText()
             .padding(.horizontal, 20)
     }
 

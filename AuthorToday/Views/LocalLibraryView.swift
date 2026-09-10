@@ -13,7 +13,7 @@ struct LocalLibraryView: View {
                 }
                 .navigationTitle("Мои книги")
                 .navigationBarTitleDisplayMode(.large)
-                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }
@@ -63,8 +63,10 @@ struct LocalLibraryPane: View {
                             Text(quotaHint)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                                .themedReadableText()
                         }
                         .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                     ForEach(localLibrary.books, id: \.id) { book in
                         Button {
@@ -72,6 +74,8 @@ struct LocalLibraryPane: View {
                         } label: {
                             bookRow(book)
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(Color.primary.opacity(0.2))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 Task {

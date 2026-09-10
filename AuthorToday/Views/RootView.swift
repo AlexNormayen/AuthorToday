@@ -46,14 +46,18 @@ struct RootView: View {
     private func configureTranslucentChrome() {
         let tab = UITabBarAppearance()
         tab.configureWithTransparentBackground()
-        tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        tab.backgroundEffect = nil
+        tab.backgroundColor = .clear
+        tab.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
         UITabBar.appearance().isTranslucent = true
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
-        nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        nav.backgroundEffect = nil
+        nav.backgroundColor = .clear
+        nav.shadowColor = .clear
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
@@ -144,7 +148,7 @@ struct MainTabView: View {
                     .tag(dest.rawValue)
             }
         }
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .toolbarBackground(.hidden, for: .tabBar)
         .background(Color.clear)
     }
 
@@ -463,7 +467,7 @@ struct SettingsHubView: View {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .scrollContentBackground(.hidden)
-            .toolbarBackground(.regularMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .task {
                 if ChitalnyaDistribution.showsSideloadUpdates {
                     await updates.checkIfDue()

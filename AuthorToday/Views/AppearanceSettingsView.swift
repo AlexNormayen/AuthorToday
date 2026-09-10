@@ -18,17 +18,18 @@ struct AppearanceSettingsView: View {
                         Text(appearance.themePreset.title)
                             .font(.headline)
                             .foregroundStyle(.primary)
+                            .themedReadableText()
                         Text("Живой фон темы")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .themedReadableText()
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 14)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .frame(height: 140)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .themedPanelRow(cornerRadius: 18)
+                .listRowBackground(Color.clear)
             }
 
             Section("Тема приложения") {
@@ -162,7 +163,7 @@ struct AppearanceSettingsView: View {
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }
-        .toolbarBackground(.regularMaterial, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)
