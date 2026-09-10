@@ -27,25 +27,45 @@ struct LocalLibraryPane: View {
     @State private var importError: String?
     @State private var readerBookId: UUID?
 
-    private var canUseLocalLibrary: Bool {
-        !ProFeatures.localLibraryRequiresPro || pro.isProUnlocked
+    private var canImportMore: Bool {
+        localLibrary.canImportLocalBook(isProUnlocked: pro.isProUnlocked)
+    }
+
+    private var isInFreeCooldown: Bool {
+        guard !pro.isProUnlocked,
+              let next = localLibrary.nextFreeImportAvailableAt else { return false }
+        return Date() < next
     }
 
     var body: some View {
         Group {
-            if !canUseLocalLibrary {
-                freeGate
-            } else if localLibrary.books.isEmpty {
+            if localLibrary.books.isEmpty {
                 ContentUnavailableView {
                     Label("Мои книги", systemImage: "tray.and.arrow.down")
                 } description: {
-                    Text("Добавьте TXT или EPUB. Книги можно выгрузить на облачную полку VPS и восстановить после переустановки. Также подхватываются файлы из папки «Читальня» в Файлах.")
+                    Text(emptyDescription)
                 } actions: {
-                    Button("Добавить файл") { showImporter = true }
-                        .buttonStyle(.borderedProminent)
+                    Button(emptyPrimaryTitle) {
+                        if canImportMore {
+                            showImporter = true
+                        } else {
+                            showPaywall = true
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
+                .themedEmptyStateCard()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
+                    if !pro.isProUnlocked {
+                        Section {
+                            Text(quotaHint)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .listRowBackground(Color.clear)
+                    }
                     ForEach(localLibrary.books, id: \.id) { book in
                         Button {
                             readerBookId = book.id
@@ -71,15 +91,17 @@ struct LocalLibraryPane: View {
             }
         }
         .toolbar {
-            if canUseLocalLibrary {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    if canImportMore {
                         showImporter = true
-                    } label: {
-                        Image(systemName: "plus")
+                    } else {
+                        showPaywall = true
                     }
-                    .disabled(localLibrary.isImporting)
+                } label: {
+                    Image(systemName: canImportMore ? "plus" : "lock.fill")
                 }
+                .disabled(localLibrary.isImporting)
             }
         }
         .fileImporter(
@@ -98,7 +120,7 @@ struct LocalLibraryPane: View {
             Text(importError ?? "")
         }
         .sheet(isPresented: $showPaywall) {
-            ProPaywallView()
+            ProPaywallView(reason: paywallReason)
                 .environmentObject(OfflineStore.shared)
         }
         .fullScreenCover(item: Binding(
@@ -118,15 +140,38 @@ struct LocalLibraryPane: View {
         }
     }
 
-    private var freeGate: some View {
-        ContentUnavailableView {
-            Label("Мои книги — Pro", systemImage: "lock.fill")
-        } description: {
-            Text("Импорт своих TXT и EPUB и чтение в Читальне доступны в «Читальня Pro». С Pro книги можно выгружать на облачную полку VPS.")
-        } actions: {
-            Button("Открыть Pro") { showPaywall = true }
-                .buttonStyle(.borderedProminent)
+    private var emptyPrimaryTitle: String {
+        if canImportMore { return "Добавить файл" }
+        if isInFreeCooldown { return "Открыть Pro" }
+        return "Открыть Pro"
+    }
+
+    private var paywallReason: String {
+        if isInFreeCooldown, let next = localLibrary.nextFreeImportAvailableAt {
+            let formatted = next.formatted(date: .abbreviated, time: .omitted)
+            return "После удаления бесплатной книги следующий файл — с \(formatted). Pro снимает лимит сразу."
         }
+        return "Бесплатно — \(ProFeatures.freeLocalLibraryLimit) своя книга. После удаления повтор через \(ProFeatures.freeLocalLibraryCooldownDays) дней. Pro — без лимита."
+    }
+
+    private var emptyDescription: String {
+        if pro.isProUnlocked {
+            return "Добавьте TXT или EPUB. Книги можно выгрузить на облачную полку VPS и восстановить после переустановки. Также подхватываются файлы из папки «Читальня» в Файлах."
+        }
+        if isInFreeCooldown, let next = localLibrary.nextFreeImportAvailableAt {
+            let formatted = next.formatted(date: .abbreviated, time: .omitted)
+            return "Бесплатный слот на перезарядке до \(formatted). Досрочно — в Читальня Pro."
+        }
+        return "Бесплатно — \(ProFeatures.freeLocalLibraryLimit) файл (TXT/EPUB). Удалите — следующий бесплатный через \(ProFeatures.freeLocalLibraryCooldownDays) дней. Без лимита — в Pro."
+    }
+
+    private var quotaHint: String {
+        let used = localLibrary.books.count
+        let limit = ProFeatures.freeLocalLibraryLimit
+        if used >= limit {
+            return "Бесплатный слот занят (\(used)/\(limit)). Удаление запускает паузу \(ProFeatures.freeLocalLibraryCooldownDays) дней до следующей бесплатной загрузки. Pro — без лимита."
+        }
+        return "Бесплатно: \(used)/\(limit). Pro снимает лимит."
     }
 
     private func bookRow(_ book: LocalBook) -> some View {
@@ -163,7 +208,7 @@ struct LocalLibraryPane: View {
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
-        guard canUseLocalLibrary else {
+        guard canImportMore else {
             showPaywall = true
             return
         }

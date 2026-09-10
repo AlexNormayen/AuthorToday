@@ -82,8 +82,7 @@ struct LibraryView: View {
             }
             .navigationTitle("Библиотека")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .modifier(LibrarySearchModifier(isEnabled: mode != .mine, query: $query))
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 if mode != .mine {
                     Picker("Где искать", selection: $searchScope) {
@@ -94,7 +93,7 @@ struct LibraryView: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial.opacity(0.7))
+                    .background(.regularMaterial.opacity(0.92))
                 }
             }
             .onChange(of: searchScope) { _, scope in
@@ -206,6 +205,8 @@ struct LibraryView: View {
                 systemImage: "books.vertical",
                 description: Text(emptyLibraryMessage)
             )
+            .themedEmptyStateCard()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             authorsList
         }
@@ -221,6 +222,8 @@ struct LibraryView: View {
                 systemImage: "books.vertical",
                 description: Text(emptyLibraryMessage)
             )
+            .themedEmptyStateCard()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             booksList(works: filteredWorks)
         }
@@ -262,7 +265,9 @@ struct LibraryView: View {
                     .padding(.vertical, 6)
                 }
                 .listRowBackground(
-                    Rectangle().fill(.ultraThinMaterial.opacity(0.82))
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.regularMaterial)
+                        .padding(.vertical, 2)
                 )
             }
         }

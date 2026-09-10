@@ -17,18 +17,18 @@ struct AppearanceSettingsView: View {
                     VStack(spacing: 8) {
                         Text(appearance.themePreset.title)
                             .font(.headline)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                         Text("Живой фон темы")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(20)
-                    .background(.ultraThinMaterial.opacity(0.35))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .frame(height: 140)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
+                .themedPanelRow(cornerRadius: 18)
             }
 
             Section("Тема приложения") {
@@ -38,6 +38,7 @@ struct AppearanceSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .themedPanelRow()
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -68,7 +69,7 @@ struct AppearanceSettingsView: View {
                                                 .strokeBorder(
                                                     appearance.themePreset == preset
                                                         ? preset.accent
-                                                        : Color.white.opacity(0.15),
+                                                        : Color.primary.opacity(0.12),
                                                     lineWidth: appearance.themePreset == preset ? 2.5 : 1
                                                 )
                                         }
@@ -106,6 +107,7 @@ struct AppearanceSettingsView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .themedPanelRow()
 
                 if appearance.themePreset == .custom {
                     ColorPicker(
@@ -115,6 +117,7 @@ struct AppearanceSettingsView: View {
                             set: { appearance.customAccentHex = $0.toHex() }
                         )
                     )
+                    .themedPanelRow()
                 }
             }
 
@@ -122,6 +125,7 @@ struct AppearanceSettingsView: View {
                 NavigationLink("Шрифт, фон, отступы") {
                     ReaderSettingsView()
                 }
+                .themedPanelRow()
                 Picker("Перелистывание", selection: $readerSettings.pageTurnMode) {
                     ForEach(PageTurnMode.allCases) { mode in
                         HStack {
@@ -135,6 +139,7 @@ struct AppearanceSettingsView: View {
                         .tag(mode)
                     }
                 }
+                .themedPanelRow()
                 .onChange(of: readerSettings.pageTurnMode) { _, newValue in
                     if ProFeatures.requiresPro(newValue), !pro.isProUnlocked {
                         readerSettings.pageTurnMode = .verticalScroll
@@ -148,6 +153,7 @@ struct AppearanceSettingsView: View {
                 Text("Бесплатно: спокойные темы Бумага / Облако / Камень и Author.Today (без фото-фона, удобнее читать списки), плюс Мох, Океан, Вино, Графит, Песок. Futuristic, фото-темы и свой цвет — в Pro. Тема задаёт фон и акцент; фон читалки настраивается отдельно.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .themedPanelRow()
             }
         }
         .navigationTitle("Оформление")
@@ -156,7 +162,7 @@ struct AppearanceSettingsView: View {
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.regularMaterial, for: .navigationBar)
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)

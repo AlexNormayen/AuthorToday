@@ -17,6 +17,32 @@ final class LocalLibraryStore: ObservableObject {
     @Published var lastError: String?
 
     private var modelContext: ModelContext?
+    private let nextFreeImportKey = "localBooks.nextFreeImportAt"
+
+    /// Earliest time a non‑Pro user may import again after removing a free local book.
+    var nextFreeImportAvailableAt: Date? {
+        UserDefaults.standard.object(forKey: nextFreeImportKey) as? Date
+    }
+
+    func canImportLocalBook(isProUnlocked: Bool) -> Bool {
+        ProFeatures.canImportLocalBook(
+            currentCount: books.count,
+            isProUnlocked: isProUnlocked,
+            nextFreeImportAt: nextFreeImportAvailableAt
+        )
+    }
+
+    /// Starts the free-slot cooldown when a non‑Pro user removes a local book.
+    func noteFreeLocalBookRemoved(isProUnlocked: Bool) {
+        guard !isProUnlocked else { return }
+        let cooldown = TimeInterval(ProFeatures.freeLocalLibraryCooldownDays * 24 * 60 * 60)
+        let candidate = Date().addingTimeInterval(cooldown)
+        if let existing = nextFreeImportAvailableAt, existing > candidate {
+            return
+        }
+        UserDefaults.standard.set(candidate, forKey: nextFreeImportKey)
+        objectWillChange.send()
+    }
 
     func attach(context: ModelContext) {
         modelContext = context
@@ -52,8 +78,11 @@ final class LocalLibraryStore: ObservableObject {
 
     @discardableResult
     func importFile(from url: URL) throws -> LocalBook {
-        guard ProFeatures.localLibraryRequiresPro == false
-                || ProEntitlementStore.shared.isProUnlocked else {
+        let unlocked = ProEntitlementStore.shared.isProUnlocked
+        guard canImportLocalBook(isProUnlocked: unlocked) else {
+            if let next = nextFreeImportAvailableAt, Date() < next, !unlocked {
+                throw LocalBookImportError.freeCooldown(until: next)
+            }
             throw LocalBookImportError.proRequired
         }
         guard let modelContext else {
@@ -139,8 +168,10 @@ final class LocalLibraryStore: ObservableObject {
     /// Import any TXT/EPUB dropped into the app Documents folder (Files / Finder sharing).
     @discardableResult
     func importNewFilesFromDocuments() -> Int {
-        guard ProFeatures.localLibraryRequiresPro == false
-                || ProEntitlementStore.shared.isProUnlocked else { return 0 }
+        let unlocked = ProEntitlementStore.shared.isProUnlocked
+        guard canImportLocalBook(isProUnlocked: unlocked) else {
+            return 0
+        }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         guard let docs else { return 0 }
         let inbox = docs.appendingPathComponent("Inbox", isDirectory: true)
@@ -155,6 +186,11 @@ final class LocalLibraryStore: ObservableObject {
                 options: [.skipsHiddenFiles]
             ) else { continue }
             for url in files {
+                guard ProFeatures.canImportLocalBook(
+                    currentCount: books.count + imported,
+                    isProUnlocked: unlocked,
+                    nextFreeImportAt: nextFreeImportAvailableAt
+                ) else { break }
                 let ext = url.pathExtension.lowercased()
                 guard ext == "txt" || ext == "epub" else { continue }
                 let marker = "\(url.lastPathComponent)|\(url.fileSizeForImport)"
@@ -178,6 +214,7 @@ final class LocalLibraryStore: ObservableObject {
 
     func delete(_ book: LocalBook) {
         guard let modelContext else { return }
+        let unlocked = ProEntitlementStore.shared.isProUnlocked
         let folderName = book.relativePath.split(separator: "/").first.map(String.init)
         modelContext.delete(book)
         try? modelContext.save()
@@ -185,6 +222,7 @@ final class LocalLibraryStore: ObservableObject {
             let folder = LocalBookImporter.booksDirectory.appendingPathComponent(folderName, isDirectory: true)
             try? FileManager.default.removeItem(at: folder)
         }
+        noteFreeLocalBookRemoved(isProUnlocked: unlocked)
         reload()
     }
 

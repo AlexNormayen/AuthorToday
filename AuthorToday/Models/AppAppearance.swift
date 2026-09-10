@@ -206,18 +206,19 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     }
 
     /// Overlay strength for the living backdrop (higher = more readable lists on busy photos).
+    /// Keep photo themes vivid; panels/materials carry readability, not a heavy global wash.
     var atmosphereOverlayTop: Double {
-        if prefersDark { return 0.42 }
-        if backgroundImageName != nil { return 0.58 }
-        if isCalmFamily { return 0.03 }
-        return 0.12
+        if prefersDark { return 0.28 }
+        if backgroundImageName != nil { return 0.18 }
+        if isCalmFamily { return 0.02 }
+        return 0.08
     }
 
     var atmosphereOverlayBottom: Double {
-        if prefersDark { return 0.62 }
-        if backgroundImageName != nil { return 0.78 }
-        if isCalmFamily { return 0.06 }
-        return 0.22
+        if prefersDark { return 0.45 }
+        if backgroundImageName != nil { return 0.32 }
+        if isCalmFamily { return 0.04 }
+        return 0.14
     }
 
     /// Accent wash on flat (no-photo) backgrounds.

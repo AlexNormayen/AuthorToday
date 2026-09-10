@@ -75,15 +75,28 @@ enum ProFeatures {
         #endif
     }
 
-    /// Local file shelf (TXT/EPUB) — Pro only.
-    static let localLibraryRequiresPro = true
+    /// Local file shelf (TXT/EPUB): one free file; after delete wait before next free import.
+    static let freeLocalLibraryLimit = 1
+    static let freeLocalLibraryCooldownDays = 14
+
+    static func canImportLocalBook(
+        currentCount: Int,
+        isProUnlocked: Bool,
+        nextFreeImportAt: Date? = nil,
+        now: Date = .now
+    ) -> Bool {
+        if isProUnlocked { return true }
+        if currentCount >= freeLocalLibraryLimit { return false }
+        if let nextFreeImportAt, now < nextFreeImportAt { return false }
+        return true
+    }
 
     static var paywallBullets: [String] {
         [
             "Все темы оформления (неон, фото-фоны и свой цвет)",
             "Скачивание книг целиком без лимита (\(freeFullDownloadLimit) книги бесплатно)",
             "Закладки и заметки в читалке",
-            "«Мои книги»: свои TXT и EPUB на устройстве",
+            "«Мои книги»: TXT/EPUB без лимита (бесплатно \(freeLocalLibraryLimit) файл, повтор через \(freeLocalLibraryCooldownDays) дн.)",
             "Режим «Перелистывание» как у бумажной книги",
             "Свой цвет и картинка фона в читалке"
         ]

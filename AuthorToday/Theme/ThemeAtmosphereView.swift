@@ -142,8 +142,8 @@ extension View {
     func themedGroupedFill() -> some View {
         self.background {
             Rectangle()
-                .fill(.thinMaterial)
-                .opacity(0.88)
+                .fill(.regularMaterial)
+                .opacity(0.78)
                 .ignoresSafeArea()
         }
     }
@@ -151,10 +151,36 @@ extension View {
     /// Soft card behind a list row for readability on photo backgrounds.
     func themedListRow() -> some View {
         self.listRowBackground(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial.opacity(0.92))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
                 .padding(.vertical, 2)
         )
+    }
+
+    /// Frosted panel for Form / inset sections (replaces stark solid white cards).
+    func themedPanelRow(cornerRadius: CGFloat = 14) -> some View {
+        self.listRowBackground(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.regularMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                }
+                .padding(.vertical, 1)
+        )
+    }
+
+    /// Empty / unavailable states stay readable on bright photo themes.
+    func themedEmptyStateCard() -> some View {
+        self
+            .padding(22)
+            .frame(maxWidth: 360)
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.regularMaterial)
+                    .shadow(color: .black.opacity(0.14), radius: 16, y: 6)
+            }
+            .padding(.horizontal, 20)
     }
 
     /// Reliable tap target for plain buttons (esp. inside ScrollView).

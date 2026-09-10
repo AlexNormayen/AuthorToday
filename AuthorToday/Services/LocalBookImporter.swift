@@ -9,6 +9,7 @@ enum LocalBookImportError: LocalizedError {
     case invalidEPUB
     case copyFailed
     case proRequired
+    case freeCooldown(until: Date)
 
     var errorDescription: String? {
         switch self {
@@ -25,7 +26,10 @@ enum LocalBookImportError: LocalizedError {
         case .copyFailed:
             return "Не удалось скопировать файл"
         case .proRequired:
-            return "Импорт файлов доступен в Читальня Pro"
+            return "Бесплатно — \(ProFeatures.freeLocalLibraryLimit) файл. Дальше без лимита в Читальня Pro"
+        case .freeCooldown(let until):
+            let formatted = until.formatted(date: .abbreviated, time: .omitted)
+            return "Следующий бесплатный файл можно добавить с \(formatted). Или сразу в Pro"
         }
     }
 }
