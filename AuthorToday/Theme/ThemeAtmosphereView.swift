@@ -322,7 +322,7 @@ private struct ThemedSectionChromeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+            .foregroundStyle(preset.chromePrimaryText.opacity(0.92))
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)

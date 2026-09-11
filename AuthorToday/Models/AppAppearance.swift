@@ -280,13 +280,14 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Small / secondary copy — soft light ink on scrim; accent-tinted on pale themes.
+    /// Small / secondary copy — nearly as bright as primary on scrim themes.
     func chromeSecondaryText(accent: Color) -> Color {
         switch chromeInk {
         case .onDark:
-            return accent.blended(toward: .white, amount: 0.78).opacity(0.92)
+            // Keep a hint of accent, but stay close to white so footnotes aren't muddy.
+            return accent.blended(toward: .white, amount: 0.93)
         case .onLight:
-            return accent.blended(toward: .black, amount: 0.48)
+            return accent.blended(toward: .black, amount: 0.55)
         }
     }
 
