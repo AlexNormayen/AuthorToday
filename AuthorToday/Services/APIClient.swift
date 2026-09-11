@@ -598,7 +598,17 @@ actor APIClient {
 
     private func searchAuthorsPopular(query: String) async throws -> [AuthorSearchHit] {
         let site = try await searchSiteBundle(query: query, category: "authors")
-        return Self.sortAuthorsByPopularity(site.authors)
+        let selfKey = (AuthService.shared.user?.resolvedUserName ?? AuthService.shared.resolvedUserName)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let filtered = site.authors.filter { hit in
+            let userKey = hit.userName.lowercased()
+            if let selfKey, !selfKey.isEmpty, userKey == selfKey { return false }
+            let display = hit.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if Self.ignoredSearchDisplayNames.contains(display) { return false }
+            return true
+        }
+        return Self.sortAuthorsByPopularity(filtered)
     }
 
     private static func sortWorksByPopularity(_ works: [WorkMeta]) -> [WorkMeta] {
@@ -678,76 +688,84 @@ actor APIClient {
         "at_collections", "at_support", "admin", "support"
     ]
 
+    private static let ignoredSearchDisplayNames: Set<String> = [
+        "мой профиль", "my profile", "профиль"
+    ]
+
+    /// Site often emits unquoted attrs: `href=/u/mahanenkovm` (no quotes).
+    private static let searchAuthorHrefPattern =
+        #"(?is)<a([^>]+)href=["']?/u/([^"'/\s>]+)["']?([^>]*)>(.*?)</a>"#
+
     private static func parseSearchAuthors(from html: String) -> [AuthorSearchHit] {
-        // Prefer the «Авторы» block when present; otherwise collect /u/ links that appear before works.
+        // Do not cut at nav labels «Авторы»/«Произведения» — on search pages those words
+        // appear in the menu before the real `profile-card` results.
         let authorsSection: String
-        if let range = html.range(of: #"Авторы"#, options: [.caseInsensitive]) {
+        if html.contains("profile-card")
+            || html.contains("category=authors")
+            || html.contains("icon-author-rating") {
+            authorsSection = html
+        } else if let range = html.range(of: #"Авторы"#, options: [.caseInsensitive]) {
             let after = html[range.lowerBound...]
             if let works = after.range(of: #"Произведения"#, options: [.caseInsensitive]) {
                 authorsSection = String(after[..<works.lowerBound])
             } else {
                 authorsSection = String(after.prefix(80_000))
             }
-        } else if html.contains("category=authors") || html.contains("icon-author-rating") {
-            authorsSection = html
         } else {
             authorsSection = String(html.prefix(20_000))
         }
 
-        // Card-oriented: /u/link + optional author rating nearby.
-        if let cardRegex = try? NSRegularExpression(
-            pattern: #"(?is)<a[^>]+href=["']/u/([^"'/]+)["'][^>]*>(.*?)</a>(.{0,900})"#
-        ) {
-            let ns = authorsSection as NSString
-            var ordered: [AuthorSearchHit] = []
-            var seen = Set<String>()
-            for match in cardRegex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
-                guard match.numberOfRanges >= 4,
-                      let uRange = Range(match.range(at: 1), in: authorsSection),
-                      let nRange = Range(match.range(at: 2), in: authorsSection),
-                      let tailRange = Range(match.range(at: 3), in: authorsSection) else { continue }
-                let userRaw = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                let userKey = userRaw.lowercased()
-                guard !userRaw.isEmpty,
-                      !ignoredSearchUserNames.contains(userKey),
-                      seen.insert(userKey).inserted else { continue }
-                var name = HTMLText.plain(from: String(authorsSection[nRange]))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if name.isEmpty { name = userRaw }
-                if name.count > 80 { continue }
-                let tail = String(authorsSection[tailRange])
-                let score = parseAuthorPopularity(from: tail)
-                ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: score))
-                if ordered.count >= 40 { break }
-            }
-            if !ordered.isEmpty { return ordered }
+        guard let linkRegex = try? NSRegularExpression(pattern: searchAuthorHrefPattern) else {
+            return []
         }
-
-        guard let regex = try? NSRegularExpression(
-            pattern: #"(?is)<a[^>]+href=["']/u/([^"'/]+)["'][^>]*>(.*?)</a>"#
-        ) else { return [] }
 
         let ns = authorsSection as NSString
         var ordered: [AuthorSearchHit] = []
         var seen = Set<String>()
-        for match in regex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
-            guard match.numberOfRanges >= 3,
-                  let uRange = Range(match.range(at: 1), in: authorsSection),
-                  let nRange = Range(match.range(at: 2), in: authorsSection) else { continue }
+
+        for match in linkRegex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
+            guard match.numberOfRanges >= 5,
+                  let preRange = Range(match.range(at: 1), in: authorsSection),
+                  let uRange = Range(match.range(at: 2), in: authorsSection),
+                  let postRange = Range(match.range(at: 3), in: authorsSection),
+                  let nRange = Range(match.range(at: 4), in: authorsSection) else { continue }
+
             let userRaw = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             let userKey = userRaw.lowercased()
             guard !userRaw.isEmpty,
                   !ignoredSearchUserNames.contains(userKey),
                   seen.insert(userKey).inserted else { continue }
+
+            let attrs = (String(authorsSection[preRange]) + " " + String(authorsSection[postRange])).lowercased()
+            // Skip nav / avatar-only noise when a named profile card is available later.
+            let isProfileName = attrs.contains("profile-name")
+            let isProfileAvatar = attrs.contains("profile-avatar")
+            if isProfileAvatar && !isProfileName { continue }
+
             var name = HTMLText.plain(from: String(authorsSection[nRange]))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if name.isEmpty { name = userRaw }
             if name.count > 80 { continue }
-            if name == userRaw, userRaw.count < 2 { continue }
-            ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: 0))
+            let displayKey = name.lowercased()
+            if ignoredSearchDisplayNames.contains(displayKey) { continue }
+
+            let matchEnd = match.range.location + match.range.length
+            let tailLen = max(0, min(900, ns.length - matchEnd))
+            let tail = tailLen > 0
+                ? ns.substring(with: NSRange(location: matchEnd, length: tailLen))
+                : ""
+            let score = parseAuthorPopularity(from: tail)
+
+            ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: score))
             if ordered.count >= 40 { break }
         }
-        return ordered
+
+        // Prefer named profile cards when the page mixed in other /u/ links.
+        let named = ordered.filter { hit in
+            let key = hit.displayName.lowercased()
+            return key != hit.userName.lowercased()
+        }
+        return named.isEmpty ? ordered : named
     }
 
     private static func parseAuthorPopularity(from snippet: String) -> Int {
