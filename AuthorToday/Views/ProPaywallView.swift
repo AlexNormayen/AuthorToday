@@ -77,7 +77,7 @@ struct ProPaywallView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(appearance.accent)
             }
-            Text("Pro улучшает Читальню (темы, офлайн, закладки, «Мои книги»). Книги Author.Today — только на author.today.")
+            Text("Главное — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и «Мои книги». Книги Author.Today — только на author.today.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
