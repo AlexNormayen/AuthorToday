@@ -244,9 +244,7 @@ struct SearchView: View {
             authors = bundle.authors
             results = bundle.works
             showingRecent = false
-            if authors.isEmpty && results.isEmpty {
-                error = "Ничего не найдено"
-            }
+            error = nil
         } catch {
             self.error = error.localizedDescription
         }

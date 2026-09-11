@@ -598,19 +598,57 @@ actor APIClient {
 
     private func searchAuthorsPopular(query: String) async throws -> [AuthorSearchHit] {
         let site = try await searchSiteBundle(query: query, category: "authors")
+        var authors = await filterAuthorHits(site.authors)
+        if authors.isEmpty {
+            // Mobile HTML markup changes often — recover authors from work hits.
+            if let works = try? await searchWorksPopular(query: query, page: 1) {
+                authors = await filterAuthorHits(Self.authorsFromWorks(works, matching: query))
+            }
+        }
+        return Self.sortAuthorsByPopularity(authors)
+    }
+
+    private func filterAuthorHits(_ authors: [AuthorSearchHit]) async -> [AuthorSearchHit] {
         let selfKey = await MainActor.run {
             (AuthService.shared.user?.resolvedUserName ?? AuthService.shared.resolvedUserName)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
         }
-        let filtered = site.authors.filter { hit in
+        return authors.filter { hit in
             let userKey = hit.userName.lowercased()
             if let selfKey, !selfKey.isEmpty, userKey == selfKey { return false }
             let display = hit.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if Self.ignoredSearchDisplayNames.contains(display) { return false }
             return true
         }
-        return Self.sortAuthorsByPopularity(filtered)
+    }
+
+    private static func authorsFromWorks(_ works: [WorkMeta], matching query: String) -> [AuthorSearchHit] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var ordered: [AuthorSearchHit] = []
+        var seen = Set<String>()
+        for work in works {
+            guard let user = work.authorUserName?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !user.isEmpty else { continue }
+            let key = user.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            let display = (work.authorFIO ?? user)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !needle.isEmpty {
+                let hay = (display + " " + user).lowercased()
+                guard hay.contains(needle) || needle.contains(display.lowercased()) else { continue }
+            }
+            ordered.append(
+                AuthorSearchHit(
+                    userName: user,
+                    displayName: display.isEmpty ? user : display,
+                    popularityScore: work.likeCount ?? work.viewsCount ?? work.viewCount ?? 0
+                )
+            )
+            if ordered.count >= 40 { break }
+        }
+        return ordered
     }
 
     private static func sortWorksByPopularity(_ works: [WorkMeta]) -> [WorkMeta] {
@@ -656,26 +694,15 @@ actor APIClient {
     }
 
     private func searchSiteBundle(query: String, category: String?) async throws -> SiteSearchParse {
+        try? await establishWebSession()
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        var path = "https://author.today/search?q=\(encoded)"
+        var path = "/search?q=\(encoded)"
         if let category, !category.isEmpty {
-            path = "https://author.today/search?category=\(category)&q=\(encoded)"
+            path = "/search?category=\(category)&q=\(encoded)"
         }
-        guard let url = URL(string: path) else {
-            throw APIError.invalidURL
-        }
-        var request = URLRequest(url: url)
-        request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 AuthorTodayReader",
-            forHTTPHeaderField: "User-Agent"
-        )
-        request.setValue("text/html", forHTTPHeaderField: "Accept")
-        if token != "guest" {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        guard let html = String(data: data, encoding: .utf8) else {
+        // Use the same HTML fetch path as profiles (mobile UA + cookies).
+        let html = (try? await fetchWebHTML(path: path)) ?? ""
+        guard !html.isEmpty else {
             return SiteSearchParse(authors: [], workIDs: [])
         }
         let wantAuthors = category == nil || category == "authors"
@@ -694,80 +721,142 @@ actor APIClient {
         "мой профиль", "my profile", "профиль"
     ]
 
-    /// Site often emits unquoted attrs: `href=/u/mahanenkovm` (no quotes).
-    private static let searchAuthorHrefPattern =
-        #"(?is)<a([^>]+)href=["']?/u/([^"'/\s>]+)["']?([^>]*)>(.*?)</a>"#
-
     private static func parseSearchAuthors(from html: String) -> [AuthorSearchHit] {
-        // Do not cut at nav labels «Авторы»/«Произведения» — on search pages those words
-        // appear in the menu before the real `profile-card` results.
-        let authorsSection: String
-        if html.contains("profile-card")
-            || html.contains("category=authors")
-            || html.contains("icon-author-rating") {
-            authorsSection = html
-        } else if let range = html.range(of: #"Авторы"#, options: [.caseInsensitive]) {
-            let after = html[range.lowerBound...]
-            if let works = after.range(of: #"Произведения"#, options: [.caseInsensitive]) {
-                authorsSection = String(after[..<works.lowerBound])
-            } else {
-                authorsSection = String(after.prefix(80_000))
+        let fromCards = parseSearchAuthorCards(from: html)
+        if !fromCards.isEmpty { return fromCards }
+        return parseSearchAuthorLinks(from: html)
+    }
+
+    /// Mobile search wraps the whole card in `<a href=/u/… class="card-content">` —
+    /// plain text of that link is far longer than a name, so parse cards explicitly.
+    private static func parseSearchAuthorCards(from html: String) -> [AuthorSearchHit] {
+        let ns = html as NSString
+        var ordered: [AuthorSearchHit] = []
+        var seen = Set<String>()
+        var searchLocation = 0
+
+        while searchLocation < ns.length {
+            let found = ns.range(
+                of: "profile-card",
+                options: [.caseInsensitive],
+                range: NSRange(location: searchLocation, length: ns.length - searchLocation)
+            )
+            guard found.location != NSNotFound else { break }
+
+            let chunkStart = found.location
+            let chunkLen = min(5_000, ns.length - chunkStart)
+            let chunk = ns.substring(with: NSRange(location: chunkStart, length: chunkLen))
+            searchLocation = chunkStart + max(found.length, 1)
+
+            guard let userRaw = firstMatch(#"href=["']?/u/([^"'/\s>]+)["']?"#, in: chunk)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !userRaw.isEmpty else { continue }
+            let userKey = userRaw.lowercased()
+            guard !ignoredSearchUserNames.contains(userKey),
+                  seen.insert(userKey).inserted else { continue }
+
+            var name = firstMatch(
+                #"profile-name[\s\S]{0,400}?text-truncate[^>]*>([\s\S]*?)</span>"#,
+                in: chunk
+            )
+            if name == nil {
+                name = firstMatch(#"profile-name[^>]*>([\s\S]*?)</div>"#, in: chunk)
             }
-        } else {
-            authorsSection = String(html.prefix(20_000))
-        }
+            if name == nil {
+                name = firstMatch(#"class=["'][^"']*profile-name[^"']*["'][^>]*>([\s\S]*?)</a>"#, in: chunk)
+            }
+            var display = HTMLText.plain(from: name ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if display.isEmpty { display = userRaw }
+            if display.count > 120 {
+                display = String(display.prefix(120)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let displayKey = display.lowercased()
+            if ignoredSearchDisplayNames.contains(displayKey) { continue }
 
-        guard let linkRegex = try? NSRegularExpression(pattern: searchAuthorHrefPattern) else {
-            return []
+            ordered.append(
+                AuthorSearchHit(
+                    userName: userRaw,
+                    displayName: display,
+                    popularityScore: parseAuthorPopularity(from: chunk)
+                )
+            )
+            if ordered.count >= 40 { break }
         }
+        return ordered
+    }
 
-        let ns = authorsSection as NSString
+    private static func parseSearchAuthorLinks(from html: String) -> [AuthorSearchHit] {
+        guard let linkRegex = try? NSRegularExpression(
+            pattern: #"(?is)<a([^>]*?)href=["']?/u/([^"'/\s>]+)["']?([^>]*)>(.*?)</a>"#
+        ) else { return [] }
+
+        let ns = html as NSString
         var ordered: [AuthorSearchHit] = []
         var seen = Set<String>()
 
-        for match in linkRegex.matches(in: authorsSection, range: NSRange(location: 0, length: ns.length)) {
+        for match in linkRegex.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
             guard match.numberOfRanges >= 5,
-                  let preRange = Range(match.range(at: 1), in: authorsSection),
-                  let uRange = Range(match.range(at: 2), in: authorsSection),
-                  let postRange = Range(match.range(at: 3), in: authorsSection),
-                  let nRange = Range(match.range(at: 4), in: authorsSection) else { continue }
+                  let preRange = Range(match.range(at: 1), in: html),
+                  let uRange = Range(match.range(at: 2), in: html),
+                  let postRange = Range(match.range(at: 3), in: html),
+                  let nRange = Range(match.range(at: 4), in: html) else { continue }
 
-            let userRaw = String(authorsSection[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let userRaw = String(html[uRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             let userKey = userRaw.lowercased()
             guard !userRaw.isEmpty,
                   !ignoredSearchUserNames.contains(userKey),
                   seen.insert(userKey).inserted else { continue }
 
-            let attrs = (String(authorsSection[preRange]) + " " + String(authorsSection[postRange])).lowercased()
-            // Skip nav / avatar-only noise when a named profile card is available later.
-            let isProfileName = attrs.contains("profile-name")
-            let isProfileAvatar = attrs.contains("profile-avatar")
-            if isProfileAvatar && !isProfileName { continue }
+            let attrs = (String(html[preRange]) + " " + String(html[postRange])).lowercased()
+            let inner = String(html[nRange])
+            if attrs.contains("profile-avatar") && !attrs.contains("profile-name")
+                && !attrs.contains("card-content") {
+                continue
+            }
 
-            var name = HTMLText.plain(from: String(authorsSection[nRange]))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var name = ""
+            if let nested = firstMatch(
+                #"profile-name[\s\S]{0,400}?text-truncate[^>]*>([\s\S]*?)</span>"#,
+                in: inner
+            ) ?? firstMatch(#"text-truncate[^>]*>([\s\S]*?)</span>"#, in: inner) {
+                name = HTMLText.plain(from: nested)
+            } else {
+                name = HTMLText.plain(from: inner)
+            }
+            name = name.trimmingCharacters(in: .whitespacesAndNewlines)
             if name.isEmpty { name = userRaw }
-            if name.count > 80 { continue }
+            // Card wrappers include status/stats — keep only the leading name-ish line.
+            if name.count > 80 {
+                if let firstLine = name.split(whereSeparator: { $0.isNewline }).first {
+                    name = String(firstLine).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            if name.count > 80 { name = userRaw }
             let displayKey = name.lowercased()
             if ignoredSearchDisplayNames.contains(displayKey) { continue }
 
             let matchEnd = match.range.location + match.range.length
-            let tailLen = max(0, min(900, ns.length - matchEnd))
-            let tail = tailLen > 0
-                ? ns.substring(with: NSRange(location: matchEnd, length: tailLen))
-                : ""
-            let score = parseAuthorPopularity(from: tail)
+            let scoreSource: String
+            if attrs.contains("card-content") || inner.contains("icon-author-rating") {
+                scoreSource = inner
+            } else {
+                let tailLen = max(0, min(900, ns.length - matchEnd))
+                scoreSource = tailLen > 0
+                    ? ns.substring(with: NSRange(location: matchEnd, length: tailLen))
+                    : ""
+            }
 
-            ordered.append(AuthorSearchHit(userName: userRaw, displayName: name, popularityScore: score))
+            ordered.append(
+                AuthorSearchHit(
+                    userName: userRaw,
+                    displayName: name,
+                    popularityScore: parseAuthorPopularity(from: scoreSource)
+                )
+            )
             if ordered.count >= 40 { break }
         }
-
-        // Prefer named profile cards when the page mixed in other /u/ links.
-        let named = ordered.filter { hit in
-            let key = hit.displayName.lowercased()
-            return key != hit.userName.lowercased()
-        }
-        return named.isEmpty ? ordered : named
+        return ordered
     }
 
     private static func parseAuthorPopularity(from snippet: String) -> Int {
