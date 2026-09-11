@@ -17,10 +17,19 @@ struct SearchView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     private enum Route: Hashable {
         case work(Int)
         case author(String, String)
+    }
+
+    private var primaryInk: Color {
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+    }
+
+    private var secondaryInk: Color {
+        appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
     }
 
     var body: some View {
@@ -32,17 +41,21 @@ struct SearchView: View {
                         subtitle: downloads.online ? mode.title : "Нет сети"
                     )
                 } else if let error, results.isEmpty && authors.isEmpty {
-                    ContentUnavailableView("Ошибка", systemImage: "wifi.exclamationmark", description: Text(error))
+                    ThemedEmptyStateView(
+                        title: "Ошибка",
+                        systemImage: "wifi.exclamationmark",
+                        description: error
+                    )
                 } else if results.isEmpty && authors.isEmpty {
-                    ContentUnavailableView(
-                        emptyTitle,
+                    ThemedEmptyStateView(
+                        title: emptyTitle,
                         systemImage: "magnifyingglass",
-                        description: Text(emptyDescription)
+                        description: emptyDescription
                     )
                 } else {
                     List {
                         if !authors.isEmpty {
-                            Section("Авторы") {
+                            Section {
                                 ForEach(authors) { author in
                                     Button {
                                         path.append(Route.author(author.userName, author.displayName))
@@ -54,24 +67,28 @@ struct SearchView: View {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(author.displayName)
                                                     .font(.body.weight(.semibold))
-                                                    .foregroundStyle(.primary)
+                                                    .foregroundStyle(primaryInk)
+                                                    .themedReadableText()
                                                 Text("@\(author.userName)")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
+                                                    .font(.caption.weight(.medium))
+                                                    .foregroundStyle(secondaryInk)
+                                                    .themedReadableText()
                                             }
                                             Spacer()
                                             Image(systemName: "chevron.right")
                                                 .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.tertiary)
+                                                .foregroundStyle(secondaryInk.opacity(0.7))
                                         }
                                     }
-                                    .listRowBackground(Color.clear)
+                                    .themedPanelRow()
                                 }
+                            } header: {
+                                Text("Авторы").themedSectionChrome()
                             }
                         }
 
                         if !results.isEmpty {
-                            Section(showingRecent ? "Свежее" : "Произведения") {
+                            Section {
                                 ForEach(results) { work in
                                     Button {
                                         path.append(Route.work(work.id))
@@ -81,42 +98,49 @@ struct SearchView: View {
                                                 .frame(width: 48, height: 68)
                                             VStack(alignment: .leading, spacing: 4) {
                                                 Text(work.displayTitle)
-                                                    .font(.system(.body, design: .serif).weight(.medium))
-                                                    .foregroundStyle(.primary)
+                                                    .font(.system(.body, design: .serif).weight(.semibold))
+                                                    .foregroundStyle(primaryInk)
                                                     .multilineTextAlignment(.leading)
+                                                    .themedReadableText()
                                                 Text(work.displayAuthor)
-                                                    .font(.subheadline)
-                                                    .foregroundStyle(.secondary)
+                                                    .font(.subheadline.weight(.medium))
+                                                    .foregroundStyle(secondaryInk)
+                                                    .themedReadableText()
                                                 HStack(spacing: 8) {
                                                     if let price = work.displayPriceText {
                                                         Text(price)
                                                             .font(.caption.weight(.semibold))
-                                                            .foregroundStyle(Color.accentColor)
+                                                            .foregroundStyle(secondaryInk)
+                                                            .themedReadableText()
                                                     }
                                                     if work.isInLibrary {
                                                         Text("В библиотеке")
-                                                            .font(.caption2)
-                                                            .foregroundStyle(.secondary)
+                                                            .font(.caption2.weight(.semibold))
+                                                            .foregroundStyle(appearance.accent)
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    .listRowBackground(Color.clear)
+                                    .themedPanelRow()
                                 }
+                            } header: {
+                                Text(showingRecent ? "Свежее" : "Произведения").themedSectionChrome()
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
+                    .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                 }
             }
+            .environment(\.themePreset, appearance.themePreset)
+            .environment(\.themeAccent, appearance.accent)
             .themedScreenChrome()
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .navigationTitle("Поиск")
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 Picker("Режим", selection: $mode) {
                     ForEach(CatalogSearchMode.allCases) { item in
@@ -126,7 +150,7 @@ struct SearchView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
+                .background(Color.clear)
             }
             .searchable(text: $query, prompt: mode.prompt)
             .onSubmit(of: .search) {
@@ -141,12 +165,14 @@ struct SearchView: View {
                 if showsDismissButton {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Закрыть") { dismiss() }
+                            .foregroundStyle(primaryInk)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Свежее") {
                         Task { await loadRecent() }
                     }
+                    .foregroundStyle(primaryInk)
                     .disabled(!downloads.online || isLoading)
                 }
             }
@@ -173,6 +199,9 @@ struct SearchView: View {
                 }
             }
         }
+        // Sheets often ignore the app-level scheme — force chrome to match theme mode.
+        .preferredColorScheme(appearance.preferredColorScheme)
+        .tint(appearance.accent)
     }
 
     private var emptyTitle: String {

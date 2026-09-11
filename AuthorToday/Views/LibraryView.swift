@@ -168,6 +168,13 @@ struct LibraryView: View {
             }
             .sheet(item: $catalogSearchSeed) { seed in
                 SearchView(initialQuery: seed.query, showsDismissButton: true)
+                    .environmentObject(appearance)
+                    .environmentObject(downloads)
+                    .environmentObject(offline)
+                    .environment(\.themePreset, appearance.themePreset)
+                    .environment(\.themeAccent, appearance.accent)
+                    .preferredColorScheme(appearance.preferredColorScheme)
+                    .tint(appearance.accent)
             }
             .safeAreaInset(edge: .bottom) {
                 if let msg = downloads.statusMessage {
