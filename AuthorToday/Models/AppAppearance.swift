@@ -223,6 +223,21 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Soft dark wash over photo themes so list chrome reads without plates (Option A).
+    var contentScrimOpacity: Double {
+        guard backgroundImageName != nil else { return 0 }
+        switch self {
+        case .moss, .ocean:
+            return 0.46
+        case .sand, .wine, .graphite:
+            return 0.42
+        case _ where prefersDark:
+            return 0.38
+        default:
+            return 0.40
+        }
+    }
+
     /// Soft plates / chips / empty-state cards — tinted glass, never system white.
     var chromePanelFill: Color {
         switch self {
@@ -265,12 +280,11 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Small / secondary copy — accent-tinted for contrast on photo themes.
+    /// Small / secondary copy — soft light ink on scrim; accent-tinted on pale themes.
     func chromeSecondaryText(accent: Color) -> Color {
         switch chromeInk {
         case .onDark:
-            // Lift accent toward white so footnotes stay vivid on dark glass.
-            return accent.blended(toward: .white, amount: 0.70)
+            return accent.blended(toward: .white, amount: 0.78).opacity(0.92)
         case .onLight:
             return accent.blended(toward: .black, amount: 0.48)
         }

@@ -12,7 +12,12 @@ struct AppearanceSettingsView: View {
         Form {
             Section {
                 ZStack {
-                    ThemeAtmosphereView(preset: appearance.themePreset, intensity: 1, animated: true)
+                    ThemeAtmosphereView(
+                        preset: appearance.themePreset,
+                        intensity: 1,
+                        animated: true,
+                        showsContentScrim: false
+                    )
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     VStack(spacing: 8) {
                         Text(appearance.themePreset.title)
@@ -65,7 +70,8 @@ struct AppearanceSettingsView: View {
                                         ThemeAtmosphereView(
                                             preset: preset,
                                             intensity: 0.9,
-                                            animated: false
+                                            animated: false,
+                                            showsContentScrim: false
                                         )
                                         .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

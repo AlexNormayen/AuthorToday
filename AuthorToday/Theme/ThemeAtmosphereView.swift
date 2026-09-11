@@ -2,11 +2,13 @@ import SwiftUI
 import UIKit
 
 /// Full-screen living theme backdrop using real background images.
-/// Photo themes stay sharp and bright — no blur / heavy frost wash.
+/// Photo themes stay sharp; list screens get a soft dark scrim (Option A) for readable chrome.
 struct ThemeAtmosphereView: View {
     let preset: AppThemePreset
     var intensity: Double = 1
     var animated: Bool = true
+    /// Soft black wash over photos so lists/settings read without plates (off in theme previews).
+    var showsContentScrim: Bool = true
 
     @State private var drift = false
 
@@ -26,6 +28,19 @@ struct ThemeAtmosphereView: View {
                             y: animated && drift ? -geo.size.height * 0.008 : 0
                         )
                         .opacity(intensity)
+
+                    if showsContentScrim, preset.contentScrimOpacity > 0.001 {
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(preset.contentScrimOpacity * 0.88 * intensity),
+                                Color.black.opacity(preset.contentScrimOpacity * intensity),
+                                Color.black.opacity(min(preset.contentScrimOpacity * 1.08, 0.62) * intensity)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .allowsHitTesting(false)
+                    }
                 } else {
                     LinearGradient(
                         colors: [
@@ -135,19 +150,16 @@ struct ThemedEmptyStateView: View {
                 .font(.system(size: 44, weight: .light))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(preset.chromeSecondaryText(accent: accent))
-                .themedReadableText()
             Text(title)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(preset.chromePrimaryText)
                 .multilineTextAlignment(.center)
-                .themedReadableText()
             if let description, !description.isEmpty {
                 Text(description)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(preset.chromeSecondaryText(accent: accent))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .themedReadableText()
             }
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
@@ -184,13 +196,11 @@ struct LoadingStateView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(preset.chromePrimaryText)
                     .multilineTextAlignment(.center)
-                    .themedReadableText()
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(preset.chromeSecondaryText(accent: accent))
                         .multilineTextAlignment(.center)
-                        .themedReadableText()
                 }
             }
             .padding(.horizontal, 28)
@@ -201,12 +211,12 @@ struct LoadingStateView: View {
 }
 
 extension View {
-    /// Contrast outline so labels stay readable on busy photo themes (no plates).
+    /// Soft lift only — readability comes from the content scrim, not outlines/plates.
     func themedReadableText() -> some View {
         modifier(ThemedReadableTextModifier())
     }
 
-    /// Footnotes / captions with accent-derived fill + contrast outline.
+    /// Footnotes / captions with accent-derived color (no outline ring).
     func themedSecondaryText() -> some View {
         modifier(ThemedSecondaryTextModifier())
     }
@@ -225,21 +235,23 @@ extension View {
         }
     }
 
-    /// Transparent row — no plate.
+    /// Transparent row — no plate, no divider.
     func themedListRow() -> some View {
-        self.listRowBackground(Color.clear)
+        self
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
-    /// List / form rows without plates; outline keeps text readable.
+    /// List / form rows: clear, no plates, no separators (Option A spacing-only).
     func themedPanelRow(cornerRadius: CGFloat = 12) -> some View {
         _ = cornerRadius
         return self
             .listRowBackground(Color.clear)
-            .listRowSeparatorTint(Color.primary.opacity(0.22))
-            .themedReadableText()
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
     }
 
-    /// Empty states: outlined text only (no floating card).
+    /// Empty states without floating cards.
     func themedEmptyStateCard() -> some View {
         modifier(ThemedEmptyStateModifier())
     }
@@ -251,34 +263,21 @@ extension View {
             .buttonStyle(.borderless)
     }
 
-    /// Sort / menu label with outline, no capsule plate.
+    /// Sort / menu label — no capsule plate.
     func themedChromeChip() -> some View {
         modifier(ThemedChromeChipModifier())
     }
 
-    /// Section headers / footers: outlined accent text, no plate.
+    /// Section headers / footers: soft accent text, no plate or outline.
     func themedSectionChrome() -> some View {
         modifier(ThemedSectionChromeModifier())
     }
 }
 
 private struct ThemedReadableTextModifier: ViewModifier {
-    @Environment(\.themePreset) private var preset
-    @Environment(\.themeAccent) private var accent
-
     func body(content: Content) -> some View {
-        let outline = preset.chromeTextOutline(accent: accent)
-        let w = preset.chromeTextOutlineWidth
-        let d = w * 0.72
         content
-            .shadow(color: outline, radius: 0, x: w, y: 0)
-            .shadow(color: outline, radius: 0, x: -w, y: 0)
-            .shadow(color: outline, radius: 0, x: 0, y: w)
-            .shadow(color: outline, radius: 0, x: 0, y: -w)
-            .shadow(color: outline, radius: 0, x: d, y: d)
-            .shadow(color: outline, radius: 0, x: -d, y: d)
-            .shadow(color: outline, radius: 0, x: d, y: -d)
-            .shadow(color: outline, radius: 0, x: -d, y: -d)
+            .shadow(color: .black.opacity(0.28), radius: 1.5, x: 0, y: 0.5)
     }
 }
 
@@ -298,7 +297,6 @@ private struct ThemedEmptyStateModifier: ViewModifier {
         content
             .padding(22)
             .frame(maxWidth: 360)
-            .themedReadableText()
             .padding(.horizontal, 20)
     }
 }
@@ -325,7 +323,9 @@ private struct ThemedSectionChromeModifier: ViewModifier {
         content
             .font(.footnote.weight(.semibold))
             .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+            .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
             .themedReadableText()
     }
 }

@@ -504,7 +504,7 @@ struct SettingsHubView: View {
                     Text("Важно").themedSectionChrome()
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")

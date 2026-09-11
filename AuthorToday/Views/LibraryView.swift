@@ -280,7 +280,6 @@ struct LibraryView: View {
                         LibraryRow(work: work)
                     }
                     .buttonStyle(.plain)
-                    Divider().padding(.leading, 88)
                 }
             }
             .padding(.vertical, 8)
@@ -520,7 +519,6 @@ struct AuthorBooksView: View {
                         LibraryRow(work: work, showAuthor: false)
                     }
                     .buttonStyle(.plain)
-                    Divider().padding(.leading, 88)
                 }
             }
             .padding(.vertical, 8)
@@ -577,7 +575,6 @@ struct AuthorSeriesBooksView: View {
                         LibraryRow(work: work, showAuthor: false)
                     }
                     .buttonStyle(.plain)
-                    Divider().padding(.leading, 88)
                 }
             }
             .padding(.vertical, 8)
