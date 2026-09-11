@@ -27,12 +27,12 @@ struct RootView: View {
         .onAppear {
             configureTranslucentChrome()
             configureSegmentedChrome(for: appearance.themePreset)
-            if appearance.themePreset.chromeInk == .onDark, appearance.colorMode == .light {
-                appearance.colorMode = .dark
-            }
         }
         .onChange(of: appearance.themePreset) { _, preset in
             configureSegmentedChrome(for: preset)
+        }
+        .onChange(of: appearance.colorMode) { _, _ in
+            configureSegmentedChrome(for: appearance.themePreset)
         }
         .task {
             offline.attach(context: modelContext)
@@ -81,9 +81,16 @@ struct RootView: View {
 
     private func configureSegmentedChrome(for preset: AppThemePreset) {
         let seg = UISegmentedControl.appearance()
-        seg.selectedSegmentTintColor = preset.chromeSegmentSelectedUIColor
-        seg.backgroundColor = preset.chromeSegmentTrackUIColor
-        let title = preset.chromeSegmentTitleUIColor
+        let scheme = appearance.preferredColorScheme
+            ?? (preset.chromeInk == .onDark ? ColorScheme.dark : ColorScheme.light)
+        let title = UIColor(preset.chromeSecondaryText(accent: appearance.accent, colorScheme: scheme == .dark ? .dark : .light))
+        if scheme == .dark || preset.needsContrastChrome {
+            seg.selectedSegmentTintColor = preset.chromeSegmentSelectedUIColor
+            seg.backgroundColor = UIColor.black.withAlphaComponent(scheme == .dark ? 0.38 : 0.12)
+        } else {
+            seg.selectedSegmentTintColor = UIColor.secondarySystemGroupedBackground
+            seg.backgroundColor = UIColor.tertiarySystemFill
+        }
         seg.setTitleTextAttributes([.foregroundColor: title], for: .normal)
         seg.setTitleTextAttributes([.foregroundColor: title], for: .selected)
     }
@@ -411,7 +418,7 @@ struct SettingsHubView: View {
                     Text("Поддержка").themedSectionChrome()
                 } footer: {
                     Text("Pro улучшает клиент Читальня (темы, офлайн, закладки, свои TXT/EPUB). Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
-                         .themedSectionChrome()
+                        .themedFooterNote()
                 }
 
                 Section {
@@ -422,7 +429,7 @@ struct SettingsHubView: View {
                     Text("Оповещения").themedSectionChrome()
                 } footer: {
                     Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today.")
-                         .themedSectionChrome()
+                        .themedFooterNote()
                 }
 
                 Section {
@@ -458,7 +465,7 @@ struct SettingsHubView: View {
                             ? "По умолчанию выключено. Если включите — книги, прогресс и закладки можно синхронизировать на сервер разработчика (явное согласие)."
                             : "Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами."
                     )
-                     .themedSectionChrome()
+                    .themedFooterNote()
                 }
 
                 Section {
@@ -497,8 +504,7 @@ struct SettingsHubView: View {
 
                 Section {
                     Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
-                        .font(.footnote.weight(.medium))
-                        .themedSecondaryText()
+                        .themedFooterNote()
                         .themedPanelRow()
                 } header: {
                     Text("Важно").themedSectionChrome()

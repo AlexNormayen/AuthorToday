@@ -5,6 +5,7 @@ struct OfflineQuotaStatusView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var compact: Bool = false
     var onUpgrade: (() -> Void)? = nil
@@ -30,7 +31,7 @@ struct OfflineQuotaStatusView: View {
                 HStack {
                     Text("Скачано целиком")
                         .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
-                        .foregroundStyle(appearance.themePreset.chromePrimaryText)
+                        .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
                         .themedReadableText()
                     Spacer()
                     Text("\(used)/\(limit)")

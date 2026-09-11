@@ -270,25 +270,36 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Primary labels on themed chrome.
-    var chromePrimaryText: Color {
-        switch chromeInk {
-        case .onDark:
+    /// Primary labels — follow active Light/Dark, not only the preset’s default ink.
+    func chromePrimaryText(colorScheme: ColorScheme) -> Color {
+        switch colorScheme {
+        case .dark:
             return Color.white.opacity(0.96)
-        case .onLight:
+        case .light:
             return Color(red: 0.10, green: 0.12, blue: 0.13)
+        @unknown default:
+            return Color.primary
         }
     }
 
-    /// Small / secondary copy — nearly as bright as primary on scrim themes.
-    func chromeSecondaryText(accent: Color) -> Color {
-        switch chromeInk {
-        case .onDark:
-            // Keep a hint of accent, but stay close to white so footnotes aren't muddy.
+    var chromePrimaryText: Color {
+        chromePrimaryText(colorScheme: preferredContentScheme)
+    }
+
+    /// Small / secondary copy — bright enough on both light and dark chrome.
+    func chromeSecondaryText(accent: Color, colorScheme: ColorScheme) -> Color {
+        switch colorScheme {
+        case .dark:
             return accent.blended(toward: .white, amount: 0.93)
-        case .onLight:
-            return accent.blended(toward: .black, amount: 0.55)
+        case .light:
+            return accent.blended(toward: .black, amount: 0.62)
+        @unknown default:
+            return accent
         }
+    }
+
+    func chromeSecondaryText(accent: Color) -> Color {
+        chromeSecondaryText(accent: accent, colorScheme: preferredContentScheme)
     }
 
     func chromePanelHighlight(accent: Color) -> Color {
@@ -569,11 +580,13 @@ final class AppAppearanceStore: ObservableObject {
     }
 
     var preferredColorScheme: ColorScheme? {
-        // Busy / photo themes: lock content scheme to the theme’s ink profile.
-        if themePreset.backgroundImageName != nil || themePreset.prefersDark {
-            return themePreset.preferredContentScheme
+        // Honor explicit Light/Dark. Photo themes no longer lock the toggle.
+        if let forced = colorMode.colorScheme {
+            return forced
         }
-        if let forced = colorMode.colorScheme { return forced }
-        return themePreset.prefersDark ? .dark : nil
+        if themePreset.prefersDark { return .dark }
+        // System + photo: prefer dark chrome by default (readable on busy photos).
+        if themePreset.backgroundImageName != nil { return .dark }
+        return nil
     }
 }

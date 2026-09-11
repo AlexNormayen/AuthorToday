@@ -2,20 +2,21 @@ import SwiftUI
 import UIKit
 
 /// Full-screen living theme backdrop using real background images.
-/// Photo themes stay sharp; list screens get a soft dark scrim (Option A) for readable chrome.
+/// Photo themes stay sharp; list screens get a soft scrim (Option A) for readable chrome.
 struct ThemeAtmosphereView: View {
     let preset: AppThemePreset
     var intensity: Double = 1
     var animated: Bool = true
-    /// Soft black wash over photos so lists/settings read without plates (off in theme previews).
+    /// Soft wash over photos so lists/settings read without plates (off in theme previews).
     var showsContentScrim: Bool = true
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var drift = false
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                preset.atmosphereBase
+                baseFill
 
                 if let name = preset.backgroundImageName, UIImage(named: name) != nil {
                     Image(name)
@@ -30,11 +31,16 @@ struct ThemeAtmosphereView: View {
                         .opacity(intensity)
 
                     if showsContentScrim, preset.contentScrimOpacity > 0.001 {
+                        let useDarkScrim = colorScheme == .dark
+                        let ink = useDarkScrim ? Color.black : Color.white
+                        let strength = useDarkScrim
+                            ? preset.contentScrimOpacity
+                            : min(preset.contentScrimOpacity + 0.12, 0.62)
                         LinearGradient(
                             colors: [
-                                Color.black.opacity(preset.contentScrimOpacity * 0.88 * intensity),
-                                Color.black.opacity(preset.contentScrimOpacity * intensity),
-                                Color.black.opacity(min(preset.contentScrimOpacity * 1.08, 0.62) * intensity)
+                                ink.opacity(strength * 0.88 * intensity),
+                                ink.opacity(strength * intensity),
+                                ink.opacity(min(strength * 1.08, 0.70) * intensity)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -44,23 +50,28 @@ struct ThemeAtmosphereView: View {
                 } else {
                     LinearGradient(
                         colors: [
-                            preset.accent.opacity(preset.atmosphereAccentWash * intensity),
-                            preset.atmosphereBase
+                            preset.accent.opacity(preset.atmosphereAccentWash * intensity * (colorScheme == .dark ? 0.55 : 1)),
+                            baseFill
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
 
-                    let top = preset.atmosphereOverlayTop * intensity
-                    let bottom = preset.atmosphereOverlayBottom * intensity
-                    if top > 0.001 || bottom > 0.001 {
-                        let ink = preset.atmosphereUsesLightScrim ? Color.white : Color.black
-                        LinearGradient(
-                            colors: [ink.opacity(top), ink.opacity(bottom)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .allowsHitTesting(false)
+                    if colorScheme == .dark {
+                        Color.black.opacity(0.42 * intensity)
+                            .allowsHitTesting(false)
+                    } else {
+                        let top = preset.atmosphereOverlayTop * intensity
+                        let bottom = preset.atmosphereOverlayBottom * intensity
+                        if top > 0.001 || bottom > 0.001 {
+                            let ink = preset.atmosphereUsesLightScrim ? Color.white : Color.black
+                            LinearGradient(
+                                colors: [ink.opacity(top), ink.opacity(bottom)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .allowsHitTesting(false)
+                        }
                     }
                 }
             }
@@ -76,6 +87,13 @@ struct ThemeAtmosphereView: View {
             drift = false
             startDriftIfNeeded()
         }
+    }
+
+    private var baseFill: Color {
+        if colorScheme == .dark, preset.backgroundImageName == nil {
+            return preset.mistDark
+        }
+        return preset.atmosphereBase
     }
 
     private func startDriftIfNeeded() {
@@ -143,21 +161,22 @@ struct ThemedEmptyStateView: View {
 
     @Environment(\.themePreset) private var preset
     @Environment(\.themeAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.system(size: 44, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+                .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
             Text(title)
                 .font(.title2.weight(.bold))
-                .foregroundStyle(preset.chromePrimaryText)
+                .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
                 .multilineTextAlignment(.center)
             if let description, !description.isEmpty {
                 Text(description)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+                    .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -183,6 +202,7 @@ struct LoadingStateView: View {
 
     @Environment(\.themePreset) private var preset
     @Environment(\.themeAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -194,12 +214,12 @@ struct LoadingStateView: View {
                     .tint(accent)
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(preset.chromePrimaryText)
+                    .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
                     .multilineTextAlignment(.center)
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote.weight(.medium))
-                        .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+                        .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
                         .multilineTextAlignment(.center)
                 }
             }
@@ -210,13 +230,38 @@ struct LoadingStateView: View {
     }
 }
 
+/// Section footnote: full text at primary brightness, red * marks it as explanation.
+struct ThemedFooterNote: View {
+    var text: String
+
+    @Environment(\.themePreset) private var preset
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("*")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color(red: 0.92, green: 0.22, blue: 0.24))
+            Text(text)
+                .font(.subheadline.weight(.regular))
+                .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedReadableText()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Пояснение. \(text)")
+    }
+}
+
 extension View {
     /// Soft lift only — readability comes from the content scrim, not outlines/plates.
     func themedReadableText() -> some View {
         modifier(ThemedReadableTextModifier())
     }
 
-    /// Footnotes / captions with accent-derived color (no outline ring).
+    /// Footnotes / captions — contrast follows Light/Dark, not only the preset default.
     func themedSecondaryText() -> some View {
         modifier(ThemedSecondaryTextModifier())
     }
@@ -268,26 +313,39 @@ extension View {
         modifier(ThemedChromeChipModifier())
     }
 
-    /// Section headers / footers: soft accent text, no plate or outline.
+    /// Section headers: follow active color scheme.
     func themedSectionChrome() -> some View {
         modifier(ThemedSectionChromeModifier())
+    }
+
+    /// Full footer copy at primary list brightness (no plate / no dim secondary).
+    func themedFooterNote() -> some View {
+        modifier(ThemedFooterNoteModifier())
     }
 }
 
 private struct ThemedReadableTextModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
     func body(content: Content) -> some View {
         content
-            .shadow(color: .black.opacity(0.28), radius: 1.5, x: 0, y: 0.5)
+            .shadow(
+                color: colorScheme == .dark ? Color.black.opacity(0.35) : Color.white.opacity(0.35),
+                radius: 1.2,
+                x: 0,
+                y: 0.5
+            )
     }
 }
 
 private struct ThemedSecondaryTextModifier: ViewModifier {
     @Environment(\.themePreset) private var preset
     @Environment(\.themeAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
-            .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+            .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
             .themedReadableText()
     }
 }
@@ -304,11 +362,12 @@ private struct ThemedEmptyStateModifier: ViewModifier {
 private struct ThemedChromeChipModifier: ViewModifier {
     @Environment(\.themePreset) private var preset
     @Environment(\.themeAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(preset.chromeSecondaryText(accent: accent))
+            .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
             .padding(.horizontal, 4)
             .padding(.vertical, 4)
             .themedReadableText()
@@ -317,15 +376,37 @@ private struct ThemedChromeChipModifier: ViewModifier {
 
 private struct ThemedSectionChromeModifier: ViewModifier {
     @Environment(\.themePreset) private var preset
-    @Environment(\.themeAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(preset.chromePrimaryText.opacity(0.92))
+            .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme).opacity(0.92))
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)
             .themedReadableText()
+    }
+}
+
+private struct ThemedFooterNoteModifier: ViewModifier {
+    @Environment(\.themePreset) private var preset
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("*")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color(red: 0.92, green: 0.22, blue: 0.24))
+            content
+                .font(.subheadline.weight(.regular))
+                .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedReadableText()
+        .accessibilityLabel("Пояснение")
     }
 }

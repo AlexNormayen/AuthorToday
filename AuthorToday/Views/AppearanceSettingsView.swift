@@ -56,13 +56,9 @@ struct AppearanceSettingsView: View {
                                     return
                                 }
                                 appearance.themePreset = preset
-                                switch preset.chromeInk {
-                                case .onDark:
+                                // Futuristic / DD themes prefer dark chrome; photo themes stay user-controlled.
+                                if preset.prefersDark {
                                     appearance.colorMode = .dark
-                                case .onLight:
-                                    if preset.backgroundImageName != nil {
-                                        appearance.colorMode = .light
-                                    }
                                 }
                             } label: {
                                 VStack(spacing: 6) {
@@ -106,8 +102,8 @@ struct AppearanceSettingsView: View {
                                     .contentShape(Rectangle())
 
                                     Text(preset.title)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .font(.caption2.weight(.medium))
+                                        .themedSecondaryText()
                                         .lineLimit(1)
                                         .frame(width: 72)
                                 }
@@ -166,8 +162,7 @@ struct AppearanceSettingsView: View {
 
             Section {
                 Text("Бесплатно: спокойные темы Бумага / Облако / Камень и Author.Today (без фото-фона, удобнее читать списки), плюс Мох, Океан, Вино, Графит, Песок. Futuristic, фото-темы и свой цвет — в Pro. Тема задаёт фон и акцент; фон читалки настраивается отдельно.")
-                    .font(.footnote.weight(.medium))
-                    .themedSecondaryText()
+                    .themedFooterNote()
                     .themedPanelRow()
             }
         }
@@ -180,16 +175,6 @@ struct AppearanceSettingsView: View {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .onAppear {
-            if appearance.themePreset.chromeInk == .onDark, appearance.colorMode == .light {
-                appearance.colorMode = .dark
-            }
-        }
-        .onChange(of: appearance.colorMode) { _, mode in
-            if mode == .light, appearance.themePreset.chromeInk == .onDark {
-                appearance.colorMode = .dark
-            }
-        }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)
