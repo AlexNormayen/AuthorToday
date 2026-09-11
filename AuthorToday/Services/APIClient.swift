@@ -598,9 +598,11 @@ actor APIClient {
 
     private func searchAuthorsPopular(query: String) async throws -> [AuthorSearchHit] {
         let site = try await searchSiteBundle(query: query, category: "authors")
-        let selfKey = (AuthService.shared.user?.resolvedUserName ?? AuthService.shared.resolvedUserName)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        let selfKey = await MainActor.run {
+            (AuthService.shared.user?.resolvedUserName ?? AuthService.shared.resolvedUserName)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+        }
         let filtered = site.authors.filter { hit in
             let userKey = hit.userName.lowercased()
             if let selfKey, !selfKey.isEmpty, userKey == selfKey { return false }
