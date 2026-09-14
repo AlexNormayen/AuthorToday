@@ -8,6 +8,7 @@ struct BookDetailView: View {
     @EnvironmentObject private var appearance: AppAppearanceStore
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var pro: ProEntitlementStore
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var details: WorkDetails?
     @State private var error: String?
@@ -171,9 +172,12 @@ struct BookDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("О книге")
                             .font(AppTheme.headlineFont)
+                            .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                            .themedReadableText()
                         Text(HTMLText.plain(from: annotation))
                             .font(.body)
-                            .foregroundStyle(.primary.opacity(0.85))
+                            .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme).opacity(0.92))
+                            .themedReadableText()
                     }
                 }
                 commentsBlock
@@ -182,6 +186,12 @@ struct BookDetailView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .environment(\.themePreset, appearance.themePreset)
+        .environment(\.themeAccent, appearance.accent)
     }
 
     private func header(_ details: WorkDetails) -> some View {
@@ -193,6 +203,8 @@ struct BookDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(details.displayTitle)
                     .font(.system(.title2, design: .serif).weight(.semibold))
+                    .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                    .themedReadableText()
 
                 Button {
                     openAuthorProfile = true
@@ -205,7 +217,12 @@ struct BookDetailView: View {
                         }
                     }
                     .font(.subheadline)
-                    .foregroundStyle(resolvedAuthorUserName != nil ? appearance.accent : Color.secondary)
+                    .foregroundStyle(
+                        resolvedAuthorUserName != nil
+                            ? appearance.accent
+                            : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
+                    )
+                    .themedReadableText()
                 }
                 .disabled(resolvedAuthorUserName == nil)
 
@@ -627,13 +644,24 @@ struct BookCommentsSection: View {
     let onLoadMore: () -> Void
 
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var composerFocused: Bool
+
+    private var primaryInk: Color {
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+    }
+
+    private var secondaryInk: Color {
+        appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Комментарии")
                     .font(AppTheme.headlineFont)
+                    .foregroundStyle(primaryInk)
+                    .themedReadableText()
                 Spacer()
                 if commentsLoading {
                     ProgressView()
@@ -646,34 +674,38 @@ struct BookCommentsSection: View {
                     Text(commentsError)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                        .themedReadableText()
                 }
             } else {
                 Text("Войдите в аккаунт, чтобы писать комментарии.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryInk)
+                    .themedReadableText()
             }
 
             if !canWrite, let commentsError {
                 Text(commentsError)
                     .font(.footnote)
                     .foregroundStyle(.red)
+                    .themedReadableText()
             }
 
             if comments.isEmpty, !commentsLoading {
                 Text("Пока нет комментариев")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryInk)
+                    .themedReadableText()
             }
 
             ForEach(comments) { comment in
                 commentRow(comment)
-                Divider()
             }
 
             if commentsHasMore {
                 Button("Ещё комментарии", action: onLoadMore)
                     .frame(maxWidth: .infinity)
                     .buttonStyle(.bordered)
+                    .tint(appearance.accent)
             }
         }
         .onChange(of: replyTo) { _, next in
@@ -687,7 +719,8 @@ struct BookCommentsSection: View {
                 HStack {
                     Text("Ответ для \(replyTo.authorName)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryInk)
+                        .themedReadableText()
                     Spacer()
                     Button("Отмена") {
                         self.replyTo = nil
@@ -702,7 +735,13 @@ struct BookCommentsSection: View {
                 axis: .vertical
             )
             .lineLimit(3...8)
-            .textFieldStyle(.roundedBorder)
+            .padding(10)
+            .background(Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(secondaryInk.opacity(0.45), lineWidth: 1)
+            }
+            .foregroundStyle(primaryInk)
             .focused($composerFocused)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -732,6 +771,7 @@ struct BookCommentsSection: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(appearance.accent)
                 .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
             }
         }
@@ -742,38 +782,46 @@ struct BookCommentsSection: View {
             HStack(spacing: 6) {
                 Text(comment.authorName)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(primaryInk)
+                    .themedReadableText()
                 if comment.isAuthor {
                     Text("автор")
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(appearance.accent.opacity(0.15))
-                        .clipShape(Capsule())
+                        .foregroundStyle(primaryInk)
+                        .overlay {
+                            Capsule().strokeBorder(appearance.accent.opacity(0.55), lineWidth: 1)
+                        }
                 }
                 if comment.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryInk)
                 }
                 Spacer()
                 if let rating = comment.rating, rating != 0 {
                     Text(rating > 0 ? "+\(rating)" : "\(rating)")
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryInk)
+                        .themedReadableText()
                 }
             }
             Text(comment.text)
                 .font(.subheadline)
-                .foregroundStyle(.primary.opacity(0.9))
+                .foregroundStyle(primaryInk.opacity(0.94))
                 .textSelection(.enabled)
+                .themedReadableText()
             if canWrite {
                 Button("Ответить") {
                     replyTo = comment
                     composerFocused = true
                 }
                 .font(.caption)
+                .foregroundStyle(appearance.accent)
             }
         }
+        .padding(.vertical, 8)
         .padding(.leading, CGFloat(min(comment.level, 4)) * 14)
     }
 }

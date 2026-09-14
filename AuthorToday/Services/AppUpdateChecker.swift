@@ -206,61 +206,72 @@ struct AppUpdateSettingsSection: View {
     @ObservedObject var checker: AppUpdateChecker
 
     var body: some View {
-        Section {
-            LabeledContent("Версия", value: checker.localDisplay)
-                .themedPanelRow()
-            if let publishId = checker.localPublishId {
-                LabeledContent("Сборка", value: publishId)
-                    .themedPanelRow()
-            }
-            if checker.updateAvailable {
-                Button {
-                    checker.openInstallPage()
-                } label: {
-                    Label("Обновить через SideStore", systemImage: "arrow.down.circle.fill")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Обновления IPA").themedSectionChrome()
+            VStack(alignment: .leading, spacing: 14) {
+                settingsMeta("Версия", checker.localDisplay)
+                if let publishId = checker.localPublishId {
+                    settingsMeta("Сборка", publishId)
                 }
-                .themedPanelRow()
-                Button("Скрыть напоминание") {
-                    checker.dismissCurrentOffer()
-                }
-                .foregroundStyle(.secondary)
-                .themedPanelRow()
-            } else {
-                Button {
-                    Task { await checker.check(force: true) }
-                } label: {
-                    HStack {
-                        Text("Проверить обновления")
-                        Spacer()
-                        if checker.isChecking {
-                            ProgressView()
+                if checker.updateAvailable {
+                    Button {
+                        checker.openInstallPage()
+                    } label: {
+                        Label("Обновить через SideStore", systemImage: "arrow.down.circle.fill")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Button("Скрыть напоминание") {
+                        checker.dismissCurrentOffer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Button {
+                        Task { await checker.check(force: true) }
+                    } label: {
+                        HStack {
+                            Text("Проверить обновления")
+                            Spacer()
+                            if checker.isChecking {
+                                ProgressView()
+                            }
                         }
                     }
+                    .disabled(checker.isChecking)
                 }
-                .disabled(checker.isChecking)
-                .themedPanelRow()
+                Button("Страница установки") {
+                    checker.openInstallPage()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let statusText = checker.statusText {
+                    Text(statusText)
+                        .font(.caption)
+                        .foregroundStyle(checker.updateAvailable ? Color.accentColor : Color.secondary)
+                        .themedReadableText()
+                }
+                if let lastError = checker.lastError {
+                    Text(lastError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .themedReadableText()
+                }
             }
-            Button("Страница установки") {
-                checker.openInstallPage()
-            }
-            .themedPanelRow()
-            if let statusText = checker.statusText {
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(checker.updateAvailable ? Color.accentColor : Color.secondary)
-                    .themedPanelRow()
-            }
-            if let lastError = checker.lastError {
-                Text(lastError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .themedPanelRow()
-            }
-        } header: {
-            Text("Обновления IPA").themedSectionChrome()
-        } footer: {
             Text("Приложение само себя не переустанавливает. Новая IPA ставится через SideStore со страницы установки.")
                 .themedFooterNote()
+                .padding(.top, 2)
         }
+    }
+
+    private func settingsMeta(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .themedReadableText()
+            Spacer(minLength: 12)
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .themedReadableText()
+        }
+        .font(.subheadline)
     }
 }

@@ -31,16 +31,17 @@ struct ThemeAtmosphereView: View {
                         .opacity(intensity)
 
                     if showsContentScrim, preset.contentScrimOpacity > 0.001 {
+                        // Dark mode: light wash only — heavy black scrim reads as «чёрные плашки».
                         let useDarkScrim = colorScheme == .dark
                         let ink = useDarkScrim ? Color.black : Color.white
                         let strength = useDarkScrim
-                            ? preset.contentScrimOpacity
-                            : min(preset.contentScrimOpacity + 0.12, 0.62)
+                            ? min(preset.contentScrimOpacity * 0.45, 0.24)
+                            : min(preset.contentScrimOpacity + 0.10, 0.55)
                         LinearGradient(
                             colors: [
-                                ink.opacity(strength * 0.88 * intensity),
+                                ink.opacity(strength * 0.75 * intensity),
                                 ink.opacity(strength * intensity),
-                                ink.opacity(min(strength * 1.08, 0.70) * intensity)
+                                ink.opacity(min(strength * 1.15, useDarkScrim ? 0.30 : 0.62) * intensity)
                             ],
                             startPoint: .top,
                             endPoint: .bottom

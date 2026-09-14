@@ -86,7 +86,8 @@ struct RootView: View {
         let title = UIColor(preset.chromeSecondaryText(accent: appearance.accent, colorScheme: scheme == .dark ? .dark : .light))
         if scheme == .dark || preset.needsContrastChrome {
             seg.selectedSegmentTintColor = preset.chromeSegmentSelectedUIColor
-            seg.backgroundColor = UIColor.black.withAlphaComponent(scheme == .dark ? 0.38 : 0.12)
+            // Soft tint — opaque black reads as a floating plate over photo themes.
+            seg.backgroundColor = UIColor.black.withAlphaComponent(scheme == .dark ? 0.18 : 0.08)
         } else {
             seg.selectedSegmentTintColor = UIColor.secondarySystemGroupedBackground
             seg.backgroundColor = UIColor.tertiarySystemFill
@@ -331,186 +332,166 @@ struct SettingsHubView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var notifications: NotificationPoller
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var updates = AppUpdateChecker.shared
 
     var body: some View {
         NavigationStack {
-            List {
-                if ChitalnyaDistribution.showsSideloadUpdates, updates.updateAvailable {
-                    Section {
-                        Button {
-                            updates.openInstallPage()
-                        } label: {
-                            Label(
-                                "Доступна новая сборка: \(updates.latestLabel ?? "IPA")",
-                                systemImage: "arrow.down.circle.fill"
-                            )
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    if ChitalnyaDistribution.showsSideloadUpdates, updates.updateAvailable {
+                        settingsBlock {
+                            Button {
+                                updates.openInstallPage()
+                            } label: {
+                                Label(
+                                    "Доступна новая сборка: \(updates.latestLabel ?? "IPA")",
+                                    systemImage: "arrow.down.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
-                        .themedPanelRow()
                     }
-                }
 
-                Section {
                     if let user = auth.user {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(user.fio ?? user.resolvedUserName ?? "Читатель")
-                                .font(AppTheme.headlineFont)
-                            if let email = user.email {
-                                Text(email)
-                                    .font(.subheadline.weight(.medium))
-                                    .themedSecondaryText()
+                        settingsBlock {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(user.fio ?? user.resolvedUserName ?? "Читатель")
+                                    .font(AppTheme.headlineFont)
+                                    .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                                    .themedReadableText()
+                                if let email = user.email {
+                                    Text(email)
+                                        .font(.subheadline.weight(.medium))
+                                        .themedSecondaryText()
+                                }
                             }
-                        }
-                        .padding(.vertical, 4)
-                        .themedPanelRow()
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        MessagesView()
-                    } label: {
-                        Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    .themedPanelRow()
-                } header: {
-                    Text("Общение").themedSectionChrome()
-                }
-
-                Section {
-                    if !pro.isProUnlocked {
-                        OfflineQuotaStatusView(compact: true)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                            .listRowBackground(Color.clear)
-                    }
-                    NavigationLink {
-                        ProPaywallView()
-                    } label: {
-                        HStack {
-                            Label(
-                                pro.isProUnlocked ? "Читальня Pro" : "Открыть Читальню Pro",
-                                systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
-                            )
-                            Spacer()
-                            if pro.isComplimentaryPro {
-                                Text("По аккаунту")
-                                    .font(.caption.weight(.semibold))
-                                    .themedSecondaryText()
-                            } else if pro.isProUnlocked {
-                                Text("Активен")
-                                    .font(.caption.weight(.semibold))
-                                    .themedSecondaryText()
-                            } else {
-                                Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
-                                    .font(.caption.weight(.semibold))
-                                    .themedSecondaryText()
-                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .themedPanelRow()
-                    NavigationLink {
-                        BookmarksNotesView()
-                    } label: {
-                        Label("Закладки и заметки", systemImage: "bookmark")
-                    }
-                    .themedPanelRow()
-                } header: {
-                    Text("Поддержка").themedSectionChrome()
-                } footer: {
-                    Text("Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный.")
-                        .themedFooterNote()
-                }
 
-                Section {
-                    Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
-                        .tint(.green)
-                        .themedPanelRow()
-                } header: {
-                    Text("Оповещения").themedSectionChrome()
-                } footer: {
-                    Text("Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today.")
-                        .themedFooterNote()
-                }
+                    settingsGroup(title: "Общение") {
+                        NavigationLink {
+                            MessagesView()
+                        } label: {
+                            Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
 
-                Section {
-                    NavigationLink("Тема приложения и тёмный режим") {
-                        AppearanceSettingsView()
+                    settingsGroup(
+                        title: "Поддержка",
+                        footer: "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                    ) {
+                        if !pro.isProUnlocked {
+                            OfflineQuotaStatusView(compact: true)
+                        }
+                        NavigationLink {
+                            ProPaywallView()
+                        } label: {
+                            HStack {
+                                Label(
+                                    pro.isProUnlocked ? "Читальня Pro" : "Открыть Читальню Pro",
+                                    systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
+                                )
+                                Spacer()
+                                if pro.isComplimentaryPro {
+                                    Text("По аккаунту")
+                                        .font(.caption.weight(.semibold))
+                                        .themedSecondaryText()
+                                } else if pro.isProUnlocked {
+                                    Text("Активен")
+                                        .font(.caption.weight(.semibold))
+                                        .themedSecondaryText()
+                                } else {
+                                    Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
+                                        .font(.caption.weight(.semibold))
+                                        .themedSecondaryText()
+                                }
+                            }
+                        }
+                        NavigationLink {
+                            BookmarksNotesView()
+                        } label: {
+                            Label("Закладки и заметки", systemImage: "bookmark")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
-                    .themedPanelRow()
-                    NavigationLink("Настройки читалки") {
-                        ReaderSettingsView()
-                    }
-                    .themedPanelRow()
-                } header: {
-                    Text("Оформление").themedSectionChrome()
-                }
 
-                Section {
-                    NavigationLink {
-                        BookVaultSettingsView()
-                    } label: {
-                        Label(
-                            ChitalnyaDistribution.isAppStore
-                                ? "Облачная полка (опционально)"
-                                : "Облачная полка (VPS)",
-                            systemImage: "externaldrive.badge.icloud"
-                        )
+                    settingsGroup(
+                        title: "Оповещения",
+                        footer: "Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today."
+                    ) {
+                        Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
+                            .tint(.green)
                     }
-                    .themedPanelRow()
-                } header: {
-                    Text("Резервная копия").themedSectionChrome()
-                } footer: {
-                    Text(
-                        ChitalnyaDistribution.isAppStore
+
+                    settingsGroup(title: "Оформление") {
+                        NavigationLink("Тема приложения и тёмный режим") {
+                            AppearanceSettingsView()
+                        }
+                        NavigationLink("Настройки читалки") {
+                            ReaderSettingsView()
+                        }
+                    }
+
+                    settingsGroup(
+                        title: "Резервная копия",
+                        footer: ChitalnyaDistribution.isAppStore
                             ? "По умолчанию выключено. Если включите — книги, прогресс и закладки можно синхронизировать на сервер разработчика (явное согласие)."
                             : "Скачанные книги, прогресс и закладки на вашем сервере — бэкап и синк между устройствами."
-                    )
-                    .themedFooterNote()
-                }
-
-                Section {
-                    Button("Обновить профиль") {
-                        Task { await auth.refreshProfile() }
+                    ) {
+                        NavigationLink {
+                            BookVaultSettingsView()
+                        } label: {
+                            Label(
+                                ChitalnyaDistribution.isAppStore
+                                    ? "Облачная полка (опционально)"
+                                    : "Облачная полка (VPS)",
+                                systemImage: "externaldrive.badge.icloud"
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
-                    .themedPanelRow()
-                    Button("Выйти", role: .destructive) {
-                        auth.logout()
-                    }
-                    .themedPanelRow()
-                } header: {
-                    Text("Аккаунт").themedSectionChrome()
-                }
 
-                Section {
-                    LabeledContent("Приложение", value: "Читальня").themedPanelRow()
-                    LabeledContent("Версия", value: updates.localDisplay).themedPanelRow()
-                    LabeledContent("Канал", value: ChitalnyaDistribution.channelLabel).themedPanelRow()
-                    LabeledContent("Статус", value: "Клиент Author.Today (неофициальный)").themedPanelRow()
-                    LabeledContent("Платформа", value: "author.today").themedPanelRow()
-                    LabeledContent("Режим", value: "онлайн + офлайн").themedPanelRow()
-                    if let user = auth.user?.resolvedUserName ?? auth.resolvedUserName {
-                        LabeledContent("Профиль", value: "/u/\(user)/library").themedPanelRow()
+                    settingsGroup(title: "Аккаунт") {
+                        Button("Обновить профиль") {
+                            Task { await auth.refreshProfile() }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Выйти", role: .destructive) {
+                            auth.logout()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if offline.lastSyncCount > 0 {
-                        LabeledContent("Книг с сайта", value: "\(offline.lastSyncCount)").themedPanelRow()
+
+                    settingsGroup(title: "О приложении") {
+                        settingsMetaRow("Приложение", "Читальня")
+                        settingsMetaRow("Версия", updates.localDisplay)
+                        settingsMetaRow("Канал", ChitalnyaDistribution.channelLabel)
+                        settingsMetaRow("Статус", "Клиент Author.Today (неофициальный)")
+                        settingsMetaRow("Платформа", "author.today")
+                        settingsMetaRow("Режим", "онлайн + офлайн")
+                        if let user = auth.user?.resolvedUserName ?? auth.resolvedUserName {
+                            settingsMetaRow("Профиль", "/u/\(user)/library")
+                        }
+                        if offline.lastSyncCount > 0 {
+                            settingsMetaRow("Книг с сайта", "\(offline.lastSyncCount)")
+                        }
                     }
-                } header: {
-                    Text("О приложении").themedSectionChrome()
-                }
 
-                if ChitalnyaDistribution.showsSideloadUpdates {
-                    AppUpdateSettingsSection(checker: updates)
-                }
+                    if ChitalnyaDistribution.showsSideloadUpdates {
+                        AppUpdateSettingsSection(checker: updates)
+                    }
 
-                Section {
-                    Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
-                        .themedFooterNote()
-                        .themedPanelRow()
-                } header: {
-                    Text("Важно").themedSectionChrome()
+                    settingsGroup(title: "Важно") {
+                        Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
+                            .themedFooterNote()
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .themedAtmosphereList()
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
@@ -525,5 +506,44 @@ struct SettingsHubView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func settingsGroup<Content: View>(
+        title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).themedSectionChrome()
+            settingsBlock(content: content)
+            if let footer {
+                Text(footer)
+                    .themedFooterNote()
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private func settingsBlock<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    private func settingsMetaRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .foregroundStyle(appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme))
+                .themedReadableText()
+            Spacer(minLength: 12)
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                .themedReadableText()
+        }
+        .font(.subheadline)
     }
 }
