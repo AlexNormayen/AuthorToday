@@ -176,7 +176,7 @@ struct BookDetailView: View {
                             .themedReadableText()
                         Text(HTMLText.plain(from: annotation))
                             .font(.body)
-                            .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme).opacity(0.92))
+                            .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
                             .themedReadableText()
                     }
                 }

@@ -275,7 +275,8 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     func chromePrimaryText(colorScheme: ColorScheme) -> Color {
         switch colorScheme {
         case .dark:
-            return Color.white.opacity(0.96)
+            // Full white — partial opacity reads as grey over photo themes (Мох).
+            return Color.white
         case .light:
             return Color(red: 0.10, green: 0.12, blue: 0.13)
         @unknown default:

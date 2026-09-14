@@ -340,9 +340,9 @@ struct SettingsHubView: View {
     }
 
     private var secondaryInk: Color {
-        // On photo themes keep secondary nearly white — accent-green is unreadable on Мох.
+        // On photo themes keep secondary the same bright white as primary.
         appearance.themePreset.backgroundImageName != nil
-            ? Color.white.opacity(0.82)
+            ? appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
             : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
     }
 

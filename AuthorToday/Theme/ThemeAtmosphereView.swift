@@ -342,10 +342,11 @@ private struct ThemedReadableTextModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
+        // Tight dark halo for contrast — avoid soft grey wash that dulls white ink.
         content
             .shadow(
-                color: colorScheme == .dark ? Color.black.opacity(0.35) : Color.white.opacity(0.35),
-                radius: 1.2,
+                color: colorScheme == .dark ? Color.black.opacity(0.55) : Color.white.opacity(0.45),
+                radius: 0.6,
                 x: 0,
                 y: 0.5
             )
@@ -396,7 +397,7 @@ private struct ThemedSectionChromeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme).opacity(0.92))
+            .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)
