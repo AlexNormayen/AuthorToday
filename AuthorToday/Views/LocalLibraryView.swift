@@ -191,7 +191,7 @@ struct LocalLibraryPane: View {
                         .background(appearance.accent.opacity(0.22), in: Capsule())
                     if !book.author.isEmpty {
                         Text(book.author)
-                            .font(.caption.weight(.medium))
+                            .font(.caption)
                             .themedSecondaryText()
                             .lineLimit(1)
                     }

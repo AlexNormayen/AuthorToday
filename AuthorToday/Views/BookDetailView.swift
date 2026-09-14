@@ -216,13 +216,8 @@ struct BookDetailView: View {
                                 .font(.caption2.weight(.semibold))
                         }
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(
-                        resolvedAuthorUserName != nil
-                            ? appearance.accent
-                            : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
-                    )
-                    .themedReadableText()
+                    .font(.caption)
+                    .themedSecondaryText()
                 }
                 .disabled(resolvedAuthorUserName == nil)
 
@@ -237,8 +232,8 @@ struct BookDetailView: View {
                             Image(systemName: "chevron.right")
                                 .font(.caption2.weight(.semibold))
                         }
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(appearance.accent)
+                        .font(.caption)
+                        .themedSecondaryText()
                     }
                     .buttonStyle(.plain)
                 }
@@ -246,27 +241,27 @@ struct BookDetailView: View {
                 if let genre = details.genreName {
                     Text([genre, details.secondGenreName].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption)
-                        .foregroundStyle(appearance.accent)
+                        .themedSecondaryText()
                 }
 
                 if details.isPurchased == true {
                     Label("Куплено", systemImage: "checkmark.seal.fill")
                         .font(.caption)
-                        .foregroundStyle(appearance.accent)
+                        .themedSecondaryText()
                 } else if let price = details.displayPriceText {
                     Text(price)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(appearance.accent)
+                        .font(.caption.weight(.semibold))
+                        .themedSecondaryText()
                 }
 
                 if offline.cachedWork(workId: workId)?.isFullyDownloaded == true {
                     Label("Скачано целиком", systemImage: "arrow.down.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(appearance.accent)
+                        .themedSecondaryText()
                 } else if let cov = offline.offlineChapterCoverage(workId: workId), cov.ready > 0 {
                     Label("Офлайн \(cov.ready) из \(cov.total)", systemImage: "arrow.down.circle")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .themedSecondaryText()
                 }
             }
         }
@@ -286,8 +281,8 @@ struct BookDetailView: View {
                 .buttonStyle(PrimaryButtonStyle())
 
                 Text("Оплата проходит на сайте author.today в защищённом окне. После покупки нажмите «Обновить» и откройте книгу снова.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .themedSecondaryText()
             }
 
             Button {
@@ -316,12 +311,13 @@ struct BookDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .tint(detailChromeInk)
             }
 
             if offline.library.contains(where: { $0.workId == workId }) {
                 Label("В вашей библиотеке", systemImage: "checkmark.circle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(appearance.accent)
+                    .font(.caption)
+                    .themedSecondaryText()
             } else {
                 Button {
                     Task {
@@ -336,6 +332,7 @@ struct BookDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .tint(detailChromeInk)
             }
 
             if !details.availableChapters.isEmpty || offline.hasReadableOfflineChapters(workId: workId) {
@@ -352,7 +349,12 @@ struct BookDetailView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .tint(detailChromeInk)
         }
+    }
+
+    private var detailChromeInk: Color {
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
     }
 
     private func downloadBlock(_ details: WorkDetails) -> some View {
@@ -367,6 +369,8 @@ struct BookDetailView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("Загрузка")
                 .font(AppTheme.headlineFont)
+                .foregroundStyle(detailChromeInk)
+                .themedReadableText()
 
             if !pro.isProUnlocked {
                 OfflineQuotaStatusView(
@@ -403,6 +407,7 @@ struct BookDetailView: View {
                 }
             }
             .buttonStyle(.bordered)
+            .tint(detailChromeInk)
             .disabled(downloads.activeDownloads.contains(workId))
 
             if let p = offline.downloadProgress[workId], p > 0, p < 1 {
@@ -651,10 +656,6 @@ struct BookCommentsSection: View {
         appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
     }
 
-    private var secondaryInk: Color {
-        appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -678,9 +679,8 @@ struct BookCommentsSection: View {
                 }
             } else {
                 Text("Войдите в аккаунт, чтобы писать комментарии.")
-                    .font(.footnote)
-                    .foregroundStyle(secondaryInk)
-                    .themedReadableText()
+                    .font(.caption)
+                    .themedSecondaryText()
             }
 
             if !canWrite, let commentsError {
@@ -692,9 +692,8 @@ struct BookCommentsSection: View {
 
             if comments.isEmpty, !commentsLoading {
                 Text("Пока нет комментариев")
-                    .font(.subheadline)
-                    .foregroundStyle(secondaryInk)
-                    .themedReadableText()
+                    .font(.caption)
+                    .themedSecondaryText()
             }
 
             ForEach(comments) { comment in
@@ -705,7 +704,7 @@ struct BookCommentsSection: View {
                 Button("Ещё комментарии", action: onLoadMore)
                     .frame(maxWidth: .infinity)
                     .buttonStyle(.bordered)
-                    .tint(appearance.accent)
+                    .tint(primaryInk)
             }
         }
         .onChange(of: replyTo) { _, next in
@@ -719,14 +718,14 @@ struct BookCommentsSection: View {
                 HStack {
                     Text("Ответ для \(replyTo.authorName)")
                         .font(.caption)
-                        .foregroundStyle(secondaryInk)
-                        .themedReadableText()
+                        .themedSecondaryText()
                     Spacer()
                     Button("Отмена") {
                         self.replyTo = nil
                         composerFocused = false
                     }
                     .font(.caption)
+                    .tint(primaryInk)
                 }
             }
             TextField(
@@ -739,9 +738,10 @@ struct BookCommentsSection: View {
             .background(Color.clear)
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(secondaryInk.opacity(0.45), lineWidth: 1)
+                    .strokeBorder(primaryInk.opacity(0.45), lineWidth: 1)
             }
             .foregroundStyle(primaryInk)
+            .tint(primaryInk)
             .focused($composerFocused)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -757,6 +757,7 @@ struct BookCommentsSection: View {
                     }
                     .font(.caption)
                     .buttonStyle(.bordered)
+                    .tint(primaryInk)
                 }
                 Button(action: {
                     composerFocused = false
@@ -789,36 +790,37 @@ struct BookCommentsSection: View {
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .foregroundStyle(primaryInk)
+                        .themedSecondaryText()
                         .overlay {
-                            Capsule().strokeBorder(appearance.accent.opacity(0.55), lineWidth: 1)
+                            Capsule().strokeBorder(primaryInk.opacity(0.45), lineWidth: 1)
                         }
                 }
                 if comment.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
-                        .foregroundStyle(secondaryInk)
+                        .themedSecondaryText()
                 }
                 Spacer()
                 if let rating = comment.rating, rating != 0 {
                     Text(rating > 0 ? "+\(rating)" : "\(rating)")
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(secondaryInk)
-                        .themedReadableText()
+                        .themedSecondaryText()
                 }
             }
-            Text(comment.text)
-                .font(.subheadline)
-                .foregroundStyle(primaryInk.opacity(0.94))
-                .textSelection(.enabled)
-                .themedReadableText()
+            if !comment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(comment.text)
+                    .font(.subheadline)
+                    .foregroundStyle(primaryInk)
+                    .textSelection(.enabled)
+                    .themedReadableText()
+            }
             if canWrite {
                 Button("Ответить") {
                     replyTo = comment
                     composerFocused = true
                 }
                 .font(.caption)
-                .foregroundStyle(appearance.accent)
+                .themedSecondaryText()
             }
         }
         .padding(.vertical, 8)

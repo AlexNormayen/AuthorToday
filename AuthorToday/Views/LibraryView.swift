@@ -133,12 +133,12 @@ struct LibraryView: View {
                     HStack {
                         Text(shelfSummary)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .themedSecondaryText()
                         Spacer()
                         if offline.isSyncing {
                             Text(offline.syncStatusText ?? "синхронизация…")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .themedSecondaryText()
                                 .lineLimit(1)
                         }
                     }
@@ -472,12 +472,12 @@ struct AuthorBooksView: View {
                                         .multilineTextAlignment(.leading)
                                     Text(booksCountText(group.works.count))
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .themedSecondaryText()
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+                                    .themedSecondaryText()
                             }
                             .padding(.vertical, 4)
                         }
@@ -619,7 +619,7 @@ struct RecentReadsView: View {
                                         if date > .distantPast {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
-                                                .foregroundStyle(.secondary)
+                                                .themedSecondaryText()
                                                 .padding(.leading, 86)
                                                 .padding(.bottom, 6)
                                         }
@@ -673,7 +673,6 @@ struct LibraryRow: View {
     var showAuthor: Bool = true
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
-    @EnvironmentObject private var appearance: AppAppearanceStore
 
     var body: some View {
         HStack(spacing: 14) {
@@ -690,7 +689,7 @@ struct LibraryRow: View {
 
                 if showAuthor {
                     Text(work.author)
-                        .font(.subheadline.weight(.medium))
+                        .font(.caption)
                         .themedSecondaryText()
                         .lineLimit(1)
                 }
@@ -699,16 +698,16 @@ struct LibraryRow: View {
                     if work.isFullyDownloaded {
                         Label("Офлайн", systemImage: "arrow.down.circle.fill")
                             .font(.caption2)
-                            .foregroundStyle(appearance.accent)
+                            .themedSecondaryText()
                     } else if let cov = offline.offlineChapterCoverage(workId: work.workId), cov.ready > 0 {
                         Label("\(cov.ready)/\(cov.total)", systemImage: "arrow.down.circle")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .themedSecondaryText()
                     } else if let chapterId = work.lastReadChapterId,
                               offline.isChapterCached(workId: work.workId, chapterId: chapterId) {
                         Label("Глава офлайн", systemImage: "arrow.down.circle")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .themedSecondaryText()
                     } else if let p = offline.downloadProgress[work.workId], p > 0, p < 1 {
                         ProgressView(value: p)
                             .frame(width: 60)
@@ -720,7 +719,7 @@ struct LibraryRow: View {
                     if work.displayProgressPercent > 0 {
                         Text("\(work.displayProgressPercent)%")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .themedSecondaryText()
                     }
                 }
             }
@@ -729,7 +728,7 @@ struct LibraryRow: View {
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .themedSecondaryText()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -769,15 +768,6 @@ struct DownloadedLibraryView: View {
                     )
                 } else {
                     List {
-                        Section {
-                            Picker("Сортировка", selection: $sort) {
-                                ForEach(AuthorSortMode.allCases) { item in
-                                    Text(item.title).tag(item)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
-
                         ForEach(filteredWorks, id: \.workId) { work in
                             Button {
                                 path.append(LibraryRoute.details(workId: work.workId))
@@ -806,17 +796,26 @@ struct DownloadedLibraryView: View {
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
+            .environment(\.themePreset, appearance.themePreset)
+            .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Скачанные")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
             .searchable(text: $query, prompt: "Название или автор")
             .safeAreaInset(edge: .top) {
                 if !offline.downloadedWorks.isEmpty {
-                    HStack {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Picker("Сортировка", selection: $sort) {
+                            ForEach(AuthorSortMode.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .themedChromeChip()
+                        Spacer(minLength: 0)
                         Text(summaryText)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
+                            .themedSecondaryText()
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)

@@ -267,7 +267,7 @@ extension View {
         modifier(ThemedReadableTextModifier())
     }
 
-    /// Footnotes / captions — contrast follows Light/Dark, not only the preset default.
+    /// Secondary labels: same color as primary, italic, slightly smaller.
     func themedSecondaryText() -> some View {
         modifier(ThemedSecondaryTextModifier())
     }
@@ -360,6 +360,7 @@ private struct ThemedSecondaryTextModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
+            .italic()
             .themedReadableText()
     }
 }
@@ -381,7 +382,7 @@ private struct ThemedChromeChipModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(preset.chromeSecondaryText(accent: accent, colorScheme: colorScheme))
+            .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
             .padding(.horizontal, 4)
             .padding(.vertical, 4)
             .themedReadableText()

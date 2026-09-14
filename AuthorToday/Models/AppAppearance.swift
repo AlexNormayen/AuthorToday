@@ -287,18 +287,11 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         chromePrimaryText(colorScheme: preferredContentScheme)
     }
 
-    /// Small / secondary copy — bright enough on both light and dark chrome.
+    /// Secondary copy: same ink as primary on photo themes (italic + smaller applied by views).
     func chromeSecondaryText(accent: Color, colorScheme: ColorScheme) -> Color {
-        // Photo themes: never use moss/wine accent as body ink — it vanishes on the photo.
+        // Photo themes: match primary — dim/moss accents vanish on the forest/sand photos.
         if backgroundImageName != nil {
-            switch colorScheme {
-            case .dark:
-                return Color.white.opacity(0.82)
-            case .light:
-                return Color.white.opacity(0.88)
-            @unknown default:
-                return Color.white.opacity(0.85)
-            }
+            return chromePrimaryText(colorScheme: colorScheme)
         }
         switch colorScheme {
         case .dark:
