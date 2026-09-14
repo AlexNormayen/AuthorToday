@@ -335,6 +335,17 @@ struct SettingsHubView: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var updates = AppUpdateChecker.shared
 
+    private var primaryInk: Color {
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+    }
+
+    private var secondaryInk: Color {
+        // On photo themes keep secondary nearly white — accent-green is unreadable on Мох.
+        appearance.themePreset.backgroundImageName != nil
+            ? Color.white.opacity(0.82)
+            : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -350,6 +361,7 @@ struct SettingsHubView: View {
                                 )
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .settingsChrome(primaryInk)
                         }
                     }
 
@@ -358,12 +370,13 @@ struct SettingsHubView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(user.fio ?? user.resolvedUserName ?? "Читатель")
                                     .font(AppTheme.headlineFont)
-                                    .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                                    .foregroundStyle(primaryInk)
                                     .themedReadableText()
                                 if let email = user.email {
                                     Text(email)
                                         .font(.subheadline.weight(.medium))
-                                        .themedSecondaryText()
+                                        .foregroundStyle(secondaryInk)
+                                        .themedReadableText()
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -377,6 +390,7 @@ struct SettingsHubView: View {
                             Label("Сообщения", systemImage: "bubble.left.and.bubble.right")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .settingsChrome(primaryInk)
                     }
 
                     settingsGroup(
@@ -398,24 +412,26 @@ struct SettingsHubView: View {
                                 if pro.isComplimentaryPro {
                                     Text("По аккаунту")
                                         .font(.caption.weight(.semibold))
-                                        .themedSecondaryText()
+                                        .foregroundStyle(secondaryInk)
                                 } else if pro.isProUnlocked {
                                     Text("Активен")
                                         .font(.caption.weight(.semibold))
-                                        .themedSecondaryText()
+                                        .foregroundStyle(secondaryInk)
                                 } else {
                                     Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
                                         .font(.caption.weight(.semibold))
-                                        .themedSecondaryText()
+                                        .foregroundStyle(secondaryInk)
                                 }
                             }
                         }
+                        .settingsChrome(primaryInk)
                         NavigationLink {
                             BookmarksNotesView()
                         } label: {
                             Label("Закладки и заметки", systemImage: "bookmark")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .settingsChrome(primaryInk)
                     }
 
                     settingsGroup(
@@ -424,15 +440,25 @@ struct SettingsHubView: View {
                     ) {
                         Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
                             .tint(.green)
+                            .foregroundStyle(primaryInk)
+                            .themedReadableText()
                     }
 
                     settingsGroup(title: "Оформление") {
-                        NavigationLink("Тема приложения и тёмный режим") {
+                        NavigationLink {
                             AppearanceSettingsView()
+                        } label: {
+                            Text("Тема приложения и тёмный режим")
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        NavigationLink("Настройки читалки") {
+                        .settingsChrome(primaryInk)
+                        NavigationLink {
                             ReaderSettingsView()
+                        } label: {
+                            Text("Настройки читалки")
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .settingsChrome(primaryInk)
                     }
 
                     settingsGroup(
@@ -452,6 +478,7 @@ struct SettingsHubView: View {
                             )
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .settingsChrome(primaryInk)
                     }
 
                     settingsGroup(title: "Аккаунт") {
@@ -459,6 +486,7 @@ struct SettingsHubView: View {
                             Task { await auth.refreshProfile() }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .settingsChrome(primaryInk)
                         Button("Выйти", role: .destructive) {
                             auth.logout()
                         }
@@ -482,6 +510,8 @@ struct SettingsHubView: View {
 
                     if ChitalnyaDistribution.showsSideloadUpdates {
                         AppUpdateSettingsSection(checker: updates)
+                            .foregroundStyle(primaryInk)
+                            .tint(primaryInk)
                     }
 
                     settingsGroup(title: "Важно") {
@@ -492,6 +522,8 @@ struct SettingsHubView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            // Don't inherit app accent (moss green) for links — it vanishes on the photo.
+            .tint(primaryInk)
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
@@ -536,14 +568,25 @@ struct SettingsHubView: View {
     private func settingsMetaRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .foregroundStyle(appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme))
+                .foregroundStyle(secondaryInk)
                 .themedReadableText()
             Spacer(minLength: 12)
             Text(value)
                 .multilineTextAlignment(.trailing)
-                .foregroundStyle(appearance.themePreset.chromePrimaryText(colorScheme: colorScheme))
+                .foregroundStyle(primaryInk)
                 .themedReadableText()
         }
         .font(.subheadline)
+    }
+}
+
+private extension View {
+    /// Force white/light chrome on settings rows — app `.tint(accent)` paints moss-green links.
+    func settingsChrome(_ ink: Color) -> some View {
+        self
+            .buttonStyle(.plain)
+            .foregroundStyle(ink)
+            .tint(ink)
+            .themedReadableText()
     }
 }
