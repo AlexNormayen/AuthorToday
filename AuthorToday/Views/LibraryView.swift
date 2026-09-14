@@ -184,7 +184,10 @@ struct LibraryView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .padding(.bottom, 8)
-                } else if mode != .mine, let err = offline.lastSyncError {
+                } else if mode != .mine, let err = offline.lastSyncError,
+                          !err.localizedCaseInsensitiveContains("отменено"),
+                          !err.localizedCaseInsensitiveContains("cancelled"),
+                          !err.localizedCaseInsensitiveContains("canceled") {
                     Text(err)
                         .font(.caption)
                         .foregroundStyle(.red)
@@ -196,6 +199,12 @@ struct LibraryView: View {
             }
             .task {
                 offline.reloadLibrary()
+                if let err = offline.lastSyncError,
+                   err.localizedCaseInsensitiveContains("отменено")
+                    || err.localizedCaseInsensitiveContains("cancelled")
+                    || err.localizedCaseInsensitiveContains("canceled") {
+                    offline.lastSyncError = nil
+                }
                 if offline.library.isEmpty, !offline.isSyncing {
                     await offline.syncLibrary(force: true)
                 }

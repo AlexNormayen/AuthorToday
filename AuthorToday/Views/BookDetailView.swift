@@ -773,6 +773,7 @@ struct BookCommentsSection: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(appearance.accent)
+                .foregroundStyle(.white)
                 .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
             }
         }

@@ -2016,73 +2016,85 @@ actor APIClient {
     }
 
     private static func parseCommentsHTML(_ html: String) -> [WorkComment] {
-        var result: [WorkComment] = []
+        // Prefer splitting on comment root nodes; attribute order varies (id/thread/level).
+        let blocks = Self.splitCommentBlocks(html)
+        if !blocks.isEmpty {
+            return blocks.map { commentFromChunk(id: $0.id, level: $0.level, threadId: $0.threadId, chunk: $0.chunk) }
+        }
+        return parseCommentsHTMLSimple(html)
+    }
+
+    private struct CommentBlock {
+        let id: Int
+        let level: Int
+        let threadId: Int
+        let chunk: String
+    }
+
+    private static func splitCommentBlocks(_ html: String) -> [CommentBlock] {
         guard let regex = try? NSRegularExpression(
-            pattern: #"(?s)<div class=\"comment[^\"]*\"[^>]*data-id=\"(\d+)\"[^>]*data-level=\"(\d+)\"[^>]*data-thread=\"(\d+)\"[^>]*>(.*?)</div>\s*(?=<div class=\"comment|</div>\s*<div class=\"pagination|</div>\s*$)"#
-        ) else {
-            // Fallback: simpler per-comment blocks
-            return parseCommentsHTMLSimple(html)
+            pattern: #"<div class="comment[^"]*"[^>]*\bdata-id="(\d+)"[^>]*>"#
+        ) else { return [] }
+        let ns = html as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        let matches = regex.matches(in: html, range: full)
+        guard !matches.isEmpty else { return [] }
+
+        var blocks: [CommentBlock] = []
+        for (idx, match) in matches.enumerated() {
+            guard match.numberOfRanges >= 2,
+                  let idRange = Range(match.range(at: 1), in: html),
+                  let id = Int(html[idRange]),
+                  let openStart = Range(match.range, in: html)?.lowerBound else { continue }
+            let chunkEnd: String.Index
+            if idx + 1 < matches.count, let nextStart = Range(matches[idx + 1].range, in: html)?.lowerBound {
+                chunkEnd = nextStart
+            } else {
+                chunkEnd = html.endIndex
+            }
+            let chunk = String(html[openStart..<chunkEnd])
+            let level = Int(Self.firstMatch(#"data-level="(\d+)""#, in: chunk) ?? "0") ?? 0
+            let thread = Int(Self.firstMatch(#"data-thread="(\d+)""#, in: chunk) ?? "\(id)") ?? id
+            blocks.append(CommentBlock(id: id, level: level, threadId: thread, chunk: chunk))
         }
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = regex.matches(in: html, range: range)
-        if matches.isEmpty {
-            return parseCommentsHTMLSimple(html)
-        }
-        for match in matches {
-            guard match.numberOfRanges >= 5,
-                  let idR = Range(match.range(at: 1), in: html),
-                  let levelR = Range(match.range(at: 2), in: html),
-                  let threadR = Range(match.range(at: 3), in: html),
-                  let bodyR = Range(match.range(at: 4), in: html),
-                  let id = Int(html[idR]),
-                  let level = Int(html[levelR]),
-                  let thread = Int(html[threadR]) else { continue }
-            let chunk = String(html[bodyR])
+        return blocks
+    }
+
+    private static func parseCommentsHTMLSimple(_ html: String) -> [WorkComment] {
+        // UTF-16-safe fallback via NSString ranges (never mix with String.offsetBy).
+        guard let idRegex = try? NSRegularExpression(pattern: #"data-id="(\d+)""#) else { return [] }
+        let ns = html as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        let matches = idRegex.matches(in: html, range: full)
+        var result: [WorkComment] = []
+        for (idx, match) in matches.enumerated() {
+            guard match.numberOfRanges >= 2 else { continue }
+            let idStr = ns.substring(with: match.range(at: 1))
+            guard let id = Int(idStr) else { continue }
+            let start = match.range.location
+            let end = idx + 1 < matches.count ? matches[idx + 1].range.location : ns.length
+            let chunk = ns.substring(with: NSRange(location: start, length: max(0, end - start)))
+            let level = Int(Self.firstMatch(#"data-level="(\d+)""#, in: chunk) ?? "0") ?? 0
+            let thread = Int(Self.firstMatch(#"data-thread="(\d+)""#, in: chunk) ?? "\(id)") ?? id
             result.append(commentFromChunk(id: id, level: level, threadId: thread, chunk: chunk))
         }
         return result
     }
 
-    private static func parseCommentsHTMLSimple(_ html: String) -> [WorkComment] {
-        var result: [WorkComment] = []
-        guard let idRegex = try? NSRegularExpression(pattern: #"data-id=\"(\d+)\""#) else { return [] }
-        let full = NSRange(html.startIndex..<html.endIndex, in: html)
-        let ids = idRegex.matches(in: html, range: full).compactMap { m -> (Int, Int)? in
-            guard let r = Range(m.range(at: 1), in: html), let id = Int(html[r]) else { return nil }
-            return (id, m.range.location)
-        }
-        for (idx, item) in ids.enumerated() {
-            let start = item.1
-            let end = idx + 1 < ids.count ? ids[idx + 1].1 : html.count
-            let startIdx = html.index(html.startIndex, offsetBy: start)
-            let endIdx = html.index(html.startIndex, offsetBy: min(end, html.count))
-            let chunk = String(html[startIdx..<endIdx])
-            let level = Int(Self.firstMatch(#"data-level=\"(\d+)\""#, in: chunk) ?? "0") ?? 0
-            let thread = Int(Self.firstMatch(#"data-thread=\"(\d+)\""#, in: chunk) ?? "\(item.0)") ?? item.0
-            result.append(commentFromChunk(id: item.0, level: level, threadId: thread, chunk: chunk))
-        }
-        return result
-    }
-
     private static func commentFromChunk(id: Int, level: Int, threadId: Int, chunk: String) -> WorkComment {
-        let author = Self.firstMatch(#"comment-user-name\">([^<]+)<"#, in: chunk)
-            ?? Self.firstMatch(#"class=\"[^\"]*user-name[^\"]*\"[^>]*>([^<]+)<"#, in: chunk)
-            ?? Self.firstMatch(#"/u/([^\"/]+)\"[^>]*>\s*<span"#, in: chunk)
-            ?? Self.firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
+        let author = Self.firstMatch(#"comment-user-name">([^<]+)<"#, in: chunk)
+            ?? Self.firstMatch(#"class="[^"]*user-name[^"]*"[^>]*>([^<]+)<"#, in: chunk)
+            ?? Self.firstMatch(#"class='[^']*user-name[^']*'[^>]*>([^<]+)<"#, in: chunk)
+            ?? Self.firstMatch(#"href=["']?/u/([^"'/\s>]+)["']?"#, in: chunk)
             ?? "Пользователь"
-        let userName = Self.firstMatch(#"href=\"/u/([^\"]+)\""#, in: chunk)
-        let textHTML = Self.firstMatch(#"(?s)class=\"[^\"]*rich-content[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
-            ?? Self.firstMatch(#"(?s)class=\"[^\"]*comment-text[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
-            ?? Self.firstMatch(#"(?s)class=\"[^\"]*comment-body[^\"]*\"[^>]*>([\s\S]*?)</div>"#, in: chunk)
-            ?? Self.firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk)
-            ?? Self.firstMatch(#"(?s)<p[^>]*>([\s\S]*?)</p>"#, in: chunk)
-            ?? ""
-        let created = Self.firstMatch(#"data-time=\"([^\"]+)\""#, in: chunk)
-        let pinned = chunk.contains("data-is-pinned=\"true\"") || chunk.contains("is-pinned")
-        let isAuthor = chunk.contains(">автор<") || chunk.contains("label-primary")
+        let userName = Self.firstMatch(#"href=["']?/u/([^"'/\s>]+)["']?"#, in: chunk)
+        let textHTML = Self.extractCommentBodyHTML(from: chunk)
+        let created = Self.firstMatch(#"data-time="([^"]+)""#, in: chunk)
+            ?? Self.firstMatch(#"data-time='([^']+)'"#, in: chunk)
+        let pinned = chunk.contains(#"data-is-pinned="true""#) || chunk.contains("is-pinned")
+        let isAuthor = chunk.localizedCaseInsensitiveContains(">автор<") || chunk.contains("label-primary")
         let ratingStr = Self.firstMatch(#"comment-rating-count[^>]*>\s*([+\-]?\d+)"#, in: chunk)
-        // Reply parent is the comment being answered; thread stays the root thread id.
-        let parentId = Int(Self.firstMatch(#"data-parent=\"(\d+)\""#, in: chunk) ?? "")
+        let parentId = Int(Self.firstMatch(#"data-parent="(\d+)""#, in: chunk) ?? "")
             ?? (level > 0 ? threadId : nil)
         return WorkComment(
             id: id,
@@ -2097,6 +2109,28 @@ actor APIClient {
             isAuthor: isAuthor,
             rating: ratingStr.flatMap(Int.init)
         )
+    }
+
+    /// Body lives in `<article>…<div class="comment-content rich-content">…`.
+    private static func extractCommentBodyHTML(from chunk: String) -> String {
+        if let article = Self.firstMatch(#"(?s)<article[^>]*>([\s\S]*?)</article>"#, in: chunk) {
+            if let content = Self.firstMatch(
+                #"(?s)class="[^"]*comment-content[^"]*"[^>]*>([\s\S]*)"#,
+                in: article
+            ) ?? Self.firstMatch(
+                #"(?s)class="[^"]*rich-content[^"]*"[^>]*>([\s\S]*)"#,
+                in: article
+            ) {
+                return content
+            }
+            return article
+        }
+        return Self.firstMatch(#"(?s)class="[^"]*comment-content[^"]*"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)class="[^"]*rich-content[^"]*"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)class="[^"]*comment-text[^"]*"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)class="[^"]*comment-body[^"]*"[^>]*>([\s\S]*?)</div>"#, in: chunk)
+            ?? Self.firstMatch(#"(?s)<p[^>]*>([\s\S]*?)</p>"#, in: chunk)
+            ?? ""
     }
 
     private static func firstMatch(_ pattern: String, in text: String) -> String? {

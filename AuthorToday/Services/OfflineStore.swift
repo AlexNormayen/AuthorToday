@@ -507,10 +507,14 @@ final class OfflineStore: ObservableObject {
                         try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
                         continue // same page
                     }
-                    errors.append("api: \(error.localizedDescription)")
+                    if !Self.isBenignCancel(error) {
+                        errors.append("api: \(error.localizedDescription)")
+                    }
                     break
                 } catch {
-                    errors.append("api: \(error.localizedDescription)")
+                    if !Self.isBenignCancel(error) {
+                        errors.append("api: \(error.localizedDescription)")
+                    }
                     break
                 }
             }
@@ -540,7 +544,9 @@ final class OfflineStore: ObservableObject {
                         reloadLibrary()
                         publishProgress(expected: expectedTotal ?? byID.count)
                     } catch {
-                        errors.append("profile: \(error.localizedDescription)")
+                        if !Self.isBenignCancel(error) {
+                            errors.append("profile: \(error.localizedDescription)")
+                        }
                     }
                 }
 
@@ -554,18 +560,21 @@ final class OfflineStore: ObservableObject {
                     applyPortalLastReadOrder(recentIDs, context: modelContext)
                     try? modelContext.save()
                 } catch {
-                    errors.append("recent: \(error.localizedDescription)")
+                    if !Self.isBenignCancel(error) {
+                        errors.append("recent: \(error.localizedDescription)")
+                    }
                 }
             } else if byID.isEmpty {
                 errors.append("profile: нет userName — обновите профиль в «Ещё»")
             }
 
             collected = Array(byID.values)
+            let meaningfulErrors = errors.filter { !Self.isBenignCancelMessage($0) }
 
             guard !collected.isEmpty else {
-                lastSyncError = errors.isEmpty
+                lastSyncError = meaningfulErrors.isEmpty
                     ? "Библиотека на сайте пуста или недоступна"
-                    : errors.joined(separator: "; ")
+                    : meaningfulErrors.joined(separator: "; ")
                 reloadLibrary()
                 return
             }
@@ -575,7 +584,7 @@ final class OfflineStore: ObservableObject {
                 upsertWork(from: meta, context: modelContext, markFromSite: true)
             }
 
-            let syncLooksComplete = expectedTotal.map { collected.count >= $0 } ?? errors.isEmpty
+            let syncLooksComplete = expectedTotal.map { collected.count >= $0 } ?? meaningfulErrors.isEmpty
             // Drop local-only leftovers only after a complete sync (partial runs must not prune unread pages)
             if syncLooksComplete {
                 let descriptor = FetchDescriptor<CachedWork>()
@@ -609,13 +618,30 @@ final class OfflineStore: ObservableObject {
                 librarySyncIncomplete = false
                 pendingExpectedTotal = 0
                 lastSuccessfulLibraryPage = 0
-                lastSyncError = errors.isEmpty ? nil : errors.joined(separator: "; ")
+                lastSyncError = meaningfulErrors.isEmpty ? nil : meaningfulErrors.joined(separator: "; ")
             }
             reloadLibrary()
         } catch {
-            lastSyncError = error.localizedDescription
+            if !Self.isBenignCancel(error) {
+                lastSyncError = error.localizedDescription
+            }
             reloadLibrary()
         }
+    }
+
+    /// Task/URLSession cancellations — not real sync failures (red footer noise).
+    private static func isBenignCancel(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return isBenignCancelMessage(error.localizedDescription)
+    }
+
+    private static func isBenignCancelMessage(_ message: String) -> Bool {
+        let s = message.lowercased()
+        return s.contains("отменено")
+            || s.contains("cancelled")
+            || s.contains("canceled")
+            || s.contains("NSURLErrorDomain") && s.contains("-999")
     }
 
     func addToSiteLibrary(workId: Int, state: String = "Reading") async throws {
