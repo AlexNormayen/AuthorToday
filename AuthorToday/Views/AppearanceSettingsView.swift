@@ -9,7 +9,7 @@ struct AppearanceSettingsView: View {
     @State private var paywallReason: String?
 
     var body: some View {
-        Form {
+        List {
             Section {
                 ZStack {
                     ThemeAtmosphereView(
@@ -34,6 +34,7 @@ struct AppearanceSettingsView: View {
                 .frame(height: 140)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
             Section {
@@ -184,6 +185,7 @@ struct AppearanceSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.themePreset, appearance.themePreset)
         .environment(\.themeAccent, appearance.accent)
+        .themedAtmosphereList()
         .themedScreenChrome()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)

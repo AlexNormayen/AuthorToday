@@ -38,11 +38,13 @@ struct AuthorProfileView: View {
                             }
                         }
                         .padding(.vertical, 4)
+                        .themedPanelRow()
 
                         if let about = profile.about, !about.isEmpty {
                             Text(about)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                                .themedPanelRow()
                         }
 
                         NavigationLink {
@@ -55,24 +57,29 @@ struct AuthorProfileView: View {
                         } label: {
                             Label("Написать сообщение", systemImage: "envelope")
                         }
+                        .themedPanelRow()
                     }
 
                     ForEach(profile.series) { group in
                         Section(group.title) {
                             ForEach(group.works, id: \.id) { work in
                                 workRow(work)
+                                    .themedPanelRow()
                             }
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
         .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
         .navigationTitle(displayNameHint ?? userName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -235,19 +242,22 @@ struct SeriesDetailView: View {
                     Section {
                         ForEach(works, id: \.id) { work in
                             workRow(work)
+                                .themedPanelRow()
                         }
                     } header: {
                         Text(headerText)
                     }
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
+                .themedAtmosphereList()
             }
         }
         .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
         .navigationTitle(seriesTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

@@ -63,6 +63,7 @@ struct BookmarksNotesView: View {
                                             .foregroundStyle(.tertiary)
                                     }
                                 }
+                                .themedPanelRow()
                             }
                             .onDelete(perform: deleteBookmarks)
                         }
@@ -86,16 +87,18 @@ struct BookmarksNotesView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 }
+                                .themedPanelRow()
                             }
                             .onDelete(perform: deleteNotes)
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
+                .themedAtmosphereList()
             }
         }
         .navigationTitle(workIdFilter == nil ? "Закладки и заметки" : "Закладки")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .background { ThemeAtmosphereView(preset: appearance.themePreset) }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: "Закладки и заметки — удобство Читальни Pro.")

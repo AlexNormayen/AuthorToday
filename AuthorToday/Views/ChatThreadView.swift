@@ -48,7 +48,7 @@ struct ChatThreadView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }

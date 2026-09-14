@@ -510,7 +510,7 @@ struct SettingsHubView: View {
                     Text("Важно").themedSectionChrome()
                 }
             }
-            .listStyle(.plain)
+            .themedAtmosphereList()
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
@@ -518,7 +518,6 @@ struct SettingsHubView: View {
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
-            .scrollContentBackground(.hidden)
             .toolbarBackground(.hidden, for: .navigationBar)
             .task {
                 if ChitalnyaDistribution.showsSideloadUpdates {

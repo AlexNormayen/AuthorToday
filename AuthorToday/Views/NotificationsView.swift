@@ -56,9 +56,7 @@ struct NotificationsView: View {
                         } else {
                             ForEach(filteredItems, id: \.stableId) { item in
                                 feedRow(item)
-                                    .listRowBackground(
-                                        Rectangle().fill(.ultraThinMaterial.opacity(0.82))
-                                    )
+                                    .themedPanelRow()
                                     .onAppear {
                                         if item.stableId == filteredItems.last?.stableId {
                                             Task { await notifications.loadMore() }
@@ -92,7 +90,7 @@ struct NotificationsView: View {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .navigationTitle("Лента")
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -293,11 +291,14 @@ private struct FeedKindSettingsSheet: View {
                         )) {
                             Text(kind.title)
                         }
+                        .themedPanelRow()
                     }
                 }
             }
+            .themedAtmosphereList()
             .navigationTitle("Фильтр ленты")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") { dismiss() }

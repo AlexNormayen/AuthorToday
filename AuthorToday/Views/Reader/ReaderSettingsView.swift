@@ -11,7 +11,7 @@ struct ReaderSettingsView: View {
     @State private var paywallReason: String?
 
     var body: some View {
-        Form {
+        List {
             Section {
                 VStack(alignment: .leading) {
                     Label("Яркость", systemImage: "lightbulb")
@@ -23,18 +23,22 @@ struct ReaderSettingsView: View {
                         in: 0.05...1
                     )
                 }
+                .themedPanelRow()
                 VStack(alignment: .leading) {
                     Label("Размер \(Int(settings.fontSize))", systemImage: "textformat.size")
                     Slider(value: $settings.fontSize, in: 12...36, step: 1)
                 }
+                .themedPanelRow()
                 VStack(alignment: .leading) {
                     Label("Поля \(Int(settings.marginHorizontal))", systemImage: "text.alignleft")
                     Slider(value: $settings.marginHorizontal, in: 8...48, step: 1)
                 }
+                .themedPanelRow()
                 VStack(alignment: .leading) {
                     Label("Высота строк \(Int(settings.lineSpacing))", systemImage: "arrow.up.and.down.text.horizontal")
                     Slider(value: $settings.lineSpacing, in: 0...24, step: 1)
                 }
+                .themedPanelRow()
             }
 
             Section("Шрифт") {
@@ -53,11 +57,13 @@ struct ReaderSettingsView: View {
                             }
                         }
                     }
+                    .themedPanelRow()
                 }
             }
 
             Section {
                 Toggle("Перенос текста", isOn: $settings.textWrap)
+                    .themedPanelRow()
                 Toggle(
                     "Своя цветовая схема",
                     isOn: Binding(
@@ -73,6 +79,7 @@ struct ReaderSettingsView: View {
                         }
                     )
                 )
+                .themedPanelRow()
                 if settings.useCustomColors {
                     ColorPicker("Цвет текста", selection: Binding(
                         get: { Color(hex: settings.customTextHex) ?? .primary },
@@ -81,6 +88,7 @@ struct ReaderSettingsView: View {
                             settings.theme = .customColor
                         }
                     ))
+                    .themedPanelRow()
                     ColorPicker("Цвет фона", selection: Binding(
                         get: { Color(hex: settings.customBackgroundHex) ?? .white },
                         set: {
@@ -88,6 +96,7 @@ struct ReaderSettingsView: View {
                             settings.theme = .customColor
                         }
                     ))
+                    .themedPanelRow()
                 }
             }
 
@@ -122,6 +131,7 @@ struct ReaderSettingsView: View {
                         }
                     }
                 }
+                .themedPanelRow()
                 let unlocked = pro.isProUnlocked
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label(
@@ -129,6 +139,7 @@ struct ReaderSettingsView: View {
                         systemImage: unlocked ? "photo" : "lock.fill"
                     )
                 }
+                .themedPanelRow()
                 .onChange(of: photoItem) { _, item in
                     guard let item else { return }
                     if !pro.isProUnlocked {
@@ -155,6 +166,7 @@ struct ReaderSettingsView: View {
                         .tag(mode)
                     }
                 }
+                .themedPanelRow()
                 .onChange(of: settings.pageTurnMode) { _, newValue in
                     if ProFeatures.requiresPro(newValue), !pro.isProUnlocked {
                         settings.pageTurnMode = .verticalScroll
@@ -166,6 +178,7 @@ struct ReaderSettingsView: View {
 
             Section {
                 Toggle("Не гасить экран", isOn: $settings.keepScreenOn)
+                    .themedPanelRow()
             }
 
             Section("Превью") {
@@ -177,10 +190,17 @@ struct ReaderSettingsView: View {
                     .padding()
                     .background(settings.solidBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .themedPanelRow()
             }
         }
+        .themedAtmosphereList()
         .navigationTitle("Настройки")
         .navigationBarTitleDisplayMode(.inline)
+        .themedScreenChrome()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .onChange(of: settings.brightnessOverride) { _, value in
             if let value {
                 UIScreen.main.brightness = value

@@ -39,13 +39,12 @@ struct MessagesView: View {
                     }
                     .themedListRow()
                 }
-                .listStyle(.plain)
-                .themedScreenChrome()
+                .themedAtmosphereList()
             }
         }
         .navigationTitle("Сообщения")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
         }

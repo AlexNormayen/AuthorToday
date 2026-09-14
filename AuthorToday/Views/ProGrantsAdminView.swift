@@ -139,6 +139,7 @@ struct ProGrantsAdminView: View {
                 Text("Гранты на этом устройстве")
             }
         }
+        .themedAtmosphereList()
         .themedScreenChrome()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)

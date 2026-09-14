@@ -86,8 +86,7 @@ struct LocalLibraryPane: View {
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                .themedAtmosphereList()
                 .environment(\.themePreset, appearance.themePreset)
                 .environment(\.themeAccent, appearance.accent)
             }

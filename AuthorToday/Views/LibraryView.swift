@@ -272,8 +272,7 @@ struct LibraryView: View {
                 .themedPanelRow()
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .themedAtmosphereList()
         .environment(\.themePreset, appearance.themePreset)
     }
 
@@ -482,10 +481,10 @@ struct AuthorBooksView: View {
                             }
                             .padding(.vertical, 4)
                         }
+                        .themedPanelRow()
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                .themedAtmosphereList()
             }
         }
         .themedGroupedFill()
@@ -621,18 +620,11 @@ struct RecentReadsView: View {
                                             Text(Self.dateText(date))
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
-                                                .padding(.leading, 88)
-                                                .padding(.bottom, 8)
+                                                .padding(.leading, 86)
+                                                .padding(.bottom, 6)
                                         }
                                     }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background {
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .fill(Color.clear)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -793,6 +785,7 @@ struct DownloadedLibraryView: View {
                                 LibraryRow(work: work)
                             }
                             .buttonStyle(.plain)
+                            .themedPanelRow()
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     Task {
@@ -807,8 +800,7 @@ struct DownloadedLibraryView: View {
                             }
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
+                    .themedAtmosphereList()
                 }
             }
             .background {

@@ -103,7 +103,7 @@ struct BookVaultSettingsView: View {
                     .themedPanelRow()
             }
         }
-        .listStyle(.plain)
+        .themedAtmosphereList()
         .environment(\.themePreset, appearance.themePreset)
         .environment(\.themeAccent, appearance.accent)
         .navigationTitle("Облачная полка")

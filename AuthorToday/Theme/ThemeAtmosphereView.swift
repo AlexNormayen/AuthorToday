@@ -301,6 +301,14 @@ extension View {
             .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
     }
 
+    /// Plain list over photo themes — kills insetGrouped section plates.
+    func themedAtmosphereList() -> some View {
+        self
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .listRowSeparator(.hidden)
+    }
+
     /// Empty states without floating cards.
     func themedEmptyStateCard() -> some View {
         modifier(ThemedEmptyStateModifier())

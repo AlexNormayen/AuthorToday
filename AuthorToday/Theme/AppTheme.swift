@@ -127,11 +127,11 @@ struct AuthorCoverCollage: View {
             }
         }
         .frame(width: size, height: size)
-        .background(AppTheme.mist)
+        .background(Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
         )
     }
 
@@ -145,10 +145,17 @@ struct AuthorCoverCollage: View {
 
     private var placeholder: some View {
         ZStack {
-            AppTheme.mist
+            LinearGradient(
+                colors: [
+                    AppTheme.moss.opacity(0.35),
+                    AppTheme.mossSoft.opacity(0.55)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             Image(systemName: "person.crop.rectangle.stack")
                 .font(.system(size: size * 0.36))
-                .foregroundStyle(AppTheme.moss.opacity(0.7))
+                .foregroundStyle(Color.white.opacity(0.9))
         }
     }
 }
