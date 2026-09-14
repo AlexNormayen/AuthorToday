@@ -26,12 +26,15 @@ enum ChitalnyaDistribution {
 
     static var embedsBookVaultBuiltInToken: Bool { isSideload }
 
-    /// Promo / complimentary Pro — Debug only (Guideline 3.1.1).
+    /// Promo / complimentary Pro (owner allowlist + invite grants).
+    /// - Debug: always on
+    /// - Sideload Release: on (your builds / SideStore — not App Store review)
+    /// - App Store / TestFlight: off — StoreKit only (Guideline 3.1.1)
     static var allowsComplimentaryPro: Bool {
         #if DEBUG
         return true
         #else
-        return false
+        return isSideload
         #endif
     }
 

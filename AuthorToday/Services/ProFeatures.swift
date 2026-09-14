@@ -6,24 +6,18 @@ enum ProFeatures {
     /// Fully offline books (all chapters) allowed without Pro.
     static let freeFullDownloadLimit = 2
 
-    /// Always-Pro accounts (no StoreKit). Debug builds only — not in App Store / Release.
+    /// Always-Pro accounts (no StoreKit). Sideload + Debug only — never App Store.
     static var complimentaryEmails: Set<String> {
-        #if DEBUG
-        ["fowl_348@mail.ru"]
-        #else
-        []
-        #endif
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return [] }
+        return ["fowl_348@mail.ru"]
     }
 
     static var complimentaryUserNames: Set<String> {
-        #if DEBUG
-        ["dark_tarkhan"]
-        #else
-        []
-        #endif
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return [] }
+        return ["dark_tarkhan"]
     }
 
-    /// Owner allowlist (complimentary Pro + optional internal tools). Debug only.
+    /// Owner allowlist (complimentary Pro + optional internal tools).
     static func isOwnerAccount(email: String?, userName: String?) -> Bool {
         guard ChitalnyaDistribution.allowsComplimentaryPro else { return false }
         if let email = normalize(email), complimentaryEmails.contains(email) {
@@ -66,13 +60,10 @@ enum ProFeatures {
         AppThemePreset.allCases.filter { !requiresPro($0) }
     }
 
-    /// Optional promo codes. Debug only — paid Pro is App Store IAP in Release.
+    /// Optional promo codes. Sideload + Debug only — paid Pro is App Store IAP in App Store builds.
     static var sideloadInviteCodes: Set<String> {
-        #if DEBUG
-        ["CHITALNYA-FRIENDS"]
-        #else
-        []
-        #endif
+        guard ChitalnyaDistribution.allowsComplimentaryPro else { return [] }
+        return ["CHITALNYA-FRIENDS"]
     }
 
     /// Local file shelf (TXT/EPUB): one free file; after delete wait before next free import.

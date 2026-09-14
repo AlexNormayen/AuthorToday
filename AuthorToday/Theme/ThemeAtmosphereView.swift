@@ -57,10 +57,11 @@ struct ThemeAtmosphereView: View {
                         endPoint: .bottomTrailing
                     )
 
-                    if colorScheme == .dark {
+                    // Full-screen dark chrome may deepen flats; swatches keep color visible.
+                    if colorScheme == .dark, showsContentScrim {
                         Color.black.opacity(0.42 * intensity)
                             .allowsHitTesting(false)
-                    } else {
+                    } else if colorScheme != .dark {
                         let top = preset.atmosphereOverlayTop * intensity
                         let bottom = preset.atmosphereOverlayBottom * intensity
                         if top > 0.001 || bottom > 0.001 {
@@ -90,6 +91,10 @@ struct ThemeAtmosphereView: View {
     }
 
     private var baseFill: Color {
+        // Theme picker swatches: keep the designed base (not mistDark), or they read as black tiles.
+        if !showsContentScrim {
+            return preset.atmosphereBase
+        }
         if colorScheme == .dark, preset.backgroundImageName == nil {
             return preset.mistDark
         }

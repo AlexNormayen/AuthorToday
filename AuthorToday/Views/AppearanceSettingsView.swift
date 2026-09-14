@@ -71,6 +71,20 @@ struct AppearanceSettingsView: View {
                                         )
                                         .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        // Keep dark photo themes readable as chips (not black slabs).
+                                        .overlay {
+                                            if preset.isFuturisticFamily || preset.isDaredevilFamily {
+                                                LinearGradient(
+                                                    colors: [
+                                                        preset.accent.opacity(0.55),
+                                                        Color.clear
+                                                    ],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                            }
+                                        }
                                         .overlay {
                                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                                 .strokeBorder(
