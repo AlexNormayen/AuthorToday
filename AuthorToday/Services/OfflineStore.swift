@@ -621,11 +621,85 @@ final class OfflineStore: ObservableObject {
                 lastSyncError = meaningfulErrors.isEmpty ? nil : meaningfulErrors.joined(separator: "; ")
             }
             reloadLibrary()
+            // user-library rows often omit seriesTitle — backfill from meta-info so author shelves show cycles.
+            await enrichMissingSeriesMetadata(limit: 120)
         } catch {
             if !Self.isBenignCancel(error) {
                 lastSyncError = error.localizedDescription
             }
             reloadLibrary()
+        }
+    }
+
+    /// Fills empty `seriesTitle` / `seriesId` from `/v1/work/meta-info` (library list often omits them).
+    /// - Parameter author: when set, only that author's works are considered.
+    @discardableResult
+    func enrichMissingSeriesMetadata(forAuthor author: String? = nil, limit: Int = 80) async -> Int {
+        guard let modelContext else { return 0 }
+        let authorKey = author?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = library.filter { work in
+            let titleMissing = (work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+            guard titleMissing || work.seriesId == nil else { return false }
+            guard let authorKey, !authorKey.isEmpty else { return true }
+            return work.author.caseInsensitiveCompare(authorKey) == .orderedSame
+        }
+        let ids = Array(candidates.prefix(limit).map(\.workId))
+        guard !ids.isEmpty else {
+            propagateSeriesTitlesAcrossLibrary()
+            return 0
+        }
+
+        var updated = 0
+        for chunkStart in stride(from: 0, to: ids.count, by: 40) {
+            let end = min(chunkStart + 40, ids.count)
+            let chunk = Array(ids[chunkStart..<end])
+            guard let metas = try? await APIClient.shared.workMetas(ids: chunk) else { continue }
+            for meta in metas {
+                let workId = meta.id
+                let descriptor = FetchDescriptor<CachedWork>(
+                    predicate: #Predicate { $0.workId == workId }
+                )
+                guard let existing = try? modelContext.fetch(descriptor).first else { continue }
+                var changed = false
+                if let seriesTitle = meta.displaySeriesTitle,
+                   (existing.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty {
+                    existing.seriesTitle = seriesTitle
+                    changed = true
+                }
+                if let seriesId = meta.seriesId, existing.seriesId == nil {
+                    existing.seriesId = seriesId
+                    changed = true
+                }
+                if let seriesOrder = meta.seriesOrder, existing.seriesOrder == nil {
+                    existing.seriesOrder = seriesOrder
+                    changed = true
+                }
+                if changed { updated += 1 }
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        propagateSeriesTitlesAcrossLibrary()
+        try? modelContext.save()
+        reloadLibrary()
+        return updated
+    }
+
+    /// If one book in a cycle has a title, copy it onto siblings that only have `seriesId`.
+    private func propagateSeriesTitlesAcrossLibrary() {
+        guard let modelContext,
+              let all = try? modelContext.fetch(FetchDescriptor<CachedWork>()) else { return }
+        var titleById: [Int: String] = [:]
+        for work in all {
+            guard let id = work.seriesId else { continue }
+            let title = work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !title.isEmpty { titleById[id] = title }
+        }
+        guard !titleById.isEmpty else { return }
+        for work in all {
+            guard let id = work.seriesId,
+                  let title = titleById[id],
+                  (work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty else { continue }
+            work.seriesTitle = title
         }
     }
 

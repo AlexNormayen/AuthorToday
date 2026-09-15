@@ -433,7 +433,13 @@ struct AuthorBooksView: View {
     }
 
     private var seriesGroups: [(series: String, works: [CachedWork])] {
-        let grouped = Dictionary(grouping: works) { $0.displaySeriesFolder }
+        var titleBySeriesId: [Int: String] = [:]
+        for work in works {
+            guard let id = work.seriesId else { continue }
+            let title = work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !title.isEmpty { titleBySeriesId[id] = title }
+        }
+        let grouped = Dictionary(grouping: works) { Self.seriesFolderName(for: $0, titleBySeriesId: titleBySeriesId) }
         return grouped
             .map { key, value in
                 let sorted = value.sorted { a, b in
@@ -449,6 +455,14 @@ struct AuthorBooksView: View {
                 if b.series == "Без серии" { return true }
                 return a.series.localizedCaseInsensitiveCompare(b.series) == .orderedAscending
             }
+    }
+
+    static func seriesFolderName(for work: CachedWork, titleBySeriesId: [Int: String] = [:]) -> String {
+        let own = work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !own.isEmpty { return own }
+        if let id = work.seriesId, let shared = titleBySeriesId[id] { return shared }
+        if let id = work.seriesId { return "Серия #\(id)" }
+        return "Без серии"
     }
 
     private var onlyFlatList: Bool {
@@ -499,6 +513,9 @@ struct AuthorBooksView: View {
         .themedGroupedFill()
         .navigationTitle(author)
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: author) {
+            await offline.enrichMissingSeriesMetadata(forAuthor: author, limit: 60)
+        }
         .toolbar {
             if downloadedOnly {
                 ToolbarItem(placement: .topBarLeading) {
@@ -565,13 +582,19 @@ struct AuthorSeriesBooksView: View {
 
     private var works: [CachedWork] {
         let source = downloadedOnly ? offline.downloadedWorks : offline.library
-        return source
-            .filter { work in
-                let authorMatch = author == "Без автора"
-                    ? work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    : work.author.caseInsensitiveCompare(author) == .orderedSame
-                return authorMatch && work.displaySeriesFolder == series
-            }
+        let authorWorks = source.filter { work in
+            author == "Без автора"
+                ? work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                : work.author.caseInsensitiveCompare(author) == .orderedSame
+        }
+        var titleBySeriesId: [Int: String] = [:]
+        for work in authorWorks {
+            guard let id = work.seriesId else { continue }
+            let title = work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !title.isEmpty { titleBySeriesId[id] = title }
+        }
+        return authorWorks
+            .filter { AuthorBooksView.seriesFolderName(for: $0, titleBySeriesId: titleBySeriesId) == series }
             .sorted { a, b in
                 let oa = a.seriesOrder ?? Int.max
                 let ob = b.seriesOrder ?? Int.max
