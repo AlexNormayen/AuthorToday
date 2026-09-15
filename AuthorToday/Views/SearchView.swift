@@ -102,7 +102,7 @@ struct SearchView: View {
                                                     .foregroundStyle(primaryInk)
                                                     .multilineTextAlignment(.leading)
                                                     .themedReadableText()
-                                                Text(work.displayAuthor)
+                                                Text(work.displayAuthors)
                                                     .font(.subheadline.weight(.medium))
                                                     .foregroundStyle(secondaryInk)
                                                     .themedReadableText()

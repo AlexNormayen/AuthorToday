@@ -210,7 +210,7 @@ struct BookDetailView: View {
                     openAuthorProfile = true
                 } label: {
                     HStack(spacing: 4) {
-                        Text(details.displayAuthor)
+                        Text(details.displayAuthors)
                         if resolvedAuthorUserName != nil {
                             Image(systemName: "chevron.right")
                                 .font(.caption2.weight(.semibold))

@@ -302,12 +302,19 @@ final class OfflineStore: ObservableObject {
         from works: [CachedWork],
         sortedBy mode: AuthorSortMode
     ) -> [(author: String, works: [CachedWork])] {
-        let grouped = Dictionary(grouping: works) { work -> String in
-            let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
-            return name.isEmpty ? "Без автора" : name
+        // Co-authored books appear under every listed author (Уленгов + Пылаев, etc.).
+        var buckets: [String: [CachedWork]] = [:]
+        for work in works {
+            let names = work.allAuthorNames
+            let keys = names.isEmpty ? ["Без автора"] : names
+            for key in keys {
+                buckets[key, default: []].append(work)
+            }
         }
-        let mapped = grouped.map { key, value -> (author: String, works: [CachedWork]) in
-            let sortedWorks = value.sorted {
+        let mapped = buckets.map { key, value -> (author: String, works: [CachedWork]) in
+            var seen = Set<Int>()
+            let unique = value.filter { seen.insert($0.workId).inserted }
+            let sortedWorks = unique.sorted {
                 $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
             }
             return (author: key, works: sortedWorks)
@@ -631,17 +638,18 @@ final class OfflineStore: ObservableObject {
         }
     }
 
-    /// Fills empty `seriesTitle` / `seriesId` from `/v1/work/meta-info` (library list often omits them).
-    /// - Parameter author: when set, only that author's works are considered.
+    /// Fills empty series / co-author fields from `/v1/work/meta-info` (library list often omits them).
+    /// - Parameter author: when set, only that author's works are considered (primary or co-author).
     @discardableResult
     func enrichMissingSeriesMetadata(forAuthor author: String? = nil, limit: Int = 80) async -> Int {
         guard let modelContext else { return 0 }
         let authorKey = author?.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = library.filter { work in
             let titleMissing = (work.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
-            guard titleMissing || work.seriesId == nil else { return false }
+            let coMissing = (work.coAuthor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+            guard titleMissing || work.seriesId == nil || coMissing else { return false }
             guard let authorKey, !authorKey.isEmpty else { return true }
-            return work.author.caseInsensitiveCompare(authorKey) == .orderedSame
+            return work.belongsToAuthor(authorKey)
         }
         let ids = Array(candidates.prefix(limit).map(\.workId))
         guard !ids.isEmpty else {
@@ -660,21 +668,22 @@ final class OfflineStore: ObservableObject {
                     predicate: #Predicate { $0.workId == workId }
                 )
                 guard let existing = try? modelContext.fetch(descriptor).first else { continue }
-                var changed = false
+                let beforeAuthors = existing.allAuthorNames
+                let beforeSeries = existing.seriesTitle
                 if let seriesTitle = meta.displaySeriesTitle,
                    (existing.seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty {
                     existing.seriesTitle = seriesTitle
-                    changed = true
                 }
                 if let seriesId = meta.seriesId, existing.seriesId == nil {
                     existing.seriesId = seriesId
-                    changed = true
                 }
                 if let seriesOrder = meta.seriesOrder, existing.seriesOrder == nil {
                     existing.seriesOrder = seriesOrder
-                    changed = true
                 }
-                if changed { updated += 1 }
+                applyCoAuthors(meta, to: existing)
+                if existing.allAuthorNames != beforeAuthors || existing.seriesTitle != beforeSeries {
+                    updated += 1
+                }
             }
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
@@ -772,6 +781,7 @@ final class OfflineStore: ObservableObject {
             if let uname = meta.authorUserName, !uname.isEmpty {
                 existing.authorUserName = uname
             }
+            applyCoAuthors(meta, to: existing)
             existing.coverURL = meta.absoluteCoverURL ?? existing.coverURL
             existing.annotation = meta.annotation ?? existing.annotation
             existing.libraryState = state
@@ -808,6 +818,10 @@ final class OfflineStore: ObservableObject {
                 title: meta.displayTitle,
                 author: meta.displayAuthor,
                 authorUserName: meta.authorUserName,
+                coAuthor: meta.coAuthorFIO ?? meta.coAuthorUserName,
+                coAuthorUserName: meta.coAuthorUserName,
+                secondCoAuthor: meta.secondCoAuthorFIO ?? meta.secondCoAuthorUserName,
+                secondCoAuthorUserName: meta.secondCoAuthorUserName,
                 coverURL: meta.absoluteCoverURL,
                 annotation: meta.annotation,
                 libraryState: state,
@@ -820,6 +834,36 @@ final class OfflineStore: ObservableObject {
                 viewsCount: meta.viewsCount ?? meta.viewCount
             )
             ctx.insert(work)
+        }
+    }
+
+    private func applyCoAuthors(_ meta: WorkMeta, to work: CachedWork) {
+        if let name = meta.coAuthorFIO ?? meta.coAuthorUserName, !name.isEmpty {
+            work.coAuthor = name
+        }
+        if let uname = meta.coAuthorUserName, !uname.isEmpty {
+            work.coAuthorUserName = uname
+        }
+        if let name = meta.secondCoAuthorFIO ?? meta.secondCoAuthorUserName, !name.isEmpty {
+            work.secondCoAuthor = name
+        }
+        if let uname = meta.secondCoAuthorUserName, !uname.isEmpty {
+            work.secondCoAuthorUserName = uname
+        }
+    }
+
+    private func applyCoAuthors(_ details: WorkDetails, to work: CachedWork) {
+        if let name = details.coAuthorFIO ?? details.coAuthorUserName, !name.isEmpty {
+            work.coAuthor = name
+        }
+        if let uname = details.coAuthorUserName, !uname.isEmpty {
+            work.coAuthorUserName = uname
+        }
+        if let name = details.secondCoAuthorFIO ?? details.secondCoAuthorUserName, !name.isEmpty {
+            work.secondCoAuthor = name
+        }
+        if let uname = details.secondCoAuthorUserName, !uname.isEmpty {
+            work.secondCoAuthorUserName = uname
         }
     }
 
@@ -864,6 +908,7 @@ final class OfflineStore: ObservableObject {
             if let uname = details.authorUserName, !uname.isEmpty {
                 existing.authorUserName = uname
             }
+            applyCoAuthors(details, to: existing)
             if let seriesTitle = details.displaySeriesTitle {
                 existing.seriesTitle = seriesTitle
             }
@@ -901,6 +946,10 @@ final class OfflineStore: ObservableObject {
                     title: details.displayTitle,
                     author: details.displayAuthor,
                     authorUserName: details.authorUserName,
+                    coAuthor: details.coAuthorFIO ?? details.coAuthorUserName,
+                    coAuthorUserName: details.coAuthorUserName,
+                    secondCoAuthor: details.secondCoAuthorFIO ?? details.secondCoAuthorUserName,
+                    secondCoAuthorUserName: details.secondCoAuthorUserName,
                     coverURL: WorkMeta.normalizeCover(details.coverUrl),
                     annotation: details.annotation,
                     libraryState: shelfState ?? "localonly",
@@ -1073,6 +1122,12 @@ final class OfflineStore: ObservableObject {
             title: cached.title,
             authorFIO: cached.author,
             authorUserName: cached.authorUserName,
+            coAuthorFIO: cached.coAuthor,
+            coAuthorUserName: cached.coAuthorUserName,
+            coAuthorConfirmed: nil,
+            secondCoAuthorFIO: cached.secondCoAuthor,
+            secondCoAuthorUserName: cached.secondCoAuthorUserName,
+            secondCoAuthorConfirmed: nil,
             coverUrl: cached.coverURL,
             annotation: cached.annotation,
             chapters: chapters,

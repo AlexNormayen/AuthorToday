@@ -95,6 +95,12 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
     let title: String?
     let authorFIO: String?
     let authorUserName: String?
+    let coAuthorFIO: String?
+    let coAuthorUserName: String?
+    let coAuthorConfirmed: Bool?
+    let secondCoAuthorFIO: String?
+    let secondCoAuthorUserName: String?
+    let secondCoAuthorConfirmed: Bool?
     let coverUrl: String?
     let annotation: String?
     let lastChapterId: Int?
@@ -136,6 +142,12 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
             title: title,
             authorFIO: author,
             authorUserName: nil,
+            coAuthorFIO: nil,
+            coAuthorUserName: nil,
+            coAuthorConfirmed: nil,
+            secondCoAuthorFIO: nil,
+            secondCoAuthorUserName: nil,
+            secondCoAuthorConfirmed: nil,
             coverUrl: coverUrl,
             annotation: nil,
             lastChapterId: nil,
@@ -169,6 +181,12 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
             title: title,
             authorFIO: authorFIO,
             authorUserName: authorUserName,
+            coAuthorFIO: coAuthorFIO,
+            coAuthorUserName: coAuthorUserName,
+            coAuthorConfirmed: coAuthorConfirmed,
+            secondCoAuthorFIO: secondCoAuthorFIO,
+            secondCoAuthorUserName: secondCoAuthorUserName,
+            secondCoAuthorConfirmed: secondCoAuthorConfirmed,
             coverUrl: coverUrl,
             annotation: annotation,
             lastChapterId: lastChapterId,
@@ -201,8 +219,38 @@ struct WorkMeta: Codable, Identifiable, Hashable, Sendable {
         return raw.isEmpty ? nil : raw
     }
 
+    /// Primary author only (used for storage / single-field UIs).
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
+    }
+
+    /// Primary + confirmed co-authors, e.g. "Валерий Пылаев, Юрий Уленгов".
+    var displayAuthors: String {
+        Self.joinAuthorNames(allAuthorNames)
+    }
+
+    /// Distinct author display names for library shelves (primary + co-authors).
+    var allAuthorNames: [String] {
+        Self.collectAuthorNames([
+            authorFIO ?? authorUserName,
+            (coAuthorConfirmed != false) ? (coAuthorFIO ?? coAuthorUserName) : nil,
+            (secondCoAuthorConfirmed != false) ? (secondCoAuthorFIO ?? secondCoAuthorUserName) : nil
+        ])
+    }
+
+    static func collectAuthorNames(_ raw: [String?]) -> [String] {
+        var result: [String] = []
+        for item in raw {
+            let name = item?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !name.isEmpty else { continue }
+            if result.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { continue }
+            result.append(name)
+        }
+        return result
+    }
+
+    static func joinAuthorNames(_ names: [String]) -> String {
+        names.isEmpty ? "Автор неизвестен" : names.joined(separator: ", ")
     }
 
     var displayTitle: String {
@@ -280,6 +328,12 @@ struct WorkDetails: Codable, Identifiable, Sendable {
     let title: String?
     let authorFIO: String?
     let authorUserName: String?
+    let coAuthorFIO: String?
+    let coAuthorUserName: String?
+    let coAuthorConfirmed: Bool?
+    let secondCoAuthorFIO: String?
+    let secondCoAuthorUserName: String?
+    let secondCoAuthorConfirmed: Bool?
     let coverUrl: String?
     let annotation: String?
     let chapters: [ChapterMeta]?
@@ -308,6 +362,18 @@ struct WorkDetails: Codable, Identifiable, Sendable {
 
     var displayAuthor: String {
         authorFIO ?? authorUserName ?? "Автор неизвестен"
+    }
+
+    var displayAuthors: String {
+        WorkMeta.joinAuthorNames(allAuthorNames)
+    }
+
+    var allAuthorNames: [String] {
+        WorkMeta.collectAuthorNames([
+            authorFIO ?? authorUserName,
+            (coAuthorConfirmed != false) ? (coAuthorFIO ?? coAuthorUserName) : nil,
+            (secondCoAuthorConfirmed != false) ? (secondCoAuthorFIO ?? secondCoAuthorUserName) : nil
+        ])
     }
 
     var displayTitle: String {
@@ -391,6 +457,12 @@ struct WorkDetails: Codable, Identifiable, Sendable {
             title: title,
             authorFIO: authorFIO,
             authorUserName: authorUserName,
+            coAuthorFIO: coAuthorFIO,
+            coAuthorUserName: coAuthorUserName,
+            coAuthorConfirmed: coAuthorConfirmed,
+            secondCoAuthorFIO: secondCoAuthorFIO,
+            secondCoAuthorUserName: secondCoAuthorUserName,
+            secondCoAuthorConfirmed: secondCoAuthorConfirmed,
             coverUrl: coverUrl,
             annotation: annotation,
             chapters: chapters,
@@ -422,8 +494,14 @@ struct WorkDetails: Codable, Identifiable, Sendable {
         WorkDetails(
             id: id,
             title: title,
-            authorFIO: authorFIO,
+            authorFIO: authorFIO ?? meta.authorFIO,
             authorUserName: authorUserName ?? meta.authorUserName,
+            coAuthorFIO: coAuthorFIO ?? meta.coAuthorFIO,
+            coAuthorUserName: coAuthorUserName ?? meta.coAuthorUserName,
+            coAuthorConfirmed: coAuthorConfirmed ?? meta.coAuthorConfirmed,
+            secondCoAuthorFIO: secondCoAuthorFIO ?? meta.secondCoAuthorFIO,
+            secondCoAuthorUserName: secondCoAuthorUserName ?? meta.secondCoAuthorUserName,
+            secondCoAuthorConfirmed: secondCoAuthorConfirmed ?? meta.secondCoAuthorConfirmed,
             coverUrl: coverUrl,
             annotation: annotation,
             chapters: chapters,
@@ -999,6 +1077,10 @@ final class CachedWork {
     var title: String
     var author: String
     var authorUserName: String?
+    var coAuthor: String?
+    var coAuthorUserName: String?
+    var secondCoAuthor: String?
+    var secondCoAuthorUserName: String?
     var coverURL: String?
     var annotation: String?
     var libraryState: String?
@@ -1023,6 +1105,10 @@ final class CachedWork {
         title: String,
         author: String,
         authorUserName: String? = nil,
+        coAuthor: String? = nil,
+        coAuthorUserName: String? = nil,
+        secondCoAuthor: String? = nil,
+        secondCoAuthorUserName: String? = nil,
         coverURL: String? = nil,
         annotation: String? = nil,
         libraryState: String? = nil,
@@ -1043,6 +1129,10 @@ final class CachedWork {
         self.title = title
         self.author = author
         self.authorUserName = authorUserName
+        self.coAuthor = coAuthor
+        self.coAuthorUserName = coAuthorUserName
+        self.secondCoAuthor = secondCoAuthor
+        self.secondCoAuthorUserName = secondCoAuthorUserName
         self.coverURL = coverURL
         self.annotation = annotation
         self.libraryState = libraryState
@@ -1070,6 +1160,23 @@ final class CachedWork {
     var displaySeriesFolder: String {
         let raw = seriesTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return raw.isEmpty ? "Без серии" : raw
+    }
+
+    /// Primary + co-authors for list rows / book chrome.
+    var displayAuthors: String {
+        WorkMeta.joinAuthorNames(allAuthorNames)
+    }
+
+    var allAuthorNames: [String] {
+        WorkMeta.collectAuthorNames([author, coAuthor, secondCoAuthor])
+    }
+
+    func belongsToAuthor(_ name: String) -> Bool {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key == "Без автора" {
+            return allAuthorNames.isEmpty
+        }
+        return allAuthorNames.contains { $0.caseInsensitiveCompare(key) == .orderedSame }
     }
 }
 

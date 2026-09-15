@@ -21,8 +21,9 @@ struct LibraryView: View {
         if q.isEmpty {
             base = shelfWorks
         } else {
-            base = shelfWorks.filter {
-                $0.title.lowercased().contains(q) || $0.author.lowercased().contains(q)
+            base = shelfWorks.filter { work in
+                if work.title.lowercased().contains(q) { return true }
+                return work.allAuthorNames.contains { $0.lowercased().contains(q) }
             }
         }
         return offline.worksSorted(base, by: authorSort)
@@ -428,7 +429,7 @@ struct AuthorBooksView: View {
 
     private var works: [CachedWork] {
         let source = downloadedOnly ? offline.downloadedWorks : offline.library
-        let filtered = source.filter { matchesAuthor($0) }
+        let filtered = source.filter { $0.belongsToAuthor(author) }
         return downloadedOnly ? offline.worksSorted(filtered, by: sort) : filtered
     }
 
@@ -557,13 +558,6 @@ struct AuthorBooksView: View {
         }
     }
 
-    private func matchesAuthor(_ work: CachedWork) -> Bool {
-        if author == "Без автора" {
-            return work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        return work.author.caseInsensitiveCompare(author) == .orderedSame
-    }
-
     private func booksCountText(_ n: Int) -> String {
         let mod10 = n % 10
         let mod100 = n % 100
@@ -582,11 +576,7 @@ struct AuthorSeriesBooksView: View {
 
     private var works: [CachedWork] {
         let source = downloadedOnly ? offline.downloadedWorks : offline.library
-        let authorWorks = source.filter { work in
-            author == "Без автора"
-                ? work.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                : work.author.caseInsensitiveCompare(author) == .orderedSame
-        }
+        let authorWorks = source.filter { $0.belongsToAuthor(author) }
         var titleBySeriesId: [Int: String] = [:]
         for work in authorWorks {
             guard let id = work.seriesId else { continue }
@@ -720,10 +710,10 @@ struct LibraryRow: View {
                     .themedReadableText()
 
                 if showAuthor {
-                    Text(work.author)
+                    Text(work.displayAuthors)
                         .font(.caption)
                         .themedSecondaryText()
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
 
                 HStack(spacing: 8) {
