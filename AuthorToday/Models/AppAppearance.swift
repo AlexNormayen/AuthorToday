@@ -224,18 +224,20 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     }
 
     /// Soft wash over photo themes so list chrome reads without plates (Option A).
-    /// Keep modest — strong dark wash looks like black tiles over Мох / Песок.
+    /// Мох needs a stronger veil — bright mist kills white labels.
     var contentScrimOpacity: Double {
         guard backgroundImageName != nil else { return 0 }
         switch self {
-        case .moss, .ocean:
-            return 0.28
+        case .moss:
+            return 0.50
+        case .ocean:
+            return 0.42
         case .sand, .wine, .graphite:
-            return 0.26
+            return 0.40
         case _ where prefersDark:
-            return 0.24
+            return 0.38
         default:
-            return 0.26
+            return 0.40
         }
     }
 

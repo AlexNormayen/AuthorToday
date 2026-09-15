@@ -31,13 +31,16 @@ struct ThemeAtmosphereView: View {
                         .opacity(intensity)
 
                     if showsContentScrim, preset.contentScrimOpacity > 0.001 {
-                        // Photo themes: fixed soft dark veil — never flip with Light/Dark mode.
-                        let strength = min(preset.contentScrimOpacity * 0.40, 0.22)
+                        // Photo themes: fixed dark veil (not Light/Dark) — Мох should read like a
+                        // moody forest, not a bright mist wash behind white chrome.
+                        let strength = min(max(preset.contentScrimOpacity, 0.36), 0.58)
+                        Color.black.opacity(0.18 * intensity)
+                            .allowsHitTesting(false)
                         LinearGradient(
                             colors: [
-                                Color.black.opacity(strength * 0.70 * intensity),
-                                Color.black.opacity(strength * intensity),
-                                Color.black.opacity(min(strength * 1.10, 0.26) * intensity)
+                                Color.black.opacity(strength * 0.72 * intensity),
+                                Color.black.opacity(strength * 0.92 * intensity),
+                                Color.black.opacity(min(strength * 1.12, 0.64) * intensity)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
