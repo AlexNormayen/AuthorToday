@@ -1,12 +1,9 @@
 name: Build iOS IPA
 
-# Free path without a Mac:
-# 1. Push this repo to GitHub (public = more free macOS minutes)
-# 2. Actions → "Build iOS IPA" → Run workflow
-# 3. Download AuthorToday.ipa artifact
-# 4. Install on iPhone with Sideloadly (Windows) + free Apple ID
+# Builds unsigned IPA and publishes to https://tv.theinquisitor.ru/chitalnya/
+# when CHITALNYA_* secrets are configured.
 #
-# Note: free Apple ID signature lasts ~7 days, then reinstall.
+# Install on iPhone with Sideloadly (Windows) + free Apple ID (~7 day signature).
 
 on:
   workflow_dispatch:
@@ -16,6 +13,7 @@ on:
       - "AuthorToday/**"
       - "AuthorToday.xcodeproj/**"
       - ".github/workflows/ios.yml"
+      - "codemagic.yaml"
 
 permissions:
   contents: read
@@ -29,9 +27,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Show Xcode version
         run: xcodebuild -version
+
+      - name: Resolve build number
+        id: meta
+        run: |
+          set -euo pipefail
+          # Must stay above last VPS build (60). Prefer commit count on main.
+          BUILD_NUM="$(git rev-list --count HEAD)"
+          COMMIT_SHORT="$(git rev-parse --short=7 HEAD)"
+          BRANCH="${GITHUB_REF_NAME}"
+          echo "build=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT_SHORT" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Build $BUILD_NUM ($COMMIT_SHORT) on $BRANCH"
 
       - name: Build (no code signing)
         run: |
@@ -47,6 +60,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             ONLY_ACTIVE_ARCH=NO \
+            CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build }}" \
+            INFOPLIST_KEY_ChitalnyaDistribution=sideload \
             build
 
       - name: Package IPA
@@ -59,6 +74,17 @@ jobs:
             exit 1
           fi
           echo "Packaging: $APP"
+          PLIST="$APP/Info.plist"
+          BUILD_NUM="${{ steps.meta.outputs.build }}"
+          COMMIT_SHORT="${{ steps.meta.outputs.commit }}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUM" "$PLIST"
+          PUB_ID="b${BUILD_NUM}-${COMMIT_SHORT}"
+          /usr/libexec/PlistBuddy -c "Set :ChitalnyaPublishId $PUB_ID" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :ChitalnyaPublishId string $PUB_ID" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :ChitalnyaDistribution sideload" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :ChitalnyaDistribution string sideload" "$PLIST"
+          echo "Stamped CFBundleVersion=$BUILD_NUM ChitalnyaPublishId=$PUB_ID"
           STAGE="$RUNNER_TEMP/ipa"
           rm -rf "$STAGE"
           mkdir -p "$STAGE/Payload"
@@ -69,10 +95,57 @@ jobs:
           )
           ls -lh AuthorToday.ipa
 
-      - name: Upload IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: AuthorToday-ipa
           path: AuthorToday.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish IPA to install page
+        env:
+          SSH_KEY: ${{ secrets.CHITALNYA_SSH_KEY }}
+          VPS_HOST: ${{ secrets.CHITALNYA_VPS_HOST }}
+          TOKEN: ${{ secrets.CHITALNYA_PUBLISH_TOKEN }}
+        run: |
+          set -euo pipefail
+          IPA="$GITHUB_WORKSPACE/AuthorToday.ipa"
+          test -f "$IPA"
+          APP="chitalnya"
+          BUILD="${{ steps.meta.outputs.build }}"
+          COMMIT="${{ steps.meta.outputs.commit }}"
+          BRANCH="${{ steps.meta.outputs.branch }}"
+          HOST="${VPS_HOST:-185.125.103.168}"
+
+          if [ -n "${SSH_KEY:-}" ]; then
+            KEY=/tmp/chitalnya_key
+            printf '%s\n' "$SSH_KEY" > "$KEY"
+            chmod 600 "$KEY"
+            REMOTE="/tmp/app-${GITHUB_RUN_ID}.ipa"
+            scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
+              "$IPA" "root@${HOST}:${REMOTE}"
+            ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
+              "root@${HOST}" \
+              "/opt/chitalnya/publish-local.sh '${APP}' '${REMOTE}' '${BUILD}' '${COMMIT}' '${BRANCH}' && rm -f '${REMOTE}'"
+            rm -f "$KEY"
+            echo "Published via SSH → https://tv.theinquisitor.ru/chitalnya/"
+            exit 0
+          fi
+
+          if [ -n "${TOKEN:-}" ]; then
+            curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
+              -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "app=${APP}" \
+              -F "buildNumber=${BUILD}" \
+              -F "commit=${COMMIT}" \
+              -F "branch=${BRANCH}" \
+              -F "ipa=@${IPA};filename=AuthorToday.ipa;type=application/octet-stream"
+            echo
+            echo "Published via HTTPS → https://tv.theinquisitor.ru/chitalnya/"
+            exit 0
+          fi
+
+          echo "WARNING: no CHITALNYA_SSH_KEY / CHITALNYA_PUBLISH_TOKEN — IPA only in Artifacts."
+          echo "Add repo secrets to auto-update the install page."

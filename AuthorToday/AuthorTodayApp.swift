@@ -29,7 +29,11 @@ struct AuthorTodayApp: App {
                 .environment(\.themePreset, appearance.themePreset)
                 .environment(\.themeAccent, appearance.accent)
                 .preferredColorScheme(appearance.preferredColorScheme)
-                .tint(appearance.accent)
+                .tint(
+                    appearance.themePreset.backgroundImageName != nil
+                        ? Color.white
+                        : appearance.accent
+                )
                 .task {
                     await notifications.configure()
                     await pro.refresh()

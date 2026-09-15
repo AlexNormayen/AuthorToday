@@ -1191,7 +1191,8 @@ actor APIClient {
         level: Int = 0
     ) async throws {
         try await establishWebSession()
-        let html = try await fetchWebHTML(path: pagePath)
+        // Desktop markup reliably includes antiforgery; mobile sometimes strips the hidden field.
+        let html = try await fetchWebHTML(path: pagePath, desktopUA: true)
         guard let verificationToken = Self.extractRequestVerificationToken(from: html) else {
             throw APIError.message("Не удалось получить токен для комментария")
         }
@@ -1202,7 +1203,8 @@ actor APIClient {
             "text": text,
             "isPinned": false,
             "id": NSNull(),
-            "isIgnored": false
+            "isIgnored": false,
+            "__RequestVerificationToken": verificationToken
         ]
         if let parentId {
             payload["parentId"] = parentId
@@ -1603,16 +1605,19 @@ actor APIClient {
             .replacingOccurrences(of: "&quot;", with: "\"")
     }
 
-    private func fetchWebHTML(path: String) async throws -> String {
+    private func fetchWebHTML(path: String, desktopUA: Bool = false) async throws -> String {
         let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
-        request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-            forHTTPHeaderField: "User-Agent"
-        )
+        let ua = desktopUA
+            ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+            : "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+        request.setValue(ua, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         request.setValue(base + "/", forHTTPHeaderField: "Referer")
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         // Prefer LoginCookie from establishWebSession; Bearer alone does not set CSRF correctly.
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
@@ -1686,9 +1691,12 @@ actor APIClient {
         request.setValue("https://author.today", forHTTPHeaderField: "Origin")
         request.setValue(base + refererPath, forHTTPHeaderField: "Referer")
         request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
             forHTTPHeaderField: "User-Agent"
         )
+        if token != "guest" {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)

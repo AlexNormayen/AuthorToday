@@ -273,9 +273,12 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
 
     /// Primary labels — follow active Light/Dark, not only the preset’s default ink.
     func chromePrimaryText(colorScheme: ColorScheme) -> Color {
+        // Photo themes always use bright white chrome — Light/Dark must not grey the ink.
+        if backgroundImageName != nil {
+            return Color.white
+        }
         switch colorScheme {
         case .dark:
-            // Full white — partial opacity reads as grey over photo themes (Мох).
             return Color.white
         case .light:
             return Color(red: 0.10, green: 0.12, blue: 0.13)
@@ -586,13 +589,15 @@ final class AppAppearanceStore: ObservableObject {
     }
 
     var preferredColorScheme: ColorScheme? {
-        // Honor explicit Light/Dark. Photo themes no longer lock the toggle.
+        // Photo themes keep dark system chrome so menus/pickers stay light-on-photo.
+        // The photo itself is not re-washed by Light/Dark (see ThemeAtmosphereView).
+        if themePreset.backgroundImageName != nil {
+            return .dark
+        }
         if let forced = colorMode.colorScheme {
             return forced
         }
         if themePreset.prefersDark { return .dark }
-        // System + photo: prefer dark chrome by default (readable on busy photos).
-        if themePreset.backgroundImageName != nil { return .dark }
         return nil
     }
 }

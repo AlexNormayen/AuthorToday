@@ -61,7 +61,9 @@ struct LibraryView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
                     .themedChromeChip()
+                    .tint(appearance.themePreset.chromePrimaryText(colorScheme: .dark))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -834,6 +836,7 @@ struct DownloadedLibraryView: View {
                         }
                         .pickerStyle(.menu)
                         .themedChromeChip()
+                        .tint(appearance.themePreset.chromePrimaryText(colorScheme: .dark))
                         Spacer(minLength: 0)
                         Text(summaryText)
                             .font(.caption)

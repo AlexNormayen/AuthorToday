@@ -45,6 +45,15 @@ struct AppearanceSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .themedPanelRow()
+                .disabled(appearance.themePreset.backgroundImageName != nil)
+                .opacity(appearance.themePreset.backgroundImageName != nil ? 0.45 : 1)
+
+                if appearance.themePreset.backgroundImageName != nil {
+                    Text("Для фото-тем (Мох и др.) фон не меняется от дня/ночи — только системные элементы. Текст всегда светлый.")
+                        .font(.caption)
+                        .themedSecondaryText()
+                        .themedPanelRow()
+                }
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
