@@ -108,6 +108,7 @@ jobs:
           SSH_KEY: ${{ secrets.CHITALNYA_SSH_KEY }}
           VPS_HOST: ${{ secrets.CHITALNYA_VPS_HOST }}
           TOKEN: ${{ secrets.CHITALNYA_PUBLISH_TOKEN }}
+          SSH_USER: ${{ secrets.CHITALNYA_SSH_USER }}
         run: |
           set -euo pipefail
           IPA="$GITHUB_WORKSPACE/AuthorToday.ipa"
@@ -117,35 +118,50 @@ jobs:
           COMMIT="${{ steps.meta.outputs.commit }}"
           BRANCH="${{ steps.meta.outputs.branch }}"
           HOST="${VPS_HOST:-185.125.103.168}"
+          USER="${SSH_USER:-chitalnya-publish}"
+          publish_ok=0
 
+          # Match Codemagic: restricted publish user + stdin pipe (not root scp).
           if [ -n "${SSH_KEY:-}" ]; then
             KEY=/tmp/chitalnya_key
             printf '%s\n' "$SSH_KEY" > "$KEY"
             chmod 600 "$KEY"
-            REMOTE="/tmp/app-${GITHUB_RUN_ID}.ipa"
-            scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
-              "$IPA" "root@${HOST}:${REMOTE}"
-            ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -i "$KEY" \
-              "root@${HOST}" \
-              "/opt/chitalnya/publish-local.sh '${APP}' '${REMOTE}' '${BUILD}' '${COMMIT}' '${BRANCH}' && rm -f '${REMOTE}'"
+            if cat "$IPA" | ssh -i "$KEY" -o StrictHostKeyChecking=accept-new \
+                -o ConnectTimeout=30 -o ServerAliveInterval=15 \
+                "${USER}@${HOST}" \
+                "publish ${APP} ${BUILD} ${COMMIT} ${BRANCH}"
+            then
+              publish_ok=1
+              echo "Published via SSH → https://tv.theinquisitor.ru/chitalnya/"
+            else
+              echo "SSH publish failed — will try HTTPS"
+            fi
             rm -f "$KEY"
-            echo "Published via SSH → https://tv.theinquisitor.ru/chitalnya/"
-            exit 0
+          else
+            echo "CHITALNYA_SSH_KEY not set — skip SSH"
           fi
 
-          if [ -n "${TOKEN:-}" ]; then
-            curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
-              -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
-              -H "Authorization: Bearer $TOKEN" \
-              -F "app=${APP}" \
-              -F "buildNumber=${BUILD}" \
-              -F "commit=${COMMIT}" \
-              -F "branch=${BRANCH}" \
-              -F "ipa=@${IPA};filename=AuthorToday.ipa;type=application/octet-stream"
-            echo
-            echo "Published via HTTPS → https://tv.theinquisitor.ru/chitalnya/"
-            exit 0
+          if [ "$publish_ok" -ne 1 ]; then
+            if [ -z "${TOKEN:-}" ]; then
+              echo "CHITALNYA_PUBLISH_TOKEN not set — cannot HTTPS publish"
+            elif curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
+                -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -F "app=${APP}" \
+                -F "buildNumber=${BUILD}" \
+                -F "commit=${COMMIT}" \
+                -F "branch=${BRANCH}" \
+                -F "ipa=@${IPA};filename=AuthorToday.ipa;type=application/octet-stream"
+            then
+              publish_ok=1
+              echo
+              echo "Published via HTTPS → https://tv.theinquisitor.ru/chitalnya/"
+            else
+              echo "HTTPS publish failed"
+            fi
           fi
 
-          echo "WARNING: no CHITALNYA_SSH_KEY / CHITALNYA_PUBLISH_TOKEN — IPA only in Artifacts."
-          echo "Add repo secrets to auto-update the install page."
+          if [ "$publish_ok" -ne 1 ]; then
+            echo "WARNING: auto-publish failed. IPA remains in Actions Artifacts."
+            exit 1
+          fi
