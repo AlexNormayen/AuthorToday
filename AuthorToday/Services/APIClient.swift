@@ -1903,18 +1903,17 @@ actor APIClient {
     }
 
     /// Oldest first so the latest bubble sits at the bottom of the thread.
+    /// Author.Today `/pm/messages` returns newest-first; the site UI unshifts to reverse.
     private static func chronologicalPMMessages(_ messages: [PMMessage]) -> [PMMessage] {
         guard messages.count > 1 else { return messages }
 
-        let dated: [(PMMessage, Date)] = messages.compactMap { msg in
+        let dated: [(Int, Date)] = messages.compactMap { msg in
             guard let raw = msg.createdAt, let date = parsePMDate(raw) else { return nil }
-            return (msg, date)
+            return (msg.id, date)
         }
-
-        // Prefer timestamp order when we have enough dates.
-        if dated.count >= max(2, messages.count / 2) {
-            let byId = Dictionary(uniqueKeysWithValues: dated.map { ($0.0.id, $0.1) })
-            return messages.sorted { a, b in
+        if dated.count >= 2 {
+            let byId = Dictionary(uniqueKeysWithValues: dated)
+            let sorted = messages.sorted { a, b in
                 let da = byId[a.id]
                 let db = byId[b.id]
                 switch (da, db) {
@@ -1929,29 +1928,19 @@ actor APIClient {
                     return a.id < b.id
                 }
             }
+            return sorted
         }
 
-        let ids = messages.map(\.id)
-        // HTML scrape uses 1...n in document order; site PM threads are newest-first there.
-        if ids == Array(1...messages.count) {
-            return messages.reversed()
-        }
-
-        // Real API ids usually increase over time — ascending puts oldest on top.
-        if messages.contains(where: { $0.id > 0 }) {
-            return messages.sorted { $0.id < $1.id }
-        }
-
-        // Last resort: if the first dated tip is newer than the last, reverse.
-        if let first = dated.first?.1, let last = dated.last?.1, first > last {
-            return messages.reversed()
-        }
-        return messages
+        return Array(messages.reversed())
     }
 
     static func parsePMDate(_ raw: String) -> Date? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        // ASP.NET JSON dates: /Date(1710000000000)/ or /Date(1710000000000+0300)/
+        if let msStr = firstMatch(#"/Date\((-?\d+)"#, in: trimmed), let ms = Double(msStr) {
+            return Date(timeIntervalSince1970: ms / 1000.0)
+        }
         if let num = Double(trimmed) {
             let seconds = num > 1_000_000_000_000 ? num / 1000.0 : num
             if seconds > 1_000_000_000 {
@@ -1963,12 +1952,24 @@ actor APIClient {
         if let d = iso.date(from: trimmed) { return d }
         iso.formatOptions = [.withInternetDateTime]
         if let d = iso.date(from: trimmed) { return d }
+        // Site often sends "2024-03-15T12:34:56" without Z.
         let df = DateFormatter()
-        df.locale = Locale(identifier: "ru_RU")
-        df.timeZone = TimeZone.current
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
         for format in [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        ] {
+            df.dateFormat = format
+            if let d = df.date(from: trimmed) { return d }
+        }
+        df.timeZone = TimeZone.current
+        df.locale = Locale(identifier: "ru_RU")
+        for format in [
             "dd.MM.yyyy HH:mm",
             "dd.MM.yyyy HH:mm:ss",
             "dd.MM.yy HH:mm",
@@ -1976,20 +1977,12 @@ actor APIClient {
             "d MMMM yyyy HH:mm",
             "d MMM yyyy HH:mm",
             "d MMMM yyyy",
-            "d MMM yyyy"
+            "d MMM yyyy",
+            "сегодня в HH:mm",
+            "вчера в HH:mm"
         ] {
             df.dateFormat = format
-            if let d = df.date(from: trimmed) { return d }
-        }
-        df.locale = Locale(identifier: "en_US_POSIX")
-        for format in [
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss",
-            "dd.MM.yyyy HH:mm",
-            "dd.MM.yyyy HH:mm:ss",
-            "dd.MM.yy HH:mm"
-        ] {
-            df.dateFormat = format
+            if let d = df.date(from: trimmed.lowercased()) { return d }
             if let d = df.date(from: trimmed) { return d }
         }
         return nil
@@ -2015,7 +2008,14 @@ actor APIClient {
     }
 
     private static func pmCreatedAtString(from obj: [String: Any]) -> String? {
-        let keys = ["createdAt", "date", "sentAt", "addTime", "time", "timestamp", "createDate", "addedAt"]
+        // Author.Today PM JSON uses lastModificationTime (see site toMessage()).
+        let keys = [
+            "lastModificationTime", "LastModificationTime",
+            "createdAt", "CreatedAt", "createDate", "CreateDate", "createDateTime",
+            "date", "Date", "sentAt", "SentAt", "addTime", "AddTime", "addedAt",
+            "time", "Time", "timestamp", "Timestamp", "publishDate", "publishedAt",
+            "utime", "unixTime", "messageDate", "MessageDate", "created"
+        ]
         for key in keys {
             if let s = stringValue(obj[key])?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
                 return s
@@ -2030,6 +2030,15 @@ actor APIClient {
                 }
             }
         }
+        // Fallback: any /Date(ms)/ or ISO-looking string in the payload.
+        for (_, value) in obj {
+            if let s = value as? String {
+                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.contains("/Date(") || parsePMDate(t) != nil {
+                    return t
+                }
+            }
+        }
         if let nested = obj["message"] as? [String: Any] {
             return pmCreatedAtString(from: nested)
         }
@@ -2038,7 +2047,10 @@ actor APIClient {
 
     private static func parsePMMessageItem(_ any: Any, fallbackId: Int, myUserId: Int?) -> PMMessage? {
         guard let obj = any as? [String: Any] else { return nil }
-        let id = intValue(obj["id"]) ?? fallbackId
+        let id = intValue(obj["id"])
+            ?? intValue(obj["messageId"])
+            ?? intValue(obj["MessageId"])
+            ?? fallbackId
         let textRaw = stringValue(obj["text"])
             ?? stringValue(obj["message"])
             ?? stringValue(obj["body"])
@@ -2049,6 +2061,7 @@ actor APIClient {
             ?? intValue(obj["senderId"])
             ?? intValue((obj["user"] as? [String: Any])?["id"])
         let isMineFlag = obj["isMine"] as? Bool
+            ?? obj["isMy"] as? Bool
             ?? obj["isOwn"] as? Bool
             ?? obj["own"] as? Bool
         let isMine: Bool
@@ -2077,7 +2090,8 @@ actor APIClient {
     private static func parsePMMessagesHTML(_ html: String, myUserId: Int?) -> [PMMessage] {
         _ = myUserId
         var result: [PMMessage] = []
-        let pattern = #"(?is)<(?:div|li)[^>]*(?:pm-message|message-item|chat-message)[^>]*>([\s\S]*?)</(?:div|li)>"#
+        // Site uses class="message" inside .pm-messages; also tolerate older markers.
+        let pattern = #"(?is)<(?:div|li|article)[^>]*(?:class=["'][^"']*\bmessage\b[^"']*["']|pm-message|message-item|chat-message)[^>]*>([\s\S]*?)(?=<(?:div|li|article)[^>]*(?:class=["'][^"']*\bmessage\b|pm-message)|</(?:ul|ol|section)|$)"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
         for (idx, match) in regex.matches(in: html, range: range).enumerated() {
@@ -2089,9 +2103,10 @@ actor APIClient {
                 || chunk.localizedCaseInsensitiveContains("mine")
                 || chunk.localizedCaseInsensitiveContains("outgoing")
                 || chunk.localizedCaseInsensitiveContains("message-out")
-            let created = firstMatch(#"datetime=["']([^\"']+)["']"#, in: chunk)
+                || chunk.localizedCaseInsensitiveContains("is-my")
+            let created = firstMatch(#"data-time=["']([^\"']+)["']"#, in: chunk)
+                ?? firstMatch(#"datetime=["']([^\"']+)["']"#, in: chunk)
                 ?? firstMatch(#"data-date=["']([^\"']+)["']"#, in: chunk)
-                ?? firstMatch(#"data-time=["']([^\"']+)["']"#, in: chunk)
                 ?? firstMatch(#"(?is)<time[^>]*>([^<]+)</time>"#, in: chunk)
                 ?? firstMatch(#"(?is)class=["'][^\"']*(?:date|time|ago)[^\"']*["'][^>]*>([^<]+)<"#, in: chunk)
             result.append(

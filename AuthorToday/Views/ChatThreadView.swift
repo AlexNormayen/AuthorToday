@@ -120,19 +120,14 @@ struct ChatThreadView: View {
                             : Color.primary.opacity(0.08)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                Text(timestampLabel(for: message))
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                if let created = message.createdAt, let formatted = APIClient.formatPMTimestamp(created) {
+                    Text(formatted)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
             }
             if !message.isMine { Spacer(minLength: 48) }
         }
-    }
-
-    private func timestampLabel(for message: PMMessage) -> String {
-        if let formatted = APIClient.formatPMTimestamp(message.createdAt) {
-            return formatted
-        }
-        return "только что"
     }
 
     private var composer: some View {
