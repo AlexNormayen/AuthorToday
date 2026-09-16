@@ -120,14 +120,19 @@ struct ChatThreadView: View {
                             : Color.primary.opacity(0.08)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                if let created = message.createdAt, !created.isEmpty {
-                    Text(created)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Text(timestampLabel(for: message))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
             if !message.isMine { Spacer(minLength: 48) }
         }
+    }
+
+    private func timestampLabel(for message: PMMessage) -> String {
+        if let formatted = APIClient.formatPMTimestamp(message.createdAt) {
+            return formatted
+        }
+        return "только что"
     }
 
     private var composer: some View {
@@ -223,12 +228,14 @@ struct ChatThreadView: View {
                 messages = try await APIClient.shared.pmMessages(chatId: chatId)
             } else {
                 // Optimistic local bubble until chat id appears.
+                let iso = ISO8601DateFormatter()
+                iso.formatOptions = [.withInternetDateTime]
                 let mine = PMMessage(
                     id: (messages.map(\.id).max() ?? 0) + 1,
                     text: text,
                     isMine: true,
                     senderName: auth.user?.resolvedUserName,
-                    createdAt: nil
+                    createdAt: iso.string(from: Date())
                 )
                 messages.append(mine)
             }

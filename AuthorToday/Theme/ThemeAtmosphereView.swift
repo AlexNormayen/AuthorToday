@@ -397,7 +397,7 @@ private struct ThemedSectionChromeModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .font(.footnote.weight(.semibold))
+            .font(.subheadline.weight(.bold))
             .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -416,7 +416,7 @@ private struct ThemedFooterNoteModifier: ViewModifier {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color(red: 0.92, green: 0.22, blue: 0.24))
             content
-                .font(.subheadline.weight(.regular))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(preset.chromePrimaryText(colorScheme: colorScheme))
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -277,11 +277,11 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
     func chromePrimaryText(colorScheme: ColorScheme) -> Color {
         // Photo themes always use bright white chrome — Light/Dark must not grey the ink.
         if backgroundImageName != nil {
-            return Color.white
+            return Color(white: 1.0)
         }
         switch colorScheme {
         case .dark:
-            return Color.white
+            return Color(white: 0.98)
         case .light:
             return Color(red: 0.10, green: 0.12, blue: 0.13)
         @unknown default:

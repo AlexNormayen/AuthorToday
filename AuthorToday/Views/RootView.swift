@@ -25,13 +25,15 @@ struct RootView: View {
         .environment(\.themePreset, appearance.themePreset)
         .environment(\.themeAccent, appearance.accent)
         .onAppear {
-            configureTranslucentChrome()
+            configureTranslucentChrome(for: appearance.themePreset)
             configureSegmentedChrome(for: appearance.themePreset)
         }
         .onChange(of: appearance.themePreset) { _, preset in
+            configureTranslucentChrome(for: preset)
             configureSegmentedChrome(for: preset)
         }
         .onChange(of: appearance.colorMode) { _, _ in
+            configureTranslucentChrome(for: appearance.themePreset)
             configureSegmentedChrome(for: appearance.themePreset)
         }
         .task {
@@ -54,21 +56,55 @@ struct RootView: View {
         }
     }
 
-    private func configureTranslucentChrome() {
+    private func configureTranslucentChrome(for preset: AppThemePreset) {
+        let photo = preset.backgroundImageName != nil
         let tab = UITabBarAppearance()
+        // Keep a thin frosted bar so icons stay bright without stealing vertical space
+        // from content (safe area still reserved — lists don't sink under the tabs).
         tab.configureWithTransparentBackground()
-        tab.backgroundEffect = nil
-        tab.backgroundColor = .clear
+        tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        tab.backgroundColor = UIColor.black.withAlphaComponent(photo ? 0.28 : 0.12)
         tab.shadowColor = .clear
+
+        let bright = UIColor.white
+        let idle = UIColor.white.withAlphaComponent(0.85)
+        let item = UITabBarItemAppearance()
+        item.normal.iconColor = idle
+        item.normal.titleTextAttributes = [
+            .foregroundColor: idle,
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+        ]
+        item.selected.iconColor = bright
+        item.selected.titleTextAttributes = [
+            .foregroundColor: bright,
+            .font: UIFont.systemFont(ofSize: 10, weight: .bold)
+        ]
+        tab.stackedLayoutAppearance = item
+        tab.inlineLayoutAppearance = item
+        tab.compactInlineLayoutAppearance = item
+
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
         UITabBar.appearance().isTranslucent = true
+        UITabBar.appearance().unselectedItemTintColor = idle
+        UITabBar.appearance().tintColor = bright
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
         nav.backgroundEffect = nil
         nav.backgroundColor = .clear
         nav.shadowColor = .clear
+        if photo {
+            let title = UIColor.white
+            nav.titleTextAttributes = [
+                .foregroundColor: title,
+                .font: UIFont.systemFont(ofSize: 17, weight: .semibold)
+            ]
+            nav.largeTitleTextAttributes = [
+                .foregroundColor: title,
+                .font: UIFont.systemFont(ofSize: 34, weight: .bold)
+            ]
+        }
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
@@ -121,7 +157,11 @@ struct MainTabView: View {
                 iPhoneTabShell
             }
         }
-        .tint(appearance.accent)
+        .tint(
+            appearance.themePreset.backgroundImageName != nil
+                ? Color.white
+                : appearance.accent
+        )
         .onAppear {
             guard !didApplyColdStart else { return }
             didApplyColdStart = true
@@ -176,7 +216,10 @@ struct MainTabView: View {
                     .tag(dest.rawValue)
             }
         }
-        .toolbarBackground(.hidden, for: .tabBar)
+        // Visible frosted bar keeps content above tabs; icons stay bright via UITabBarAppearance.
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .toolbarColorScheme(.dark, for: .tabBar)
         .background(Color.clear)
     }
 
@@ -336,13 +379,16 @@ struct SettingsHubView: View {
     @StateObject private var updates = AppUpdateChecker.shared
 
     private var primaryInk: Color {
-        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+        // Photo themes: pure white (not greyed system secondary).
+        appearance.themePreset.backgroundImageName != nil
+            ? Color.white
+            : appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
     }
 
     private var secondaryInk: Color {
         // On photo themes keep secondary the same bright white as primary.
         appearance.themePreset.backgroundImageName != nil
-            ? appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+            ? Color.white
             : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
     }
 
@@ -370,11 +416,12 @@ struct SettingsHubView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(user.fio ?? user.resolvedUserName ?? "Читатель")
                                     .font(AppTheme.headlineFont)
+                                    .fontWeight(.bold)
                                     .foregroundStyle(primaryInk)
                                     .themedReadableText()
                                 if let email = user.email {
                                     Text(email)
-                                        .font(.subheadline.weight(.medium))
+                                        .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(secondaryInk)
                                         .themedReadableText()
                                 }
@@ -527,6 +574,11 @@ struct SettingsHubView: View {
             .environment(\.themePreset, appearance.themePreset)
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(
+                appearance.themePreset.backgroundImageName != nil ? .dark : nil,
+                for: .navigationBar
+            )
             .themedScreenChrome()
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
@@ -581,12 +633,14 @@ struct SettingsHubView: View {
 }
 
 private extension View {
-    /// Force white/light chrome on settings rows — app `.tint(accent)` paints moss-green links.
+    /// Force bright white chrome on settings rows — app `.tint(accent)` paints moss-green links.
     func settingsChrome(_ ink: Color) -> some View {
         self
             .buttonStyle(.plain)
+            .font(.body.weight(.medium))
             .foregroundStyle(ink)
             .tint(ink)
+            .symbolRenderingMode(.monochrome)
             .themedReadableText()
     }
 }

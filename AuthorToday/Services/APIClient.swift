@@ -1905,29 +1905,82 @@ actor APIClient {
     /// Oldest first so the latest bubble sits at the bottom of the thread.
     private static func chronologicalPMMessages(_ messages: [PMMessage]) -> [PMMessage] {
         guard messages.count > 1 else { return messages }
-        let dated = messages.compactMap { msg -> (PMMessage, Date)? in
+
+        let dated: [(PMMessage, Date)] = messages.compactMap { msg in
             guard let raw = msg.createdAt, let date = parsePMDate(raw) else { return nil }
             return (msg, date)
         }
-        if dated.count == messages.count {
-            return dated.sorted { $0.1 < $1.1 }.map(\.0)
+
+        // Prefer timestamp order when we have enough dates.
+        if dated.count >= max(2, messages.count / 2) {
+            let byId = Dictionary(uniqueKeysWithValues: dated.map { ($0.0.id, $0.1) })
+            return messages.sorted { a, b in
+                let da = byId[a.id]
+                let db = byId[b.id]
+                switch (da, db) {
+                case let (da?, db?):
+                    if da != db { return da < db }
+                    return a.id < b.id
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                default:
+                    return a.id < b.id
+                }
+            }
         }
-        // Message ids usually increase over time; site JSON is often newest-first.
+
+        let ids = messages.map(\.id)
+        // HTML scrape uses 1...n in document order; site PM threads are newest-first there.
+        if ids == Array(1...messages.count) {
+            return messages.reversed()
+        }
+
+        // Real API ids usually increase over time — ascending puts oldest on top.
         if messages.contains(where: { $0.id > 0 }) {
             return messages.sorted { $0.id < $1.id }
         }
-        return messages.reversed()
+
+        // Last resort: if the first dated tip is newer than the last, reverse.
+        if let first = dated.first?.1, let last = dated.last?.1, first > last {
+            return messages.reversed()
+        }
+        return messages
     }
 
-    private static func parsePMDate(_ raw: String) -> Date? {
+    static func parsePMDate(_ raw: String) -> Date? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        if let num = Double(trimmed) {
+            let seconds = num > 1_000_000_000_000 ? num / 1000.0 : num
+            if seconds > 1_000_000_000 {
+                return Date(timeIntervalSince1970: seconds)
+            }
+        }
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = iso.date(from: trimmed) { return d }
         iso.formatOptions = [.withInternetDateTime]
         if let d = iso.date(from: trimmed) { return d }
         let df = DateFormatter()
+        df.locale = Locale(identifier: "ru_RU")
+        df.timeZone = TimeZone.current
+        for format in [
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "dd.MM.yyyy HH:mm",
+            "dd.MM.yyyy HH:mm:ss",
+            "dd.MM.yy HH:mm",
+            "dd.MM.yyyy",
+            "d MMMM yyyy HH:mm",
+            "d MMM yyyy HH:mm",
+            "d MMMM yyyy",
+            "d MMM yyyy"
+        ] {
+            df.dateFormat = format
+            if let d = df.date(from: trimmed) { return d }
+        }
         df.locale = Locale(identifier: "en_US_POSIX")
         for format in [
             "yyyy-MM-dd'T'HH:mm:ss",
@@ -1938,6 +1991,47 @@ actor APIClient {
         ] {
             df.dateFormat = format
             if let d = df.date(from: trimmed) { return d }
+        }
+        return nil
+    }
+
+    /// Display-friendly chat timestamp (always local).
+    static func formatPMTimestamp(_ raw: String?) -> String? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        if let date = parsePMDate(raw) {
+            let cal = Calendar.current
+            if cal.isDateInToday(date) {
+                return date.formatted(date: .omitted, time: .shortened)
+            }
+            if cal.isDateInYesterday(date) {
+                return "вчера, \(date.formatted(date: .omitted, time: .shortened))"
+            }
+            if cal.isDate(date, equalTo: Date(), toGranularity: .year) {
+                return date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+            }
+            return date.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())
+        }
+        return raw
+    }
+
+    private static func pmCreatedAtString(from obj: [String: Any]) -> String? {
+        let keys = ["createdAt", "date", "sentAt", "addTime", "time", "timestamp", "createDate", "addedAt"]
+        for key in keys {
+            if let s = stringValue(obj[key])?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                return s
+            }
+            if let n = obj[key] as? NSNumber {
+                let v = n.doubleValue
+                let seconds = v > 1_000_000_000_000 ? v / 1000.0 : v
+                if seconds > 1_000_000_000 {
+                    let iso = ISO8601DateFormatter()
+                    iso.formatOptions = [.withInternetDateTime]
+                    return iso.string(from: Date(timeIntervalSince1970: seconds))
+                }
+            }
+        }
+        if let nested = obj["message"] as? [String: Any] {
+            return pmCreatedAtString(from: nested)
         }
         return nil
     }
@@ -1970,9 +2064,7 @@ actor APIClient {
             ?? stringValue(obj["userName"])
             ?? stringValue((obj["user"] as? [String: Any])?["fio"])
             ?? stringValue((obj["user"] as? [String: Any])?["userName"])
-        let created = stringValue(obj["createdAt"])
-            ?? stringValue(obj["date"])
-            ?? stringValue(obj["sentAt"])
+        let created = pmCreatedAtString(from: obj)
         return PMMessage(
             id: id,
             text: text,
@@ -1997,13 +2089,18 @@ actor APIClient {
                 || chunk.localizedCaseInsensitiveContains("mine")
                 || chunk.localizedCaseInsensitiveContains("outgoing")
                 || chunk.localizedCaseInsensitiveContains("message-out")
+            let created = firstMatch(#"datetime=["']([^\"']+)["']"#, in: chunk)
+                ?? firstMatch(#"data-date=["']([^\"']+)["']"#, in: chunk)
+                ?? firstMatch(#"data-time=["']([^\"']+)["']"#, in: chunk)
+                ?? firstMatch(#"(?is)<time[^>]*>([^<]+)</time>"#, in: chunk)
+                ?? firstMatch(#"(?is)class=["'][^\"']*(?:date|time|ago)[^\"']*["'][^>]*>([^<]+)<"#, in: chunk)
             result.append(
                 PMMessage(
                     id: idx + 1,
                     text: text,
                     isMine: isMine,
                     senderName: nil,
-                    createdAt: firstMatch(#"datetime=["']([^\"']+)["']"#, in: chunk)
+                    createdAt: created?.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
             )
         }
