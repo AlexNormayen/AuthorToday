@@ -59,15 +59,15 @@ struct RootView: View {
     private func configureTranslucentChrome(for preset: AppThemePreset) {
         let photo = preset.backgroundImageName != nil
         let tab = UITabBarAppearance()
-        // Keep a thin frosted bar so icons stay bright without stealing vertical space
-        // from content (safe area still reserved — lists don't sink under the tabs).
+        // Photo themes: fully clear tab bar — icons float on the atmosphere, no plate/hairline.
         tab.configureWithTransparentBackground()
-        tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-        tab.backgroundColor = UIColor.black.withAlphaComponent(photo ? 0.28 : 0.12)
+        tab.backgroundEffect = nil
+        tab.backgroundColor = .clear
         tab.shadowColor = .clear
+        tab.shadowImage = UIImage()
 
-        let bright = UIColor.white
-        let idle = UIColor.white.withAlphaComponent(0.85)
+        let bright = photo ? UIColor.white : UIColor.label
+        let idle = photo ? UIColor.white.withAlphaComponent(0.88) : UIColor.secondaryLabel
         let item = UITabBarItemAppearance()
         item.normal.iconColor = idle
         item.normal.titleTextAttributes = [
@@ -88,6 +88,9 @@ struct RootView: View {
         UITabBar.appearance().isTranslucent = true
         UITabBar.appearance().unselectedItemTintColor = idle
         UITabBar.appearance().tintColor = bright
+        UITabBar.appearance().barTintColor = .clear
+        UITabBar.appearance().backgroundImage = UIImage()
+        UITabBar.appearance().shadowImage = UIImage()
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
@@ -216,10 +219,8 @@ struct MainTabView: View {
                     .tag(dest.rawValue)
             }
         }
-        // Visible frosted bar keeps content above tabs; icons stay bright via UITabBarAppearance.
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-        .toolbarColorScheme(.dark, for: .tabBar)
+        // Transparent tab bar — forest shows through; safe area still reserved for icons.
+        .toolbarBackground(.hidden, for: .tabBar)
         .background(Color.clear)
     }
 
