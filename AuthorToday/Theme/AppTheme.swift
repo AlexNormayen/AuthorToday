@@ -221,13 +221,18 @@ final class CoverCache: @unchecked Sendable {
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.themeAccent) private var themeAccent
+
     func makeBody(configuration: Configuration) -> some View {
+        // Never use Color.accentColor here — on photo themes app tint is white,
+        // which made «Читать»/«Купить» solid white plates with invisible labels.
+        let fill = themeAccent
         configuration.label
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.accentColor.opacity(configuration.isPressed ? 0.8 : 1))
+            .background(fill.opacity(configuration.isPressed ? 0.82 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

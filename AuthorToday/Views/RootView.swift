@@ -88,9 +88,6 @@ struct RootView: View {
         UITabBar.appearance().isTranslucent = true
         UITabBar.appearance().unselectedItemTintColor = idle
         UITabBar.appearance().tintColor = bright
-        UITabBar.appearance().barTintColor = .clear
-        UITabBar.appearance().backgroundImage = UIImage()
-        UITabBar.appearance().shadowImage = UIImage()
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
@@ -212,6 +209,13 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ForEach(MainDestination.phoneCases) { dest in
                 dest.rootView
+                    // Keep scroll/list content above floating transparent tab icons.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear
+                            .frame(height: 49)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
                     .tabItem {
                         Label(dest.title, systemImage: dest.systemImage)
                     }

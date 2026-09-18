@@ -1154,8 +1154,9 @@ actor APIClient {
     ) async throws {
         try await submitComment(
             rootId: workId,
-            rootType: 1,
+            rootType: "Work",
             pagePath: "/work/\(workId)",
+            tokenPath: "/android/comments/work/\(workId)",
             text: text,
             parentId: parentId,
             threadId: threadId,
@@ -1172,8 +1173,9 @@ actor APIClient {
     ) async throws {
         try await submitComment(
             rootId: postId,
-            rootType: 2,
+            rootType: "Post",
             pagePath: "/post/\(postId)",
+            tokenPath: "/post/\(postId)",
             text: text,
             parentId: parentId,
             threadId: threadId,
@@ -1183,37 +1185,59 @@ actor APIClient {
 
     func submitComment(
         rootId: Int,
-        rootType: Int,
+        rootType: String,
         pagePath: String,
+        tokenPath: String? = nil,
         text: String,
         parentId: Int? = nil,
         threadId: Int? = nil,
         level: Int = 0
     ) async throws {
         try await establishWebSession()
-        // Desktop markup reliably includes antiforgery; mobile sometimes strips the hidden field.
-        let html = try await fetchWebHTML(path: pagePath, desktopUA: true)
-        guard let verificationToken = Self.extractRequestVerificationToken(from: html) else {
+        // Prefer android comments page for antiforgery (same as official clients);
+        // fall back to desktop work/post markup.
+        var verificationToken: String?
+        let tokenCandidates = [tokenPath, pagePath].compactMap { $0 }
+        for path in tokenCandidates {
+            if let html = try? await fetchWebHTML(path: path, desktopUA: true),
+               let token = Self.extractRequestVerificationToken(from: html),
+               !token.isEmpty {
+                verificationToken = token
+                break
+            }
+            if let html = try? await fetchWebHTML(path: path, desktopUA: false),
+               let token = Self.extractRequestVerificationToken(from: html),
+               !token.isEmpty {
+                verificationToken = token
+                break
+            }
+        }
+        guard let verificationToken, !verificationToken.isEmpty else {
             throw APIError.message("Не удалось получить токен для комментария")
         }
+
+        // Match site CommentFormV1: only rootId/rootType/text/isPinned (+ reply fields).
+        // Extra NSNull keys break ASP.NET model binding → «Не удалось выполнить запрос».
+        let bodyText: String = {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.contains("<"), trimmed.contains(">") { return trimmed }
+            let escaped = trimmed
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            return "<p>\(escaped)</p>"
+        }()
 
         var payload: [String: Any] = [
             "rootId": rootId,
             "rootType": rootType,
-            "text": text,
-            "isPinned": false,
-            "id": NSNull(),
-            "isIgnored": false,
-            "__RequestVerificationToken": verificationToken
+            "text": bodyText,
+            "isPinned": false
         ]
         if let parentId {
             payload["parentId"] = parentId
             payload["threadId"] = threadId ?? parentId
             payload["level"] = max(level, 1)
-        } else {
-            payload["parentId"] = NSNull()
-            payload["threadId"] = NSNull()
-            payload["level"] = 0
         }
 
         try await webJSONPost(
@@ -1709,7 +1733,7 @@ actor APIClient {
         if requireSuccess {
             let ok = obj["isSuccessful"] as? Bool
             guard ok != false else {
-                throw APIError.message(Self.messageFromAPIResult(obj) ?? "Не удалось выполнить запрос")
+                throw APIError.message(Self.messageFromAPIResult(obj) ?? "Не удалось отправить запрос")
             }
             // Some endpoints omit isSuccessful but still succeed.
             if ok == nil, let err = Self.messageFromAPIResult(obj),
