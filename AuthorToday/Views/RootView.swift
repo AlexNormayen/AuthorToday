@@ -209,13 +209,7 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ForEach(MainDestination.phoneCases) { dest in
                 dest.rootView
-                    // Keep scroll/list content above floating transparent tab icons.
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        Color.clear
-                            .frame(height: 49)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
+                    .chitalnyaTabBarClearance(62)
                     .tabItem {
                         Label(dest.title, systemImage: dest.systemImage)
                     }
@@ -223,8 +217,9 @@ struct MainTabView: View {
                     .tag(dest.rawValue)
             }
         }
-        // Transparent tab bar — forest shows through; safe area still reserved for icons.
-        .toolbarBackground(.hidden, for: .tabBar)
+        // Keep tab bar in layout (safe area) but visually clear — no plate/hairline.
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(Color.clear, for: .tabBar)
         .background(Color.clear)
     }
 

@@ -271,6 +271,16 @@ extension View {
         modifier(ThemedSecondaryTextModifier())
     }
 
+    /// Extra bottom safe area so scroll/list content stops above transparent tab icons
+    /// (system tab-bar inset is lost when the bar background is fully clear).
+    func chitalnyaTabBarClearance(_ height: CGFloat = 62) -> some View {
+        background {
+            TabBarBottomSafeAreaPad(extraBottom: height)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
+    }
+
     /// Lets the living theme atmosphere show through lists / forms / scroll views.
     func themedScreenChrome() -> some View {
         self
@@ -425,5 +435,64 @@ private struct ThemedFooterNoteModifier: ViewModifier {
         .frame(maxWidth: .infinity, alignment: .leading)
         .themedReadableText()
         .accessibilityLabel("Пояснение")
+    }
+}
+
+/// Pushes `additionalSafeAreaInsets.bottom` on the nearest navigation/tab child so
+/// NavigationStack destinations (book detail, etc.) also stop above tab icons.
+private struct TabBarBottomSafeAreaPad: UIViewControllerRepresentable {
+    var extraBottom: CGFloat
+
+    func makeUIViewController(context: Context) -> PadController {
+        PadController(extraBottom: extraBottom)
+    }
+
+    func updateUIViewController(_ uiViewController: PadController, context: Context) {
+        uiViewController.extraBottom = extraBottom
+        uiViewController.applyInset()
+    }
+
+    final class PadController: UIViewController {
+        var extraBottom: CGFloat
+
+        init(extraBottom: CGFloat) {
+            self.extraBottom = extraBottom
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.isUserInteractionEnabled = false
+            view.backgroundColor = .clear
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyInset()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            applyInset()
+        }
+
+        func applyInset() {
+            guard extraBottom > 0 else { return }
+            var node: UIViewController? = self
+            while let current = node {
+                if let tab = current.tabBarController, !tab.tabBar.isHidden, tab.tabBar.alpha > 0.01 {
+                    // Prefer nav so pushed book/settings pages inherit the same floor.
+                    let target: UIViewController = current.navigationController ?? current
+                    if abs(target.additionalSafeAreaInsets.bottom - extraBottom) > 0.5 {
+                        target.additionalSafeAreaInsets.bottom = extraBottom
+                    }
+                    return
+                }
+                node = current.parent
+            }
+        }
     }
 }

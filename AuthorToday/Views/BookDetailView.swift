@@ -185,6 +185,13 @@ struct BookDetailView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Stop comment/list scroll at the top edge of tab icons.
+            Color.clear
+                .frame(height: 62)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .themedGroupedFill()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)
@@ -801,7 +808,12 @@ struct BookCommentsSection: View {
                         .font(.caption2)
                         .themedSecondaryText()
                 }
-                Spacer()
+                Spacer(minLength: 8)
+                if let when = commentTimestamp(comment) {
+                    Text(when)
+                        .font(.caption2.monospacedDigit())
+                        .themedSecondaryText()
+                }
                 if let rating = comment.rating, rating != 0 {
                     Text(rating > 0 ? "+\(rating)" : "\(rating)")
                         .font(.caption2.monospacedDigit())
@@ -826,6 +838,10 @@ struct BookCommentsSection: View {
         }
         .padding(.vertical, 8)
         .padding(.leading, CGFloat(min(comment.level, 4)) * 14)
+    }
+
+    private func commentTimestamp(_ comment: WorkComment) -> String? {
+        APIClient.formatPMTimestamp(comment.createdAt)
     }
 }
 
