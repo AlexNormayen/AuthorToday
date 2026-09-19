@@ -271,14 +271,15 @@ extension View {
         modifier(ThemedSecondaryTextModifier())
     }
 
-    /// Extra bottom safe area so scroll/list content stops above transparent tab icons
-    /// (system tab-bar inset is lost when the bar background is fully clear).
-    func chitalnyaTabBarClearance(_ height: CGFloat = 62) -> some View {
-        background {
-            TabBarBottomSafeAreaPad(extraBottom: height)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        }
+    /// Extra bottom margin for ScrollView/List so content stops above transparent tab icons.
+    func chitalnyaTabBarClearance(_ height: CGFloat = 96) -> some View {
+        self
+            .contentMargins(.bottom, height, for: .scrollContent)
+            .background {
+                TabBarBottomSafeAreaPad(extraBottom: height)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
     }
 
     /// Lets the living theme atmosphere show through lists / forms / scroll views.
@@ -438,61 +439,93 @@ private struct ThemedFooterNoteModifier: ViewModifier {
     }
 }
 
-/// Pushes `additionalSafeAreaInsets.bottom` on the nearest navigation/tab child so
-/// NavigationStack destinations (book detail, etc.) also stop above tab icons.
-private struct TabBarBottomSafeAreaPad: UIViewControllerRepresentable {
+/// Measures the live UITabBar and pushes matching `additionalSafeAreaInsets`
+/// so NavigationStack destinations stop above the icons.
+private struct TabBarBottomSafeAreaPad: UIViewRepresentable {
     var extraBottom: CGFloat
 
-    func makeUIViewController(context: Context) -> PadController {
-        PadController(extraBottom: extraBottom)
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.fallback = extraBottom
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
     }
 
-    func updateUIViewController(_ uiViewController: PadController, context: Context) {
-        uiViewController.extraBottom = extraBottom
-        uiViewController.applyInset()
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.fallback = extraBottom
+        uiView.applyInset()
     }
 
-    final class PadController: UIViewController {
-        var extraBottom: CGFloat
+    final class ProbeView: UIView {
+        var fallback: CGFloat = 96
 
-        init(extraBottom: CGFloat) {
-            self.extraBottom = extraBottom
-            super.init(nibName: nil, bundle: nil)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError() }
-
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.isUserInteractionEnabled = false
-            view.backgroundColor = .clear
-        }
-
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
             applyInset()
         }
 
-        override func viewDidLayoutSubviews() {
-            super.viewDidLayoutSubviews()
+        override func layoutSubviews() {
+            super.layoutSubviews()
             applyInset()
         }
 
         func applyInset() {
-            guard extraBottom > 0 else { return }
-            var node: UIViewController? = self
+            guard let window else { return }
+            let tabBar = Self.findTabBar(from: self) ?? Self.findTabBar(in: window)
+            // Full tab bar height minus home-indicator already in safe area.
+            let measured: CGFloat
+            if let tabBar, tabBar.bounds.height > 1 {
+                measured = max(tabBar.bounds.height - window.safeAreaInsets.bottom, fallback)
+            } else {
+                measured = fallback
+            }
+
+            var responder: UIResponder? = self
+            var host: UIViewController?
+            while let current = responder {
+                if let vc = current as? UIViewController {
+                    host = vc
+                    break
+                }
+                responder = current.next
+            }
+            guard let host else { return }
+
+            var node: UIViewController? = host
             while let current = node {
-                if let tab = current.tabBarController, !tab.tabBar.isHidden, tab.tabBar.alpha > 0.01 {
-                    // Prefer nav so pushed book/settings pages inherit the same floor.
-                    let target: UIViewController = current.navigationController ?? current
-                    if abs(target.additionalSafeAreaInsets.bottom - extraBottom) > 0.5 {
-                        target.additionalSafeAreaInsets.bottom = extraBottom
+                if current.tabBarController != nil || current is UITabBarController {
+                    let target = current.navigationController ?? current
+                    if abs(target.additionalSafeAreaInsets.bottom - measured) > 0.5 {
+                        target.additionalSafeAreaInsets.bottom = measured
+                    }
+                    // Also pad the visible page VC — some SwiftUI hosts ignore nav insets.
+                    if abs(current.additionalSafeAreaInsets.bottom - measured) > 0.5,
+                       !(current is UINavigationController),
+                       !(current is UITabBarController) {
+                        current.additionalSafeAreaInsets.bottom = measured
                     }
                     return
                 }
                 node = current.parent
             }
+        }
+
+        private static func findTabBar(from view: UIView) -> UITabBar? {
+            var v: UIView? = view
+            while let current = v {
+                if let tab = current as? UITabBar { return tab }
+                v = current.superview
+            }
+            return nil
+        }
+
+        private static func findTabBar(in root: UIView) -> UITabBar? {
+            if let tab = root as? UITabBar { return tab }
+            for sub in root.subviews {
+                if let found = findTabBar(in: sub) { return found }
+            }
+            return nil
         }
     }
 }

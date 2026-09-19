@@ -209,7 +209,7 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ForEach(MainDestination.phoneCases) { dest in
                 dest.rootView
-                    .chitalnyaTabBarClearance(62)
+                    .chitalnyaTabBarClearance(96)
                     .tabItem {
                         Label(dest.title, systemImage: dest.systemImage)
                     }
@@ -565,10 +565,15 @@ struct SettingsHubView: View {
                         Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
                             .themedFooterNote()
                     }
+
+                    Color.clear
+                        .frame(height: 110)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .contentMargins(.bottom, 24, for: .scrollContent)
             // Don't inherit app accent (moss green) for links — it vanishes on the photo.
             .tint(primaryInk)
             .environment(\.themePreset, appearance.themePreset)
