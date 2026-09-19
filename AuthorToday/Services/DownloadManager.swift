@@ -257,24 +257,7 @@ final class DownloadManager: ObservableObject {
             store.removeCachedChapter(workId: workId, chapterId: chapter.id)
         }
         guard isOnline else {
-            if let cached = store.chapter(workId: workId, chapterId: chapter.id),
-               ChapterDecryptor.looksLikePlaintext(cached.htmlText) {
-                return (cached.title, cached.htmlText)
-            }
-            if let vaultHTML = await BookVaultSync.shared.fetchChapterHTML(
-                workId: workId,
-                chapterId: chapter.id
-            ), ChapterDecryptor.looksLikePlaintext(vaultHTML) {
-                let title = chapter.displayTitle
-                store.saveChapter(
-                    workId: workId,
-                    chapterId: chapter.id,
-                    title: title,
-                    html: vaultHTML,
-                    sortIndex: sortIndex
-                )
-                return (title, vaultHTML)
-            }
+            // Offline: local disk only — never wait on Book Vault / network.
             throw APIError.message("Эта глава не скачана. Нужен интернет или скачайте книгу целиком на карточке книги.")
         }
 

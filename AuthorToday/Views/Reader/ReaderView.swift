@@ -847,12 +847,19 @@ struct ReaderView: View {
             }
             return
         }
-        if !downloads.online && !offline.isChapterCached(workId: workId, chapterId: chapter.id) {
+        let alreadyCached = offline.isChapterCached(workId: workId, chapterId: chapter.id)
+        if !downloads.online && !alreadyCached {
             error = "Эта глава не скачана. Нужен интернет или скачайте книгу целиком на карточке книги."
             return
         }
-        isLoading = true
-        defer { isLoading = false }
+        // Cached / offline chapter turns must not flash «Открываем книгу…» or wait on network.
+        let showFullLoader = !alreadyCached
+        if showFullLoader {
+            isLoading = true
+        }
+        defer {
+            if showFullLoader { isLoading = false }
+        }
         do {
             let loaded = try await downloads.loadChapter(
                 workId: workId,
@@ -889,16 +896,21 @@ struct ReaderView: View {
             session.updateActiveChapter(chapter.id)
             considerLibraryAdd(chapterProgress: 0.55)
             prefetchNeighborChapters()
+            // Never await portal sync while turning pages — a “online” path with no
+            // real internet kept the loader on screen for the request timeout.
             if downloads.online {
-                try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
                 let readableCount = max(chapters.filter(\.isAvailableEffective).count, 1)
                 let readableIdx = chapters.prefix(index + 1).filter(\.isAvailableEffective).count
-                try? await APIClient.shared.updateProgress(
-                    workId: workId,
-                    chapterId: chapter.id,
-                    progress: Double(readableIdx) / Double(readableCount),
-                    location: "page:0"
-                )
+                let progress = Double(readableIdx) / Double(readableCount)
+                Task {
+                    try? await APIClient.shared.readerStart(workId: workId, chapterId: chapter.id)
+                    try? await APIClient.shared.updateProgress(
+                        workId: workId,
+                        chapterId: chapter.id,
+                        progress: progress,
+                        location: "page:0"
+                    )
+                }
             }
         } catch {
             self.error = error.localizedDescription
