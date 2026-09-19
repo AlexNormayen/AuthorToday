@@ -181,17 +181,10 @@ struct BookDetailView: View {
                     }
                 }
                 commentsBlock
-                // Physical spacer in scroll content — safe-area tricks still let text
-                // slide under transparent tab icons; this cannot.
-                Color.clear
-                    .frame(height: 110)
-                    .accessibilityHidden(true)
             }
             .padding(20)
         }
         .scrollDismissesKeyboard(.interactively)
-        .contentMargins(.bottom, 24, for: .scrollContent)
-        .chitalnyaTabBarClearance(96)
         .themedGroupedFill()
         .background {
             ThemeAtmosphereView(preset: appearance.themePreset)

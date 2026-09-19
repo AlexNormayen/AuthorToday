@@ -59,8 +59,9 @@ struct RootView: View {
     private func configureTranslucentChrome(for preset: AppThemePreset) {
         let photo = preset.backgroundImageName != nil
         let tab = UITabBarAppearance()
-        // Photo themes: fully clear tab bar — icons float on the atmosphere, no plate/hairline.
-        tab.configureWithTransparentBackground()
+        // Opaque layout + clear fill: system keeps content ABOVE the bar (no underlap),
+        // while the forest from RootView still shows through the clear chrome.
+        tab.configureWithOpaqueBackground()
         tab.backgroundEffect = nil
         tab.backgroundColor = .clear
         tab.shadowColor = .clear
@@ -85,7 +86,8 @@ struct RootView: View {
 
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
-        UITabBar.appearance().isTranslucent = true
+        // false = do not draw page content under the tab icons
+        UITabBar.appearance().isTranslucent = false
         UITabBar.appearance().unselectedItemTintColor = idle
         UITabBar.appearance().tintColor = bright
 
@@ -209,7 +211,6 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ForEach(MainDestination.phoneCases) { dest in
                 dest.rootView
-                    .chitalnyaTabBarClearance(96)
                     .tabItem {
                         Label(dest.title, systemImage: dest.systemImage)
                     }
@@ -217,9 +218,15 @@ struct MainTabView: View {
                     .tag(dest.rawValue)
             }
         }
-        // Keep tab bar in layout (safe area) but visually clear — no plate/hairline.
+        // Visible + clear keeps bar in the layout; opaque UITabBar (see configureTranslucentChrome)
+        // prevents scroll content from painting under the icons.
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(Color.clear, for: .tabBar)
+        .background {
+            TabBarOpaqueLayoutEnforcer()
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .background(Color.clear)
     }
 
@@ -565,15 +572,10 @@ struct SettingsHubView: View {
                         Text("Читальня не является официальным приложением Author.Today и не связана с порталом. Author.Today не отвечает за работу этого клиента. Книги и оплата — только через author.today. Локальные оповещения опрашивают публичный API портала.")
                             .themedFooterNote()
                     }
-
-                    Color.clear
-                        .frame(height: 110)
-                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
-            .contentMargins(.bottom, 24, for: .scrollContent)
             // Don't inherit app accent (moss green) for links — it vanishes on the photo.
             .tint(primaryInk)
             .environment(\.themePreset, appearance.themePreset)
@@ -588,7 +590,9 @@ struct SettingsHubView: View {
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
-            .toolbarBackground(.hidden, for: .navigationBar)
+            // Keep large title / content out of the status bar; clear so forest shows through.
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.clear, for: .navigationBar)
             .task {
                 if ChitalnyaDistribution.showsSideloadUpdates {
                     await updates.checkIfDue()
@@ -647,5 +651,63 @@ private extension View {
             .tint(ink)
             .symbolRenderingMode(.monochrome)
             .themedReadableText()
+    }
+}
+
+/// SwiftUI TabView sometimes leaves the live UITabBar translucent even when
+/// `UITabBar.appearance().isTranslucent = false`. Force opaque layout on the
+/// real bar so page content is clipped above the icons.
+private struct TabBarOpaqueLayoutEnforcer: UIViewRepresentable {
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.enforce()
+    }
+
+    final class ProbeView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            enforce()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            enforce()
+        }
+
+        func enforce() {
+            guard let window else { return }
+            for bar in Self.tabBars(in: window) {
+                if bar.isTranslucent {
+                    bar.isTranslucent = false
+                }
+                bar.backgroundColor = .clear
+                bar.barTintColor = .clear
+                // Keep clear opaque appearance without hairline.
+                let appearance = bar.standardAppearance
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = .clear
+                appearance.shadowColor = .clear
+                appearance.shadowImage = UIImage()
+                bar.standardAppearance = appearance
+                bar.scrollEdgeAppearance = appearance
+            }
+        }
+
+        private static func tabBars(in root: UIView) -> [UITabBar] {
+            var found: [UITabBar] = []
+            if let tab = root as? UITabBar {
+                found.append(tab)
+            }
+            for sub in root.subviews {
+                found.append(contentsOf: tabBars(in: sub))
+            }
+            return found
+        }
     }
 }
