@@ -217,7 +217,7 @@ struct MainTabView: View {
 
         // Custom tab shell: page content and icons are separate layout siblings —
         // scroll views physically cannot paint under the icons (unlike UITabBar).
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             ZStack {
                 ForEach(MainDestination.phoneCases) { dest in
                     let selected = selectedTab == dest.rawValue
