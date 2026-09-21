@@ -208,24 +208,67 @@ struct MainTabView: View {
     }
 
     private var iPhoneTabShell: some View {
-        TabView(selection: $selectedTab) {
-            ForEach(MainDestination.phoneCases) { dest in
-                dest.rootView
-                    .tabItem {
-                        Label(dest.title, systemImage: dest.systemImage)
-                    }
-                    .badge(dest == .feed ? notifications.unreadCount : 0)
-                    .tag(dest.rawValue)
+        let ink = appearance.themePreset.backgroundImageName != nil
+            ? Color.white
+            : appearance.accent
+        let idle = appearance.themePreset.backgroundImageName != nil
+            ? Color.white.opacity(0.88)
+            : Color.secondary
+
+        // Custom tab shell: page content and icons are separate layout siblings —
+        // scroll views physically cannot paint under the icons (unlike UITabBar).
+        VStack(spacing: 0) {
+            ZStack {
+                ForEach(MainDestination.phoneCases) { dest in
+                    let selected = selectedTab == dest.rawValue
+                    dest.rootView
+                        .opacity(selected ? 1 : 0)
+                        .allowsHitTesting(selected)
+                        .accessibilityHidden(!selected)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
             }
-        }
-        // Visible + clear keeps bar in the layout; opaque UITabBar (see configureTranslucentChrome)
-        // prevents scroll content from painting under the icons.
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(Color.clear, for: .tabBar)
-        .background {
-            TabBarOpaqueLayoutEnforcer()
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+
+            HStack(spacing: 0) {
+                ForEach(MainDestination.phoneCases) { dest in
+                    let selected = selectedTab == dest.rawValue
+                    Button {
+                        selectedTab = dest.rawValue
+                    } label: {
+                        VStack(spacing: 4) {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: dest.systemImage)
+                                    .font(.system(size: 20, weight: selected ? .semibold : .regular))
+                                    .frame(height: 24)
+                                if dest == .feed, notifications.unreadCount > 0 {
+                                    Text(notifications.unreadCount > 99 ? "99+" : "\(notifications.unreadCount)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color.red))
+                                        .offset(x: 10, y: -6)
+                                }
+                            }
+                            Text(dest.title)
+                                .font(.system(size: 10, weight: selected ? .bold : .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .foregroundStyle(selected ? ink : idle)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(dest.title)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .background(Color.clear)
         }
         .background(Color.clear)
     }
@@ -651,63 +694,5 @@ private extension View {
             .tint(ink)
             .symbolRenderingMode(.monochrome)
             .themedReadableText()
-    }
-}
-
-/// SwiftUI TabView sometimes leaves the live UITabBar translucent even when
-/// `UITabBar.appearance().isTranslucent = false`. Force opaque layout on the
-/// real bar so page content is clipped above the icons.
-private struct TabBarOpaqueLayoutEnforcer: UIViewRepresentable {
-    func makeUIView(context: Context) -> ProbeView {
-        let view = ProbeView()
-        view.isUserInteractionEnabled = false
-        view.backgroundColor = .clear
-        return view
-    }
-
-    func updateUIView(_ uiView: ProbeView, context: Context) {
-        uiView.enforce()
-    }
-
-    final class ProbeView: UIView {
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            enforce()
-        }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            enforce()
-        }
-
-        func enforce() {
-            guard let window else { return }
-            for bar in Self.tabBars(in: window) {
-                if bar.isTranslucent {
-                    bar.isTranslucent = false
-                }
-                bar.backgroundColor = .clear
-                bar.barTintColor = .clear
-                // Keep clear opaque appearance without hairline.
-                let appearance = bar.standardAppearance
-                appearance.configureWithOpaqueBackground()
-                appearance.backgroundColor = .clear
-                appearance.shadowColor = .clear
-                appearance.shadowImage = UIImage()
-                bar.standardAppearance = appearance
-                bar.scrollEdgeAppearance = appearance
-            }
-        }
-
-        private static func tabBars(in root: UIView) -> [UITabBar] {
-            var found: [UITabBar] = []
-            if let tab = root as? UITabBar {
-                found.append(tab)
-            }
-            for sub in root.subviews {
-                found.append(contentsOf: tabBars(in: sub))
-            }
-            return found
-        }
     }
 }
