@@ -254,7 +254,7 @@ workflows:
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --configuration Release \
+            --config Release \
             --archive-directory "$CM_BUILD_DIR/build/ios/xcarchive" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
             --archive-xcargs "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM CURRENT_PROJECT_VERSION=${PROJECT_BUILD_NUMBER:-2} SWIFT_ACTIVE_COMPILATION_CONDITIONS=APPSTORE INFOPLIST_KEY_ChitalnyaDistribution=appstore"
