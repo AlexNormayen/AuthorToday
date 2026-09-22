@@ -186,15 +186,10 @@ workflows:
               exit 0
             fi
 
-  # App Store / TestFlight — Developer Program + Team ID required.
-  # Codemagic UI → Environment variables for this workflow:
-  #   DEVELOPMENT_TEAM = 57FVB8DUWX
-  # Optional: App Store Connect API key integration for TestFlight upload.
-  # Identifiers (Developer portal):
-  #   ru.chitalnya.reader
-  #   ru.chitalnya.reader.ContinueReadingWidget
-  #   App Group group.ru.chitalnya.reader on both
-  #   In-App Purchase on main App ID
+  # App Store / TestFlight — group `app_store` must contain:
+  #   DEVELOPMENT_TEAM, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER,
+  #   APP_STORE_CONNECT_PRIVATE_KEY (secure), CERTIFICATE_PRIVATE_KEY (secure)
+  # Identifiers: ru.chitalnya.reader + .ContinueReadingWidget, App Group group.ru.chitalnya.reader
   ios-app-store-signed:
     name: Читальня App Store (signed)
     max_build_duration: 90
@@ -202,14 +197,12 @@ workflows:
     environment:
       xcode: latest
       groups:
-        - app_store  # UI/API: DEVELOPMENT_TEAM=57FVB8DUWX
-      ios_signing:
-        distribution_type: app_store
-        # String only — Codemagic also matches extensions (e.g. …ContinueReadingWidget).
-        bundle_identifier: ru.chitalnya.reader
+        - app_store
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
+        BUNDLE_ID: ru.chitalnya.reader
+        BUNDLE_ID_WIDGET: ru.chitalnya.reader.ContinueReadingWidget
     scripts:
       - name: Prepare App Store Info.plist (HTTPS only)
         script: |
@@ -221,22 +214,36 @@ workflows:
             echo "Removed NSAppTransportSecurity from Info.plist for App Store build"
           fi
 
-      - name: Set up code signing
+      - name: Set up keychain
         script: |
           set -euo pipefail
+          keychain initialize
+
+      - name: Fetch signing files from App Store Connect
+        script: |
+          set -euo pipefail
+          if [ -z "${APP_STORE_CONNECT_PRIVATE_KEY:-}" ] || [ -z "${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] || [ -z "${APP_STORE_CONNECT_ISSUER_ID:-}" ]; then
+            echo "Missing APP_STORE_CONNECT_* in group app_store"
+            exit 1
+          fi
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "Missing CERTIFICATE_PRIVATE_KEY in group app_store (needed to create Distribution cert)"
+            exit 1
+          fi
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID_WIDGET" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
-          # Fetch profiles for main app + widget when available
-          echo "Expected bundles: ru.chitalnya.reader , ru.chitalnya.reader.ContinueReadingWidget"
-          echo "App Group: group.ru.chitalnya.reader"
 
       - name: Build signed archive
         script: |
           set -euo pipefail
           if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
             echo "DEVELOPMENT_TEAM is empty."
-            echo "Add it in Codemagic → Environment variables for this workflow (Team ID)."
-            echo "See docs/app-store.md"
-            echo "For Sideloadly IPA use workflow: AuthorToday iOS IPA (unsigned)"
             exit 1
           fi
           xcodebuild \
@@ -264,7 +271,7 @@ workflows:
             <key>method</key>
             <string>app-store-connect</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
             <key>uploadSymbols</key>
             <true/>
             <key>teamID</key>
@@ -281,22 +288,15 @@ workflows:
             -exportPath "$CM_BUILD_DIR/export"
           cp "$CM_BUILD_DIR"/export/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
           ls -lh "$CM_BUILD_DIR/Chitalnya.ipa"
-          # Sanity: channel stamp
           unzip -l "$CM_BUILD_DIR/Chitalnya.ipa" | head -n 40 || true
-
-      - name: Upload to TestFlight (optional)
-        script: |
-          set -euo pipefail
-          if [ -z "${APP_STORE_CONNECT_ISSUER_ID:-}${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] && [ -z "${APP_STORE_APPLE_ID:-}" ]; then
-            echo "Skipping TestFlight upload — configure App Store Connect API key in Codemagic,"
-            echo "then enable publishing below or upload Chitalnya.ipa via Transporter."
-            exit 0
-          fi
-          app-store-connect publish \
-            --path "$CM_BUILD_DIR/Chitalnya.ipa" \
-            --beta-build-localizations="locale=ru-RU,whatsNew=Читальня: подготовка к Review" || \
-          echo "Publish skipped/failed — upload IPA manually with Transporter."
 
     artifacts:
       - Chitalnya.ipa
       - Chitalnya.xcarchive
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
