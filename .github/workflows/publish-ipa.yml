@@ -1,4 +1,4 @@
-# Publishes IPA to https://tv.theinquisitor.ru/chitalnya/
+# Publishes IPA to https://at.theinquisitor.ru/chitalnya/
 # Prefer SSH (port 22) — CodeMagic→VPS :443 is flaky from some regions.
 #
 # Triggers:
@@ -107,7 +107,7 @@ jobs:
           BUILD="${{ steps.meta.outputs.build }}"
           COMMIT="${{ steps.meta.outputs.commit }}"
           BRANCH="${{ steps.meta.outputs.branch }}"
-          HOST="${VPS_HOST:-185.125.103.168}"
+          HOST="${VPS_HOST:-132.243.119.95}"
 
           if [ -n "${SSH_KEY:-}" ]; then
             KEY=/tmp/chitalnya_key
@@ -129,7 +129,7 @@ jobs:
           FNAME="AuthorToday.ipa"
           if [ "$APP" = "tubevault" ]; then FNAME="TubeVault.ipa"; fi
           curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
-            -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
+            -X POST "https://at.theinquisitor.ru/chitalnya/api/publish" \
             -H "Authorization: Bearer $TOKEN" \
             -F "app=${APP}" \
             -F "buildNumber=${BUILD}" \

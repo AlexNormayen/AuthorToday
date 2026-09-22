@@ -24,6 +24,10 @@ struct ReaderSettingsView: View {
                     )
                 }
                 .themedPanelRow()
+                Text("На странице чтения проведите пальцем вверх/вниз по правому краю — яркость экрана.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .themedPanelRow()
                 VStack(alignment: .leading) {
                     Label("Размер \(Int(settings.fontSize))", systemImage: "textformat.size")
                     Slider(value: $settings.fontSize, in: 12...36, step: 1)

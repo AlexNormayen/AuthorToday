@@ -51,7 +51,7 @@ Codemagic подхватит файл `codemagic.yaml` в корне.
 ### 5. Установить на iPhone / iPad
 
 **Вариант A — SideStore (на устройстве):**  
-страница на VPS → https://tv.theinquisitor.ru/chitalnya/ — Читальня и TubeVault, инструкция, последняя и прошлые IPA. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
+страница на VPS → https://at.theinquisitor.ru/chitalnya/ — Читальня и TubeVault, инструкция, последняя и прошлые IPA. Подробнее: [docs/sidestore-vps.md](docs/sidestore-vps.md).
 
 **Вариант B — Sideloadly (ПК):**
 

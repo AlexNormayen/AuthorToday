@@ -86,6 +86,7 @@ struct LocalReaderView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(edges: (showChrome || error != nil) ? [] : .all)
+        .readerBrightnessEdgeGesture()
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 ReaderSettingsView()

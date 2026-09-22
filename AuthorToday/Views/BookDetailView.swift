@@ -13,8 +13,7 @@ struct BookDetailView: View {
     @State private var details: WorkDetails?
     @State private var error: String?
     @State private var isLoading = true
-    @State private var openReader = false
-    @State private var startChapterId: Int?
+    @ObservedObject private var readingSession = ReadingSessionStore.shared
     @State private var showPurchase = false
     @State private var showTOC = false
     @State private var openAuthorProfile = false
@@ -72,9 +71,6 @@ struct BookDetailView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $openReader) {
-            ReaderView(workId: workId, initialChapterId: startChapterId)
-        }
         .navigationDestination(isPresented: $openAuthorProfile) {
             authorDestination
         }
@@ -99,8 +95,7 @@ struct BookDetailView: View {
                 needsPurchase: details?.needsPurchase == true,
                 onOpen: { id in
                     showTOC = false
-                    startChapterId = id
-                    openReader = true
+                    readingSession.presentReader(workId: workId, chapterId: id)
                 },
                 onPurchase: {
                     showTOC = false
@@ -293,8 +288,7 @@ struct BookDetailView: View {
                     // Always nil for Continue/Read — DownloadManager picks the furthest
                     // of local checkpoint, ReadingProgress and portal lastReadChapterId.
                     // Passing a concrete id (esp. a stale first chapter) blocked resume.
-                    startChapterId = nil
-                    openReader = true
+                    readingSession.presentReader(workId: workId, chapterId: nil)
                 }
             } label: {
                 Text(readButtonTitle)

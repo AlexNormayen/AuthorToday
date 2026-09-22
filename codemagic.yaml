@@ -16,7 +16,7 @@ workflows:
       vars:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
-        CHITALNYA_PUBLISH_URL: https://tv.theinquisitor.ru/chitalnya/api/publish
+        CHITALNYA_PUBLISH_URL: https://at.theinquisitor.ru/chitalnya/api/publish
         CHITALNYA_VPS_HOST: "185.125.103.168"
         CHITALNYA_SSH_USER: chitalnya-publish
         # CHITALNYA_PUBLISH_TOKEN and CHITALNYA_SSH_KEY_B64 — Codemagic encrypted env only
@@ -165,7 +165,7 @@ workflows:
                 echo "CHITALNYA_PUBLISH_TOKEN not set — skip HTTPS publish"
               elif curl -fL --connect-timeout 20 --max-time 90 \
                   --retry 2 --retry-delay 2 \
-                  --resolve "tv.theinquisitor.ru:443:${HOST}" \
+                  --resolve "at.theinquisitor.ru:443:${HOST}" \
                   -X POST "$CHITALNYA_PUBLISH_URL" \
                   -H "Authorization: Bearer $CHITALNYA_PUBLISH_TOKEN" \
                   -F "app=chitalnya" \
@@ -179,7 +179,7 @@ workflows:
             fi
 
             if [ "$publish_ok" -eq 1 ]; then
-              echo "Published: https://tv.theinquisitor.ru/chitalnya/"
+              echo "Published: https://at.theinquisitor.ru/chitalnya/"
             else
               echo "WARNING: auto-publish failed. IPA is still in Codemagic Artifacts."
               echo "Ensure CHITALNYA_SSH_KEY_B64 / CHITALNYA_PUBLISH_TOKEN are set in Codemagic UI."

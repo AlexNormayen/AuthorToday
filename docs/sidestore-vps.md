@@ -1,20 +1,24 @@
 # Установка Читальни и TubeVault с VPS (SideStore)
 
-Страница: **https://tv.theinquisitor.ru/chitalnya/**
+Страница: **https://at.theinquisitor.ru/chitalnya/**
 
-## Автовыкладка из CodeMagic
+Хост: **`132.243.119.95`** (`fowl348.fvds.ru`), домен **`at.theinquisitor.ru`** (HTTPS / Let's Encrypt).
 
-Уже настроено: после успешного unsigned-билда IPA уходит на страницу через HTTPS API  
-`POST https://tv.theinquisitor.ru/chitalnya/api/publish`.
+## Автовыкладка из CI / CodeMagic
 
-Ничего вручную в Codemagic UI добавлять не нужно — URL и токен заданы в `codemagic.yaml`.
+После успешного unsigned-билда IPA уходит на страницу через HTTPS API  
+`POST https://at.theinquisitor.ru/chitalnya/api/publish`  
+или SSH `chitalnya-publish@HOST` → `publish …` (stdin = IPA).
 
-На VPS: сервис `chitalnya-publish` (`/opt/chitalnya/publish_api.py`), токен в `/opt/chitalnya/.publish_token`.
+Секреты GitHub Actions: `CHITALNYA_VPS_HOST=132.243.119.95`, `CHITALNYA_SSH_KEY`, `CHITALNYA_PUBLISH_TOKEN`, `CHITALNYA_SSH_USER=chitalnya-publish`.
+
+На VPS: сервис `chitalnya-publish` (`/opt/chitalnya/publish_api.py`), токен в `/opt/chitalnya/.publish_token`.  
+TubeVault: `tubevault.service` на `:8787`, nginx vhost `at.theinquisitor.ru`.
 
 ## SideStore
 
 1. SideStore с [sidestore.io](https://sidestore.io/)
-2. Safari → https://tv.theinquisitor.ru/chitalnya/
+2. Safari → https://at.theinquisitor.ru/chitalnya/
 3. Скачайте последнюю или любую версию из списка
 4. SideStore → **+** → Install → доверьте сертификат; Refresh раз в ~7 дней
 

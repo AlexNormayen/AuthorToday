@@ -12,13 +12,13 @@
 #   --no-latest              do not overwrite root AuthorToday.ipa / TubeVault.ipa
 #
 # Env:
-#   CHITALNYA_VPS_HOST=root@185.125.103.168
+#   CHITALNYA_VPS_HOST=root@132.243.119.95
 #   CHITALNYA_SSH_KEY=~/.ssh/id_ed25519_aeza   (path to key; optional if ssh-agent has it)
 #   PROJECT_BUILD_NUMBER, CM_COMMIT, CM_BRANCH  (CodeMagic)
 
 set -euo pipefail
 
-HOST="${CHITALNYA_VPS_HOST:-root@185.125.103.168}"
+HOST="${CHITALNYA_VPS_HOST:-root@132.243.119.95}"
 KEY_PATH="${CHITALNYA_SSH_KEY:-${HOME}/.ssh/id_ed25519_aeza}"
 REMOTE_DIR="/opt/chitalnya"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -227,4 +227,4 @@ print(meta_path.read_text(encoding='utf-8'))
 PY
 "
 
-echo "Done: https://tv.theinquisitor.ru/chitalnya/  ($APP $VERSION_ID)"
+echo "Done: https://at.theinquisitor.ru/chitalnya/  ($APP $VERSION_ID)"

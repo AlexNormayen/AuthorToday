@@ -1,6 +1,6 @@
 name: Build iOS IPA
 
-# Builds unsigned IPA and publishes to https://tv.theinquisitor.ru/chitalnya/
+# Builds unsigned IPA and publishes to https://at.theinquisitor.ru/chitalnya/
 # when CHITALNYA_* secrets are configured.
 #
 # Install on iPhone with Sideloadly (Windows) + free Apple ID (~7 day signature).
@@ -117,7 +117,7 @@ jobs:
           BUILD="${{ steps.meta.outputs.build }}"
           COMMIT="${{ steps.meta.outputs.commit }}"
           BRANCH="${{ steps.meta.outputs.branch }}"
-          HOST="${VPS_HOST:-185.125.103.168}"
+          HOST="${VPS_HOST:-132.243.119.95}"
           USER="${SSH_USER:-chitalnya-publish}"
           publish_ok=0
 
@@ -132,7 +132,7 @@ jobs:
                 "publish ${APP} ${BUILD} ${COMMIT} ${BRANCH}"
             then
               publish_ok=1
-              echo "Published via SSH → https://tv.theinquisitor.ru/chitalnya/"
+              echo "Published via SSH → https://at.theinquisitor.ru/chitalnya/"
             else
               echo "SSH publish failed — will try HTTPS"
             fi
@@ -145,7 +145,7 @@ jobs:
             if [ -z "${TOKEN:-}" ]; then
               echo "CHITALNYA_PUBLISH_TOKEN not set — cannot HTTPS publish"
             elif curl -fL --retry 3 --connect-timeout 30 --max-time 180 \
-                -X POST "https://tv.theinquisitor.ru/chitalnya/api/publish" \
+                -X POST "https://at.theinquisitor.ru/chitalnya/api/publish" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -F "app=${APP}" \
                 -F "buildNumber=${BUILD}" \
@@ -155,7 +155,7 @@ jobs:
             then
               publish_ok=1
               echo
-              echo "Published via HTTPS → https://tv.theinquisitor.ru/chitalnya/"
+              echo "Published via HTTPS → https://at.theinquisitor.ru/chitalnya/"
             else
               echo "HTTPS publish failed"
             fi

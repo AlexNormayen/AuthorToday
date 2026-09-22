@@ -157,6 +157,12 @@ final class ReadingSessionStore: ObservableObject {
         persistSession()
     }
 
+    /// Present the site reader above tabs (full screen). Prefer this over pushing in a NavigationStack.
+    func presentReader(workId: Int, chapterId: Int?) {
+        beginReading(workId: workId, chapterId: chapterId)
+        pendingResume = ResumeReader(workId: workId, chapterId: chapterId)
+    }
+
     func updateActiveChapter(_ chapterId: Int) {
         guard isReading else { return }
         activeChapterId = chapterId

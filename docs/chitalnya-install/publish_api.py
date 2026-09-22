@@ -205,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
                 "versionId": version_id,
                 "label": label,
                 "sizeBytes": len(ipa),
-                "url": f"https://tv.theinquisitor.ru/chitalnya/{version['file']}",
+                "url": f"https://at.theinquisitor.ru/chitalnya/{version['file']}",
             },
         )
 

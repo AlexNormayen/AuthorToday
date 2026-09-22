@@ -192,8 +192,12 @@ struct MainTabView: View {
         }
         .onOpenURL { url in
             if let item = Self.resumeFromWidgetURL(url) {
+                session.presentReader(workId: item.workId, chapterId: item.chapterId)
                 resumeReader = item
             }
+        }
+        .onChange(of: session.pendingResume) { _, item in
+            resumeReader = item
         }
         .fullScreenCover(item: $resumeReader, onDismiss: {
             session.endReading()
@@ -226,6 +230,8 @@ struct MainTabView: View {
                         .allowsHitTesting(selected)
                         .accessibilityHidden(!selected)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        // Keep inactive tabs from painting over the selected page (right-edge bleed).
+                        .zIndex(selected ? 1 : 0)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -625,17 +631,13 @@ struct SettingsHubView: View {
             .environment(\.themeAccent, appearance.accent)
             .navigationTitle("Ещё")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(
-                appearance.themePreset.backgroundImageName != nil ? .dark : nil,
-                for: .navigationBar
-            )
             .themedScreenChrome()
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
+                    .ignoresSafeArea()
             }
-            // Keep large title / content out of the status bar; clear so forest shows through.
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(Color.clear, for: .navigationBar)
+            // Hidden (not clear+visible): large-title scroll edge was painting a solid grey status strip.
+            .toolbarBackground(.hidden, for: .navigationBar)
             .task {
                 if ChitalnyaDistribution.showsSideloadUpdates {
                     await updates.checkIfDue()

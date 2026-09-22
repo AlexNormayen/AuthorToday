@@ -4,7 +4,7 @@
 #   ./scripts/upload-ipa-to-vps.sh /path/to/AuthorToday.ipa [/path/to/TubeVault.ipa]
 #   ./scripts/upload-ipa-to-vps.sh --app tubevault /path/to/TubeVault.ipa
 # Env:
-#   CHITALNYA_VPS_HOST=root@185.125.103.168
+#   CHITALNYA_VPS_HOST=root@132.243.119.95
 #   CHITALNYA_SSH_KEY=~/.ssh/id_ed25519_aeza
 
 set -euo pipefail
@@ -50,4 +50,4 @@ for IPA in "${FILES[@]}"; do
   "$PUBLISH" --app "$APP" "${EXTRA[@]}" "$IPA"
 done
 
-echo "All uploads done: https://tv.theinquisitor.ru/chitalnya/"
+echo "All uploads done: https://at.theinquisitor.ru/chitalnya/"

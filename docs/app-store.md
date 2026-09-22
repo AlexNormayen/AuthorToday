@@ -22,7 +22,7 @@
 | App Group | `group.ru.chitalnya.reader` |
 | Team ID | `57FVB8DUWX` |
 | Категория | Books |
-| Privacy Policy URL | `https://tv.theinquisitor.ru/chitalnya/privacy.html` (файл: `docs/privacy.html` / `docs/chitalnya-install/privacy.html`) |
+| Privacy Policy URL | `https://at.theinquisitor.ru/chitalnya/privacy.html` (файл: `docs/privacy.html` / `docs/chitalnya-install/privacy.html`) |
 
 Полную фразу «Клиент Author.Today (неофициальный)» ставим в **Promotional Text / первую строку Description** и в UI приложения; в поле Subtitle Connect — укороченный вариант из‑за лимита 30.
 
@@ -130,7 +130,7 @@ Lifetime / навсегда — **нет**.
 
 ### 6. Листинг и Review
 1. Заполнить Name / Subtitle / Description / Keywords (черновик выше).
-2. Privacy Policy URL: **`https://tv.theinquisitor.ru/chitalnya/privacy.html`**  
+2. Privacy Policy URL: **`https://at.theinquisitor.ru/chitalnya/privacy.html`**  
    (задеплоить `docs/chitalnya-install/privacy.html` на VPS рядом с install page, если ещё не лежит).
 3. Скриншоты 6.7" (логин с дисклеймером «неофициальный», библиотека, читалка).
 4. Age Rating, App Privacy (логин AT; опциональная облачная полка — только если пользователь включил).
@@ -171,7 +171,7 @@ Lifetime / навсегда — **нет**.
 4. Identifiers: main + widget + App Group + IAP.
 5. New App «Читальня» в Connect.
 6. IAP products Ready to Submit.
-7. Privacy URL живой: `https://tv.theinquisitor.ru/chitalnya/privacy.html`.
+7. Privacy URL живой: `https://at.theinquisitor.ru/chitalnya/privacy.html`.
 8. Codemagic: secrets для **unsigned** publish (`CHITALNYA_SSH_KEY_B64` / `CHITALNYA_PUBLISH_TOKEN`) — только в UI, не в git.
 9. Запуск workflow **Читальня App Store (signed)** → TestFlight.
 10. Скриншоты 6.7" + Review Notes + демо AT-аккаунт → Submit for Review.

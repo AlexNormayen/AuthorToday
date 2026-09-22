@@ -13,7 +13,6 @@ struct BookmarksNotesView: View {
     @Query(sort: \ReadingNote.updatedAt, order: .reverse) private var allNotes: [ReadingNote]
 
     @State private var showPaywall = false
-    @State private var resume: ReadingSessionStore.ResumeReader?
 
     private var bookmarks: [ReadingBookmark] {
         guard let workIdFilter else { return allBookmarks }
@@ -49,7 +48,7 @@ struct BookmarksNotesView: View {
                         Section("Закладки") {
                             ForEach(bookmarks, id: \.id) { bm in
                                 Button {
-                                    resume = .init(workId: bm.workId, chapterId: bm.chapterId)
+                                    ReadingSessionStore.shared.presentReader(workId: bm.workId, chapterId: bm.chapterId)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(bm.workTitle)
@@ -72,7 +71,7 @@ struct BookmarksNotesView: View {
                         Section("Заметки") {
                             ForEach(notes, id: \.id) { note in
                                 Button {
-                                    resume = .init(workId: note.workId, chapterId: note.chapterId)
+                                    ReadingSessionStore.shared.presentReader(workId: note.workId, chapterId: note.chapterId)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(note.workTitle)
@@ -102,11 +101,6 @@ struct BookmarksNotesView: View {
         .background { ThemeAtmosphereView(preset: appearance.themePreset) }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: "Закладки и заметки — удобство Читальни Pro.")
-        }
-        .fullScreenCover(item: $resume) { item in
-            NavigationStack {
-                ReaderView(workId: item.workId, initialChapterId: item.chapterId)
-            }
         }
     }
 

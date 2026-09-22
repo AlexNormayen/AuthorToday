@@ -7,9 +7,9 @@ final class BookVaultSettings: ObservableObject {
     static let shared = BookVaultSettings()
 
     enum BuiltIn {
-        static let apiViaHTTPS = "https://tv.theinquisitor.ru"
+        static let apiViaHTTPS = "https://at.theinquisitor.ru"
         /// Sideload-only fallbacks (cleartext). App Store builds use HTTPS only.
-        static let apiPublic = "http://185.125.103.168:8787"
+        static let apiPublic = "http://132.243.119.95:8787"
         static let apiViaVPN = "http://172.29.172.1:8787"
 
         static var apiToken: String {

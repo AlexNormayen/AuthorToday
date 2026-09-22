@@ -158,7 +158,10 @@ struct LibraryView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):
-                    ReaderView(workId: workId, initialChapterId: chapterId)
+                    Color.clear
+                        .onAppear {
+                            ReadingSessionStore.shared.presentReader(workId: workId, chapterId: chapterId)
+                        }
                 case .details(let workId):
                     BookDetailView(workId: workId)
                 case .author(let name, let downloadedOnly):
@@ -669,7 +672,10 @@ struct RecentReadsView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):
-                    ReaderView(workId: workId, initialChapterId: chapterId)
+                    Color.clear
+                        .onAppear {
+                            ReadingSessionStore.shared.presentReader(workId: workId, chapterId: chapterId)
+                        }
                 case .details(let workId):
                     BookDetailView(workId: workId)
                 case .author(let name, let downloadedOnly):
@@ -850,7 +856,10 @@ struct DownloadedLibraryView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {
                 case .reader(let workId, let chapterId):
-                    ReaderView(workId: workId, initialChapterId: chapterId)
+                    Color.clear
+                        .onAppear {
+                            ReadingSessionStore.shared.presentReader(workId: workId, chapterId: chapterId)
+                        }
                 case .details(let workId):
                     BookDetailView(workId: workId)
                 case .author(let name, let downloadedOnly):

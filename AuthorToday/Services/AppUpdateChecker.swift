@@ -3,14 +3,14 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-/// Checks https://tv.theinquisitor.ru/chitalnya/meta.json for a newer IPA.
+/// Checks https://at.theinquisitor.ru/chitalnya/meta.json for a newer IPA.
 /// Sideload cannot self-replace the app — UI only opens the install page.
 @MainActor
 final class AppUpdateChecker: ObservableObject {
     static let shared = AppUpdateChecker()
 
-    static let metaURL = URL(string: "https://tv.theinquisitor.ru/chitalnya/meta.json")!
-    static let installPageURL = URL(string: "https://tv.theinquisitor.ru/chitalnya/")!
+    static let metaURL = URL(string: "https://at.theinquisitor.ru/chitalnya/meta.json")!
+    static let installPageURL = URL(string: "https://at.theinquisitor.ru/chitalnya/")!
 
     let appKey = "chitalnya"
     private let appDisplayName = "Читальня"
