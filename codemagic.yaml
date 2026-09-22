@@ -246,6 +246,7 @@ workflows:
             echo "DEVELOPMENT_TEAM is empty."
             exit 1
           fi
+          # Do not pass PRODUCT_BUNDLE_IDENTIFIER — it overrides the widget target too.
           xcodebuild \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
@@ -257,7 +258,6 @@ workflows:
             CURRENT_PROJECT_VERSION="${PROJECT_BUILD_NUMBER:-2}" \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS="APPSTORE" \
             INFOPLIST_KEY_ChitalnyaDistribution=appstore \
-            PRODUCT_BUNDLE_IDENTIFIER=ru.chitalnya.reader \
             archive
 
       - name: Export IPA
