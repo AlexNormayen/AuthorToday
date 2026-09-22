@@ -230,69 +230,41 @@ workflows:
             echo "Missing CERTIFICATE_PRIVATE_KEY in group app_store (needed to create Distribution cert)"
             exit 1
           fi
+          # --strict-match-identifier: avoid sibling IDs like ru.chitalnya.reader.57FVB8DUWX
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --strict-match-identifier
           app-store-connect fetch-signing-files "$BUNDLE_ID_WIDGET" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --strict-match-identifier
           keychain add-certificates
           xcode-project use-profiles
 
-      - name: Build signed archive
+      - name: Build and export IPA
         script: |
           set -euo pipefail
           if [ -z "${DEVELOPMENT_TEAM:-}" ]; then
             echo "DEVELOPMENT_TEAM is empty."
             exit 1
           fi
+          # build-ipa exports with the profiles installed by use-profiles (incl. App Groups).
           # Do not pass PRODUCT_BUNDLE_IDENTIFIER — it overrides the widget target too.
-          xcodebuild \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
-            -destination "generic/platform=iOS" \
-            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-            CURRENT_PROJECT_VERSION="${PROJECT_BUILD_NUMBER:-2}" \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS="APPSTORE" \
-            INFOPLIST_KEY_ChitalnyaDistribution=appstore \
-            archive
-
-      - name: Export IPA
-        script: |
-          set -euo pipefail
-          cat > "$CM_BUILD_DIR/ExportOptions.plist" <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>teamID</key>
-            <string>TEAM_ID_PLACEHOLDER</string>
-          </dict>
-          </plist>
-          EOF
-          # Strip leading spaces from indented heredoc so plist is valid
-          sed -i '' 's/^[[:space:]]*//' "$CM_BUILD_DIR/ExportOptions.plist"
-          /usr/libexec/PlistBuddy -c "Set :teamID $DEVELOPMENT_TEAM" "$CM_BUILD_DIR/ExportOptions.plist"
-          xcodebuild -exportArchive \
-            -archivePath "$CM_BUILD_DIR/Chitalnya.xcarchive" \
-            -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist" \
-            -exportPath "$CM_BUILD_DIR/export"
-          cp "$CM_BUILD_DIR"/export/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --configuration Release \
+            --archive-directory "$CM_BUILD_DIR/build/ios/xcarchive" \
+            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
+            --archive-xcargs "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM CURRENT_PROJECT_VERSION=${PROJECT_BUILD_NUMBER:-2} SWIFT_ACTIVE_COMPILATION_CONDITIONS=APPSTORE INFOPLIST_KEY_ChitalnyaDistribution=appstore"
+          cp "$CM_BUILD_DIR"/build/ios/ipa/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
           ls -lh "$CM_BUILD_DIR/Chitalnya.ipa"
           unzip -l "$CM_BUILD_DIR/Chitalnya.ipa" | head -n 40 || true
 
     artifacts:
       - Chitalnya.ipa
-      - Chitalnya.xcarchive
+      - build/ios/xcarchive/**/*.xcarchive
 
     publishing:
       app_store_connect:
