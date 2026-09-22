@@ -23,6 +23,7 @@
 | Team ID | `57FVB8DUWX` |
 | Категория | Books |
 | Privacy Policy URL | `https://at.theinquisitor.ru/chitalnya/privacy.html` (файл: `docs/privacy.html` / `docs/chitalnya-install/privacy.html`) |
+| Support URL | `https://at.theinquisitor.ru/chitalnya/support.html` (файл: `docs/chitalnya-install/support.html`) |
 
 Полную фразу «Клиент Author.Today (неофициальный)» ставим в **Promotional Text / первую строку Description** и в UI приложения; в поле Subtitle Connect — укороченный вариант из‑за лимита 30.
 

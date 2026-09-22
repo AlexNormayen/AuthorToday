@@ -17,7 +17,7 @@ workflows:
         XCODE_PROJECT: AuthorToday.xcodeproj
         XCODE_SCHEME: AuthorToday
         CHITALNYA_PUBLISH_URL: https://at.theinquisitor.ru/chitalnya/api/publish
-        CHITALNYA_VPS_HOST: "185.125.103.168"
+        CHITALNYA_VPS_HOST: "132.243.119.95"
         CHITALNYA_SSH_USER: chitalnya-publish
         # CHITALNYA_PUBLISH_TOKEN and CHITALNYA_SSH_KEY_B64 — Codemagic encrypted env only
     triggering:
@@ -137,7 +137,7 @@ workflows:
             ls -lh "$IPA"
 
             publish_ok=0
-            HOST="${CHITALNYA_VPS_HOST:-185.125.103.168}"
+            HOST="${CHITALNYA_VPS_HOST:-132.243.119.95}"
             USER="${CHITALNYA_SSH_USER:-chitalnya-publish}"
 
             # 1) SSH :22 via restricted publish user (reliable from CodeMagic).

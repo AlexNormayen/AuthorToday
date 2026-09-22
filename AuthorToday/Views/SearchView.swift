@@ -139,7 +139,9 @@ struct SearchView: View {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
             .navigationTitle("Поиск")
-            .toolbarBackground(.hidden, for: .navigationBar)
+            // Searchable + clear list used to paint rows under the search field.
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 Picker("Режим", selection: $mode) {
                     ForEach(CatalogSearchMode.allCases) { item in
@@ -149,7 +151,8 @@ struct SearchView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(Color.clear)
+                .frame(maxWidth: .infinity)
+                .background(.ultraThinMaterial)
             }
             .searchable(text: $query, prompt: mode.prompt)
             .onSubmit(of: .search) {
