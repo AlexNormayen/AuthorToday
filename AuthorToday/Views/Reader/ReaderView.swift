@@ -882,6 +882,8 @@ struct ReaderView: View {
             restoreOffsetY = 0
             restoreFraction = 0
             restorePageIndex = 0
+            // Bump so UITextView does not keep the previous chapter's scroll offset.
+            restoreGeneration += 1
             // New chapter starts at 0 — allow overwriting previous chapter's checkpoint.
             session.saveCheckpoint(
                 workId: workId,

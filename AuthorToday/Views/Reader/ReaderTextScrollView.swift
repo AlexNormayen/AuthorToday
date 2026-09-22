@@ -56,24 +56,35 @@ struct ReaderTextScrollView: UIViewRepresentable {
         let insetChanged = tv.textContainerInset != contentInset
 
         if contentChanged {
-            // Preserve place in chapter across text/font reflow. Setting attributedText
-            // resets offset to 0 and would otherwise wipe saved progress via scroll callbacks.
-            let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
-            let preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
-            let preservedChar = context.coordinator.approximateCharOffset(in: tv) ?? 0
+            // Preserve place across font/text reflow of the *same* chapter.
+            // Chapter turns zero restoreFraction/charOffset — do NOT keep the previous
+            // chapter's contentOffset (that jumped new chapters to mid/end).
+            let shouldKeepPlace = restoreFraction > 0.005 || restoreCharOffset > 40
             context.coordinator.isProgrammaticScroll = true
+            var preservedFraction = 0.0
+            var preservedChar = 0
+            if shouldKeepPlace {
+                let maxYBefore = max(tv.contentSize.height - tv.bounds.height, 1)
+                preservedFraction = min(max(Double(tv.contentOffset.y) / Double(maxYBefore), 0), 1)
+                preservedChar = context.coordinator.approximateCharOffset(in: tv) ?? 0
+            }
             applyContent(to: tv)
+            if !shouldKeepPlace {
+                tv.setContentOffset(.zero, animated: false)
+            }
             context.coordinator.isProgrammaticScroll = false
-            let targetFraction = max(preservedFraction, restoreFraction > 0.005 ? restoreFraction : 0)
-            let targetChar = max(preservedChar, restoreCharOffset)
-            if targetFraction > 0.005 || targetChar > 40 {
+            if shouldKeepPlace {
+                let targetFraction = max(preservedFraction, restoreFraction)
+                let targetChar = max(preservedChar, restoreCharOffset)
                 context.coordinator.queueRestore(
                     fraction: targetFraction,
                     charOffset: targetChar,
                     on: tv
                 )
             } else {
+                context.coordinator.cancelRestore()
                 context.coordinator.scheduleFitsCheck(on: tv)
+                context.coordinator.onScroll(0, 0, 0)
             }
         } else if insetChanged {
             // Chrome show/hide changes insets. Adjust offset by top delta and clamp —
@@ -97,14 +108,23 @@ struct ReaderTextScrollView: UIViewRepresentable {
             context.coordinator.scheduleFitsCheck(on: tv)
         }
 
-        if restoreGeneration != context.coordinator.appliedRestoreGeneration,
-           restoreFraction > 0.005 || restoreCharOffset > 40 {
+        if restoreGeneration != context.coordinator.appliedRestoreGeneration {
             context.coordinator.appliedRestoreGeneration = restoreGeneration
-            context.coordinator.queueRestore(
-                fraction: restoreFraction,
-                charOffset: restoreCharOffset,
-                on: tv
-            )
+            if restoreFraction > 0.005 || restoreCharOffset > 40 {
+                context.coordinator.queueRestore(
+                    fraction: restoreFraction,
+                    charOffset: restoreCharOffset,
+                    on: tv
+                )
+            } else {
+                // Explicit "start of chapter" generation bump (page turn).
+                context.coordinator.cancelRestore()
+                context.coordinator.isProgrammaticScroll = true
+                tv.setContentOffset(.zero, animated: false)
+                context.coordinator.isProgrammaticScroll = false
+                context.coordinator.scheduleFitsCheck(on: tv)
+                context.coordinator.onScroll(0, 0, 0)
+            }
         }
     }
 
@@ -240,6 +260,16 @@ struct ReaderTextScrollView: UIViewRepresentable {
             isRestoring = true
             verifyWorkItem?.cancel()
             tryRestore(on: tv)
+        }
+
+        func cancelRestore() {
+            verifyWorkItem?.cancel()
+            verifyWorkItem = nil
+            pendingFraction = 0
+            pendingCharOffset = 0
+            restoreAttempts = 0
+            stableHeightHits = 0
+            isRestoring = false
         }
 
         func scheduleFitsCheck(on tv: UITextView) {

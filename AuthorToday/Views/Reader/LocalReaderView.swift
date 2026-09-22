@@ -539,6 +539,8 @@ struct LocalReaderView: View {
             restorePageIndex = 0
             restoreOffsetY = 0
             restoreFraction = 0
+            // Force scroll view to top — do not inherit previous chapter offset.
+            restoreGeneration += 1
         }
         persistProgress()
     }
