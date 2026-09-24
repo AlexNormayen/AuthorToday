@@ -62,9 +62,16 @@ final class ReadingSessionStore: ObservableObject {
     }
 
     struct ResumeReader: Identifiable, Equatable {
-        var id: Int { workId }
+        /// Unique per present so `fullScreenCover(item:)` re-opens the same book after dismiss.
+        let id: UUID
         let workId: Int
         let chapterId: Int?
+
+        init(workId: Int, chapterId: Int?, id: UUID = UUID()) {
+            self.id = id
+            self.workId = workId
+            self.chapterId = chapterId
+        }
     }
 
     private struct SessionBlob: Codable {

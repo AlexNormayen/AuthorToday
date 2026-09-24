@@ -16,8 +16,13 @@ struct SearchView: View {
     @State private var didApplyInitialQuery = false
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var pro: ProEntitlementStore
+    @EnvironmentObject private var readerSettings: ReaderSettingsStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var readingSession = ReadingSessionStore.shared
+    @State private var resumeReader: ReadingSessionStore.ResumeReader?
 
     private enum Route: Hashable {
         case work(Int)
@@ -200,6 +205,22 @@ struct SearchView: View {
                     await loadRecent()
                 }
             }
+        }
+        // Search is often a sheet — parent fullScreenCover stays under it; present reader here.
+        .onChange(of: readingSession.pendingResume) { _, item in
+            resumeReader = item
+        }
+        .fullScreenCover(item: $resumeReader, onDismiss: {
+            readingSession.endReading()
+        }) { item in
+            NavigationStack {
+                ReaderView(workId: item.workId, initialChapterId: item.chapterId)
+            }
+            .environmentObject(offline)
+            .environmentObject(downloads)
+            .environmentObject(readerSettings)
+            .environmentObject(pro)
+            .environmentObject(appearance)
         }
         // Sheets often ignore the app-level scheme — force chrome to match theme mode.
         .preferredColorScheme(appearance.preferredColorScheme)

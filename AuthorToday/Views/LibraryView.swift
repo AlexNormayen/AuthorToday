@@ -4,6 +4,9 @@ struct LibraryView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @EnvironmentObject private var pro: ProEntitlementStore
+    @EnvironmentObject private var readerSettings: ReaderSettingsStore
+    @EnvironmentObject private var auth: AuthService
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var searchScope: LibrarySearchScope = .library
@@ -177,6 +180,9 @@ struct LibraryView: View {
                     .environmentObject(appearance)
                     .environmentObject(downloads)
                     .environmentObject(offline)
+                    .environmentObject(pro)
+                    .environmentObject(readerSettings)
+                    .environmentObject(auth)
                     .environment(\.themePreset, appearance.themePreset)
                     .environment(\.themeAccent, appearance.accent)
                     .preferredColorScheme(appearance.preferredColorScheme)
@@ -430,6 +436,7 @@ struct AuthorBooksView: View {
     @Binding var path: NavigationPath
     var downloadedOnly: Bool = false
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
     @State private var sort: AuthorSortMode = .recentlyRead
 
     private var works: [CachedWork] {
@@ -517,6 +524,9 @@ struct AuthorBooksView: View {
             }
         }
         .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
         .navigationTitle(author)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: author) {
@@ -578,6 +588,7 @@ struct AuthorSeriesBooksView: View {
     @Binding var path: NavigationPath
     var downloadedOnly: Bool = false
     @EnvironmentObject private var offline: OfflineStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
 
     private var works: [CachedWork] {
         let source = downloadedOnly ? offline.downloadedWorks : offline.library
@@ -613,6 +624,9 @@ struct AuthorSeriesBooksView: View {
             .padding(.vertical, 8)
         }
         .themedGroupedFill()
+        .background {
+            ThemeAtmosphereView(preset: appearance.themePreset)
+        }
         .navigationTitle(series)
         .navigationBarTitleDisplayMode(.inline)
     }

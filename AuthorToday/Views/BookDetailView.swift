@@ -281,14 +281,12 @@ struct BookDetailView: View {
             }
 
             Button {
-                Task {
-                    if downloads.online, !offline.isInLibrary(workId) {
+                // Open reader immediately — never block on library sync / CSRF.
+                readingSession.presentReader(workId: workId, chapterId: nil)
+                if downloads.online, !offline.isInLibrary(workId) {
+                    Task {
                         try? await offline.addToSiteLibrary(workId: workId, state: "Reading")
                     }
-                    // Always nil for Continue/Read — DownloadManager picks the furthest
-                    // of local checkpoint, ReadingProgress and portal lastReadChapterId.
-                    // Passing a concrete id (esp. a stale first chapter) blocked resume.
-                    readingSession.presentReader(workId: workId, chapterId: nil)
                 }
             } label: {
                 Text(readButtonTitle)
@@ -413,6 +411,8 @@ struct BookDetailView: View {
     private func canOpenReader(_ details: WorkDetails) -> Bool {
         if offline.hasReadableOfflineChapters(workId: workId) { return true }
         if !details.availableChapters.isEmpty { return true }
+        // Online: allow open even if TOC not yet in payload — ReaderView loads chapters.
+        if downloads.online { return true }
         return false
     }
 
