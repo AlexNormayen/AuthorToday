@@ -1077,23 +1077,33 @@ actor APIClient {
 
     /// Adds/updates a work in the site library (Reading / Read / Wish / None…).
     func updateLibrary(workIds: [Int], state: String) async throws {
-        try? await establishWebSession()
-        let base = webURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: "\(base)/work/updateLibrary") else {
-            throw APIError.invalidURL
+        try await establishWebSession()
+        // Same antiforgery as comments/PM: cookie + RequestVerificationToken header.
+        let workPath = workIds.first.map { "/work/\($0)" } ?? "/work/library"
+        var verificationToken: String?
+        for path in [workPath, "/work/library", "/"] {
+            if let html = try? await fetchWebHTML(path: path, desktopUA: true),
+               let token = Self.extractRequestVerificationToken(from: html),
+               !token.isEmpty {
+                verificationToken = token
+                break
+            }
+            if let html = try? await fetchWebHTML(path: path, desktopUA: false),
+               let token = Self.extractRequestVerificationToken(from: html),
+               !token.isEmpty {
+                verificationToken = token
+                break
+            }
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        applyHeaders(&request, authed: true)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-        let body: [String: Any] = ["ids": workIds, "state": state]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            let message = (try? decoder.decode(APIErrorBody.self, from: data))?.message
-            throw APIError.http(http.statusCode, message)
+        guard let verificationToken, !verificationToken.isEmpty else {
+            throw APIError.message("Не удалось получить токен для библиотеки")
         }
+        try await webJSONPost(
+            path: "/work/updateLibrary",
+            body: ["ids": workIds, "state": state],
+            verificationToken: verificationToken,
+            refererPath: workPath
+        )
     }
 
     func addToLibrary(workId: Int, state: String = "Reading") async throws {
