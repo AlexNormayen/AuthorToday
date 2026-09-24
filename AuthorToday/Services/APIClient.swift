@@ -283,6 +283,12 @@ actor APIClient {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                // Author.Today returns 404 for out-of-range shelf pages (e.g. page 2 of a 1-page library).
+                if http.statusCode == 404 {
+                    break
+                }
+            }
             try validate(response: response, data: data)
             guard let html = String(data: data, encoding: .utf8) else { break }
             let pageItems = extractShelfItems(from: html)
