@@ -70,6 +70,12 @@ final class ProEntitlementStore: ObservableObject {
     }
 
     func loadProducts() async {
+        guard ChitalnyaDistribution.offersInAppPurchases else {
+            products = []
+            lastError = nil
+            isLoadingProducts = false
+            return
+        }
         isLoadingProducts = true
         defer { isLoadingProducts = false }
         do {
@@ -87,6 +93,7 @@ final class ProEntitlementStore: ObservableObject {
     }
 
     func purchase(_ product: Product) async -> Bool {
+        guard ChitalnyaDistribution.offersInAppPurchases else { return false }
         isPurchasing = true
         defer { isPurchasing = false }
         do {
@@ -113,6 +120,7 @@ final class ProEntitlementStore: ObservableObject {
     }
 
     func restore() async {
+        guard ChitalnyaDistribution.offersInAppPurchases else { return }
         isPurchasing = true
         defer { isPurchasing = false }
         do {

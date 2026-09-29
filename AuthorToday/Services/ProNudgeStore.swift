@@ -34,6 +34,7 @@ final class ProNudgeStore: ObservableObject {
 
     /// Call from main UI when appropriate; returns whether a sheet should open.
     func considerPresenting(isProUnlocked: Bool) -> Bool {
+        guard ChitalnyaDistribution.offersInAppPurchases else { return false }
         guard !isProUnlocked else { return false }
         let first = Date(timeIntervalSince1970: defaults.double(forKey: firstSeenKey))
         guard Date().timeIntervalSince(first) >= minInstallAge else { return false }

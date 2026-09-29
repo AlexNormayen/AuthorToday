@@ -31,7 +31,11 @@ struct ProPaywallView: View {
                     }
                     bullets
                     if !pro.isProUnlocked {
-                        storeProducts
+                        if ChitalnyaDistribution.offersInAppPurchases {
+                            storeProducts
+                        } else {
+                            iapUnavailableNotice
+                        }
                     }
 #if DEBUG
                     Toggle(
@@ -97,6 +101,20 @@ struct ProPaywallView: View {
                         .font(.subheadline)
                 }
             }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var iapUnavailableNotice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Покупка Pro")
+                .font(.headline)
+            Text("Оплата через App Store временно недоступна в этой версии. Базовое чтение, библиотека и офлайн в бесплатном лимите работают без Pro. Подписку добавим в обновлении, когда станет доступна.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,10 +339,17 @@ struct ProPaywallView: View {
 
     private var legal: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Оплата через Apple (In-App Purchase). Это удобства клиента Читальня, не покупка книг Author.Today. Подписку можно отменить в настройках Apple ID. Семейный доступ — если включён для подписки в App Store Connect.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+            if ChitalnyaDistribution.offersInAppPurchases {
+                Text("Оплата через Apple (In-App Purchase). Это удобства клиента Читальня, не покупка книг Author.Today. Подписку можно отменить в настройках Apple ID. Семейный доступ — если включён для подписки в App Store Connect.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Pro — удобства клиента Читальня (темы, офлайн-лимит, TXT/EPUB), не покупка книг Author.Today. Книги и оплата контента — только на author.today.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if ChitalnyaDistribution.offersInAppPurchases,
+               let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 Link("Условия использования Apple (EULA)", destination: url)
                     .font(.caption)
             }

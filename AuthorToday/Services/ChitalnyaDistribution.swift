@@ -38,6 +38,11 @@ enum ChitalnyaDistribution {
         #endif
     }
 
+    /// StoreKit purchase / restore UI and Pro buy nudges.
+    /// Off while Paid Applications Agreement is unavailable (RF legal entity).
+    /// When Paid Apps is Active: set to `isAppStore` and ship a new version with IAP attached.
+    static var offersInAppPurchases: Bool { false }
+
     static var channelLabel: String {
         isAppStore ? "App Store" : "Sideload"
     }

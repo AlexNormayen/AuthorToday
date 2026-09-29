@@ -498,7 +498,9 @@ struct SettingsHubView: View {
 
                     settingsGroup(
                         title: "Поддержка",
-                        footer: "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                        footer: ChitalnyaDistribution.offersInAppPurchases
+                            ? "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                            : "Главное в Читальне — скачивать книги и читать офлайн. Pro (темы, расширенный офлайн, TXT/EPUB) — в будущем обновлении. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                     ) {
                         if !pro.isProUnlocked {
                             OfflineQuotaStatusView(compact: true)
@@ -508,7 +510,11 @@ struct SettingsHubView: View {
                         } label: {
                             HStack {
                                 Label(
-                                    pro.isProUnlocked ? "Читальня Pro" : "Открыть Читальню Pro",
+                                    pro.isProUnlocked
+                                        ? "Читальня Pro"
+                                        : (ChitalnyaDistribution.offersInAppPurchases
+                                            ? "Открыть Читальню Pro"
+                                            : "О Читальне Pro"),
                                     systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
                                 )
                                 Spacer()
