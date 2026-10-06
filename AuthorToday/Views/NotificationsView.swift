@@ -9,6 +9,7 @@ enum FeedRoute: Hashable {
 struct NotificationsView: View {
     @EnvironmentObject private var notifications: NotificationPoller
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @ObservedObject private var session = ReadingSessionStore.shared
     @State private var path = NavigationPath()
     @State private var expandedIds: Set<String> = []
     @State private var quickFilter: FeedQuickFilter = .all
@@ -134,6 +135,9 @@ struct NotificationsView: View {
             .task {
                 // Do not mark all as read on open — keep badge and unread styling (AT-style).
                 await notifications.refresh(announceNew: false)
+            }
+            .onChange(of: session.popToRootTick(forTab: 4)) { _, _ in
+                path = NavigationPath()
             }
         }
     }

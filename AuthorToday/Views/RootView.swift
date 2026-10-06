@@ -241,7 +241,11 @@ struct MainTabView: View {
                 ForEach(MainDestination.phoneCases) { dest in
                     let selected = selectedTab == dest.rawValue
                     Button {
-                        selectedTab = dest.rawValue
+                        if selected {
+                            session.requestPopToRoot(forTab: dest.rawValue)
+                        } else {
+                            selectedTab = dest.rawValue
+                        }
                     } label: {
                         VStack(spacing: 4) {
                             ZStack(alignment: .topTrailing) {
@@ -433,6 +437,7 @@ struct SettingsHubView: View {
     @EnvironmentObject private var notifications: NotificationPoller
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var updates = AppUpdateChecker.shared
+    @ObservedObject private var session = ReadingSessionStore.shared
 
     private var primaryInk: Color {
         // Photo themes: pure white (not greyed system secondary).
@@ -670,6 +675,7 @@ struct SettingsHubView: View {
                 }
             }
         }
+        .id("more-\(session.popToRootTick(forTab: 5))")
     }
 
     @ViewBuilder

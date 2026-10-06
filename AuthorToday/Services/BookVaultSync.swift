@@ -171,11 +171,18 @@ final class BookVaultSync: ObservableObject {
 
     func pullAndRestore(store: OfflineStore, localStore: LocalLibraryStore? = nil) async {
         guard BookVaultSettings.shared.isEnabled else {
-            statusText = "Облачная полка выключена"
+            statusText = "Облачная полка выключена — включите переключатель сверху"
+            BookVaultSettings.shared.lastStatus = statusText
+            return
+        }
+        guard BookVaultSettings.shared.hasToken else {
+            statusText = "Нет токена — нажмите «Подставить токен Читальни» или вставьте токен"
+            BookVaultSettings.shared.lastStatus = statusText
             return
         }
         guard let userId = resolvedUserId else {
             statusText = "Нужен вход в Author.Today"
+            BookVaultSettings.shared.lastStatus = statusText
             return
         }
         isSyncing = true
@@ -217,8 +224,13 @@ final class BookVaultSync: ObservableObject {
             }
 
             BookVaultSettings.shared.lastSyncAt = .now
-            BookVaultSettings.shared.lastStatus =
-                "Восстановлено: AT \(restoredAT)/\(manifest.works.count), локальных \(restoredLocal)/\(localItems.count)"
+            if total == 0 {
+                BookVaultSettings.shared.lastStatus =
+                    "На VPS для этого аккаунта пока пусто (нет выгруженных книг)"
+            } else {
+                BookVaultSettings.shared.lastStatus =
+                    "Восстановлено: AT \(restoredAT)/\(manifest.works.count), локальных \(restoredLocal)/\(localItems.count)"
+            }
             statusText = BookVaultSettings.shared.lastStatus
             store.reloadLibrary()
             locals.reload()
@@ -253,6 +265,8 @@ final class BookVaultSync: ObservableObject {
     }
 
     func ping() async -> String {
+        guard BookVaultSettings.shared.isEnabled else { return "Облачная полка выключена" }
+        guard BookVaultSettings.shared.hasToken else { return "Укажите токен облачной полки" }
         guard let userId = resolvedUserId else { return "Нужен вход" }
         do {
             let info = try await BookVaultClient.shared.health(userId: userId)

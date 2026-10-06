@@ -219,11 +219,39 @@ final class OfflineStore: ObservableObject {
         )
         // Only show works that belong to the site library (or were explicitly added)
         let all = (try? modelContext.fetch(descriptor)) ?? []
+        var dirty = false
+        for work in all {
+            if hydrateShelfMetricsIfNeeded(work) { dirty = true }
+        }
+        if dirty { try? modelContext.save() }
         library = all.filter { work in
             guard let state = work.libraryState?.lowercased() else { return true }
             return state != "localonly" && state != "none"
         }
         objectWillChange.send()
+    }
+
+    /// Fill update/unread fields from cached WorkDetails without a network round-trip.
+    @discardableResult
+    private func hydrateShelfMetricsIfNeeded(_ work: CachedWork) -> Bool {
+        guard work.textLength == nil || work.workLastUpdateAt == nil,
+              let data = work.detailsJSON,
+              let details = try? JSONDecoder().decode(WorkDetails.self, from: data)
+        else { return false }
+        var changed = false
+        if work.textLength == nil, let length = details.textLength {
+            work.textLength = length
+            changed = true
+        }
+        if work.textLengthLastRead == nil, let read = details.textLengthLastRead {
+            work.textLengthLastRead = read
+            changed = true
+        }
+        if work.workLastUpdateAt == nil, let date = Self.latestChapterUpdate(from: details) {
+            work.workLastUpdateAt = date
+            changed = true
+        }
+        return changed
     }
 
     /// Books read recently in the app (and optionally still-active portal shelf), newest first.
@@ -337,6 +365,13 @@ final class OfflineStore: ObservableObject {
                 if l != r { return l > r }
                 return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
             }
+        case .workUpdated:
+            return mapped.sorted {
+                let l = $0.works.compactMap(\.workLastUpdateAt).max() ?? .distantPast
+                let r = $1.works.compactMap(\.workLastUpdateAt).max() ?? .distantPast
+                if l != r { return l > r }
+                return $0.author.localizedCaseInsensitiveCompare($1.author) == .orderedAscending
+            }
         case .popularity:
             return mapped.sorted {
                 let l = $0.works.reduce(0) { $0 + ($1.likeCount ?? 0) }
@@ -376,6 +411,16 @@ final class OfflineStore: ObservableObject {
                 if la != lb { return la > lb }
                 return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }
+        case .workUpdated:
+            return works.sorted { a, b in
+                let la = a.workLastUpdateAt ?? .distantPast
+                let lb = b.workLastUpdateAt ?? .distantPast
+                if la != lb { return la > lb }
+                let ua = a.unreadAddedCharacters
+                let ub = b.unreadAddedCharacters
+                if ua != ub { return ua > ub }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
         case .popularity:
             return works.sorted { a, b in
                 let la = a.likeCount ?? 0
@@ -392,6 +437,14 @@ final class OfflineStore: ObservableObject {
     private func authorKey(_ work: CachedWork) -> String {
         let name = work.author.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "Без автора" : name
+    }
+
+    private static func latestChapterUpdate(from details: WorkDetails) -> Date? {
+        let dates = (details.chapters ?? []).compactMap { chapter -> Date? in
+            guard let raw = chapter.lastUpdateTime ?? chapter.publishTime else { return nil }
+            return APIClient.parsePMDate(raw)
+        }
+        return dates.max()
     }
 
     func syncLibraryIfNeeded(force: Bool = false) async {
@@ -799,6 +852,9 @@ final class OfflineStore: ObservableObject {
             if let views = meta.viewsCount ?? meta.viewCount {
                 existing.viewsCount = views
             }
+            if let raw = meta.lastUpdateTime, let date = APIClient.parsePMDate(raw) {
+                existing.workLastUpdateAt = date
+            }
             if let chapters = meta.chapterCount {
                 NotificationPoller.shared.rememberChapterCount(workId: meta.id, count: chapters)
             }
@@ -831,7 +887,8 @@ final class OfflineStore: ObservableObject {
                 seriesTitle: meta.displaySeriesTitle,
                 seriesOrder: meta.seriesOrder,
                 likeCount: meta.likeCount,
-                viewsCount: meta.viewsCount ?? meta.viewCount
+                viewsCount: meta.viewsCount ?? meta.viewCount,
+                workLastUpdateAt: meta.lastUpdateTime.flatMap(APIClient.parsePMDate)
             )
             ctx.insert(work)
         }
@@ -928,6 +985,15 @@ final class OfflineStore: ObservableObject {
             if let shelfState {
                 existing.libraryState = shelfState
             }
+            if let date = Self.latestChapterUpdate(from: details) {
+                existing.workLastUpdateAt = date
+            }
+            if let length = details.textLength {
+                existing.textLength = length
+            }
+            if let read = details.textLengthLastRead {
+                existing.textLengthLastRead = read
+            }
             existing.updatedAt = .now
             NotificationPoller.shared.rememberChapterCount(
                 workId: details.id,
@@ -958,6 +1024,9 @@ final class OfflineStore: ObservableObject {
                     seriesId: details.seriesId,
                     seriesTitle: details.displaySeriesTitle,
                     seriesOrder: details.seriesOrder,
+                    workLastUpdateAt: Self.latestChapterUpdate(from: details),
+                    textLength: details.textLength,
+                    textLengthLastRead: details.textLengthLastRead,
                     detailsJSON: snapshot
                 )
             )

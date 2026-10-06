@@ -1097,6 +1097,12 @@ final class CachedWork {
     /// Site like count — used for author popularity sort.
     var likeCount: Int?
     var viewsCount: Int?
+    /// Author.Today work last-update time (when the author published new text).
+    var workLastUpdateAt: Date?
+    /// Total work length in characters (from WorkDetails).
+    var textLength: Int?
+    /// Characters already read on the portal (from WorkDetails.textLengthLastRead).
+    var textLengthLastRead: Int?
     /// Full WorkDetails snapshot so the book page opens without the portal.
     var detailsJSON: Data?
 
@@ -1123,6 +1129,9 @@ final class CachedWork {
         seriesOrder: Int? = nil,
         likeCount: Int? = nil,
         viewsCount: Int? = nil,
+        workLastUpdateAt: Date? = nil,
+        textLength: Int? = nil,
+        textLengthLastRead: Int? = nil,
         detailsJSON: Data? = nil
     ) {
         self.workId = workId
@@ -1147,6 +1156,9 @@ final class CachedWork {
         self.seriesOrder = seriesOrder
         self.likeCount = likeCount
         self.viewsCount = viewsCount
+        self.workLastUpdateAt = workLastUpdateAt
+        self.textLength = textLength
+        self.textLengthLastRead = textLengthLastRead
         self.detailsJSON = detailsJSON
     }
 
@@ -1155,6 +1167,34 @@ final class CachedWork {
         let raw = progress
         let fraction = raw > 1.0 ? raw / 100.0 : raw
         return Int((min(max(fraction, 0), 1) * 100).rounded())
+    }
+
+    /// Unread characters added since last portal read mark (textLength − textLengthLastRead).
+    var unreadAddedCharacters: Int {
+        let total = textLength ?? 0
+        let read = textLengthLastRead ?? 0
+        return max(0, total - read)
+    }
+
+    var unreadAddedCharactersLabel: String? {
+        let n = unreadAddedCharacters
+        guard n > 0 else { return nil }
+        return Self.formatCharacterDelta(n)
+    }
+
+    static func formatCharacterDelta(_ n: Int) -> String {
+        let formatted: String
+        if n >= 1_000_000 {
+            formatted = String(format: "%.1f млн", Double(n) / 1_000_000.0)
+        } else if n >= 10_000 {
+            formatted = "\(n / 1000) тыс."
+        } else {
+            let f = NumberFormatter()
+            f.numberStyle = .decimal
+            f.groupingSeparator = "\u{00a0}"
+            formatted = f.string(from: NSNumber(value: n)) ?? "\(n)"
+        }
+        return "+\(formatted) зн."
     }
 
     var displaySeriesFolder: String {

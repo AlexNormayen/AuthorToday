@@ -8,6 +8,12 @@ struct BookVaultSettingsView: View {
     @StateObject private var sync = BookVaultSync.shared
     @State private var pingResult = ""
 
+    private var syncBlockedReason: String? {
+        if !settings.isEnabled { return "Сначала включите облачную полку." }
+        if !settings.hasToken { return "Укажите токен — без него сервер не отдаст сохранённые книги." }
+        return nil
+    }
+
     var body: some View {
         List {
             Section {
@@ -29,12 +35,22 @@ struct BookVaultSettingsView: View {
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
                     .themedPanelRow()
+                if settings.isEnabled, !settings.hasToken {
+                    Button("Подставить токен Читальни") {
+                        settings.applySharedShelfToken()
+                    }
+                    .themedPanelRow()
+                    Text("Без токена восстановление с VPS не работает. Токен нужен один раз; данные уходят на сервер разработчика Читальни.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .themedPanelRow()
+                }
             } header: {
                 Text("Подключение").themedSectionChrome()
             } footer: {
                 Text(
                     ChitalnyaDistribution.isAppStore
-                        ? "По умолчанию выключено. Включая полку, вы соглашаетесь отправлять скачанные книги, прогресс и закладки на сервер разработчика Читальни (HTTPS). Токен выдаёт разработчик — в App Store-сборке он не зашит в приложение."
+                        ? "По умолчанию выключено. Включая полку, вы соглашаетесь отправлять скачанные книги, прогресс и закладки на сервер разработчика Читальни (HTTPS). В App Store-сборке токен не подставляется сам — нажмите «Подставить токен Читальни» или вставьте свой."
                         : "Скачанные книги Author.Today и TXT/EPUB из «Мои книги» хранятся на VPS отдельно для каждого аккаунта. После переустановки приложения — «Восстановить с VPS»."
                 )
                 .themedFooterNote()
@@ -49,12 +65,18 @@ struct BookVaultSettingsView: View {
                     }
                     .themedPanelRow()
                 }
+                if let reason = syncBlockedReason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .themedPanelRow()
+                }
                 Button("Проверить связь") {
                     Task {
                         pingResult = await sync.ping()
                     }
                 }
-                .disabled(!settings.isEnabled || sync.isSyncing)
+                .disabled(!settings.canSync || sync.isSyncing)
                 .themedPanelRow()
 
                 Button("Выгрузить всё локальное") {
@@ -63,13 +85,13 @@ struct BookVaultSettingsView: View {
                         await sync.pushAllDownloaded(store: offline, localStore: localLibrary)
                     }
                 }
-                .disabled(!settings.isEnabled || sync.isSyncing)
+                .disabled(!settings.canSync || sync.isSyncing)
                 .themedPanelRow()
 
                 Button("Восстановить с VPS") {
                     Task { await sync.pullAndRestore(store: offline, localStore: localLibrary) }
                 }
-                .disabled(!settings.isEnabled || sync.isSyncing)
+                .disabled(!settings.canSync || sync.isSyncing)
                 .themedPanelRow()
 
                 if !pingResult.isEmpty {
@@ -94,6 +116,9 @@ struct BookVaultSettingsView: View {
                     .themedPanelRow()
             } header: {
                 Text("Синхронизация").themedSectionChrome()
+            } footer: {
+                Text("«Скачано AT» — офлайн-копии книг Author.Today. «Мои книги» — свои TXT/EPUB. Восстановление поднимает оба типа с VPS.")
+                    .themedFooterNote()
             }
 
             Section {
@@ -106,6 +131,7 @@ struct BookVaultSettingsView: View {
         .themedAtmosphereList()
         .environment(\.themePreset, appearance.themePreset)
         .environment(\.themeAccent, appearance.accent)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .navigationTitle("Облачная полка")
         .navigationBarTitleDisplayMode(.inline)
         .themedScreenChrome()
@@ -114,7 +140,7 @@ struct BookVaultSettingsView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .task {
-            guard settings.isEnabled else { return }
+            guard settings.canSync else { return }
             await sync.autoBackfillIfNeeded(store: offline, localStore: localLibrary)
         }
     }

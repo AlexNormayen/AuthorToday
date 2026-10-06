@@ -7,6 +7,7 @@ struct LibraryView: View {
     @EnvironmentObject private var pro: ProEntitlementStore
     @EnvironmentObject private var readerSettings: ReaderSettingsStore
     @EnvironmentObject private var auth: AuthService
+    @ObservedObject private var session = ReadingSessionStore.shared
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var searchScope: LibrarySearchScope = .library
@@ -175,6 +176,9 @@ struct LibraryView: View {
                     AuthorProfileView(userName: userName, displayNameHint: displayName)
                 }
             }
+            .onChange(of: session.popToRootTick(forTab: 0)) { _, _ in
+                path = NavigationPath()
+            }
             .sheet(item: $catalogSearchSeed) { seed in
                 SearchView(initialQuery: seed.query, showsDismissButton: true)
                     .environmentObject(appearance)
@@ -340,6 +344,18 @@ struct LibraryView: View {
                 return "\(count) · \(f.localizedString(for: date, relativeTo: Date()))"
             }
             return count
+        case .workUpdated:
+            let unread = group.works.reduce(0) { $0 + $1.unreadAddedCharacters }
+            if unread > 0 {
+                return "\(count) · \(CachedWork.formatCharacterDelta(unread))"
+            }
+            if let date = group.works.compactMap(\.workLastUpdateAt).max() {
+                let f = RelativeDateTimeFormatter()
+                f.locale = Locale(identifier: "ru_RU")
+                f.unitsStyle = .short
+                return "\(count) · \(f.localizedString(for: date, relativeTo: Date()))"
+            }
+            return count
         case .popularity:
             let likes = group.works.reduce(0) { $0 + ($1.likeCount ?? 0) }
             if likes > 0 {
@@ -404,6 +420,7 @@ enum AuthorSortMode: String, CaseIterable, Identifiable {
     case name
     case bookCount
     case recentlyRead
+    case workUpdated
     case popularity
 
     var id: String { rawValue }
@@ -413,6 +430,7 @@ enum AuthorSortMode: String, CaseIterable, Identifiable {
         case .name: return "По алфавиту"
         case .bookCount: return "По числу книг"
         case .recentlyRead: return "По недавнему чтению"
+        case .workUpdated: return "По дате обновления"
         case .popularity: return "По популярности"
         }
     }
@@ -442,7 +460,7 @@ struct AuthorBooksView: View {
     private var works: [CachedWork] {
         let source = downloadedOnly ? offline.downloadedWorks : offline.library
         let filtered = source.filter { $0.belongsToAuthor(author) }
-        return downloadedOnly ? offline.worksSorted(filtered, by: sort) : filtered
+        return offline.worksSorted(filtered, by: sort)
     }
 
     private var seriesGroups: [(series: String, works: [CachedWork])] {
@@ -636,6 +654,7 @@ struct AuthorSeriesBooksView: View {
 struct RecentReadsView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @ObservedObject private var session = ReadingSessionStore.shared
     @State private var path = NavigationPath()
 
     var body: some View {
@@ -701,6 +720,9 @@ struct RecentReadsView: View {
                 }
             }
             .onAppear { offline.reloadLibrary() }
+            .onChange(of: session.popToRootTick(forTab: 2)) { _, _ in
+                path = NavigationPath()
+            }
         }
     }
 
@@ -739,6 +761,12 @@ struct LibraryRow: View {
                 }
 
                 HStack(spacing: 8) {
+                    if let unread = work.unreadAddedCharactersLabel {
+                        Text(unread)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .themedReadableText()
+                    }
                     if work.isFullyDownloaded {
                         Label("Офлайн", systemImage: "arrow.down.circle.fill")
                             .font(.caption2)
@@ -784,6 +812,7 @@ struct LibraryRow: View {
 struct DownloadedLibraryView: View {
     @EnvironmentObject private var offline: OfflineStore
     @EnvironmentObject private var appearance: AppAppearanceStore
+    @ObservedObject private var session = ReadingSessionStore.shared
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var sort: AuthorSortMode = .recentlyRead
@@ -885,6 +914,9 @@ struct DownloadedLibraryView: View {
                 }
             }
             .onAppear { offline.reloadLibrary() }
+            .onChange(of: session.popToRootTick(forTab: 1)) { _, _ in
+                path = NavigationPath()
+            }
         }
     }
 

@@ -12,10 +12,11 @@ final class BookVaultSettings: ObservableObject {
         static let apiPublic = "http://132.243.119.95:8787"
         static let apiViaVPN = "http://172.29.172.1:8787"
 
+        /// Shared shelf token (sideload auto-fills; App Store only after explicit user action).
+        static let sharedShelfToken = "4db49ebc4117e7a44602e94dc5ea43bb"
+
         static var apiToken: String {
-            ChitalnyaDistribution.embedsBookVaultBuiltInToken
-                ? "4db49ebc4117e7a44602e94dc5ea43bb"
-                : ""
+            ChitalnyaDistribution.embedsBookVaultBuiltInToken ? sharedShelfToken : ""
         }
 
         static var candidates: [String] {
@@ -94,7 +95,7 @@ final class BookVaultSettings: ObservableObject {
         }
         // App Store: do not auto-fill baked-in token.
         if ChitalnyaDistribution.isAppStore,
-           token == "4db49ebc4117e7a44602e94dc5ea43bb",
+           token == BuiltIn.sharedShelfToken,
            !userChose {
             token = ""
         }
@@ -127,5 +128,16 @@ final class BookVaultSettings: ObservableObject {
         return list.compactMap {
             URL(string: $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         }
+    }
+
+    var hasToken: Bool {
+        !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var canSync: Bool { isEnabled && hasToken }
+
+    /// Opt-in: fill the shared Читальня shelf token (needed for App Store restores).
+    func applySharedShelfToken() {
+        apiToken = BuiltIn.sharedShelfToken
     }
 }

@@ -86,6 +86,8 @@ final class ReadingSessionStore: ObservableObject {
     private let sessionKey = "at.appSession.v2"
 
     @Published var selectedTab: Int = 0
+    /// Bumped when the user re-taps the already selected tab — each tab clears its NavigationPath.
+    @Published private(set) var tabPopToRootTicks: [Int: Int] = [:]
     @Published var pendingResume: ResumeReader?
 
     private var checkpoints: [String: Checkpoint] = [:]
@@ -187,6 +189,15 @@ final class ReadingSessionStore: ObservableObject {
     func setSelectedTab(_ tab: Int) {
         selectedTab = tab
         persistSession()
+    }
+
+    /// Re-selecting the active tab should return to that tab's root (iOS TabView behaviour).
+    func requestPopToRoot(forTab tab: Int) {
+        tabPopToRootTicks[tab, default: 0] += 1
+    }
+
+    func popToRootTick(forTab tab: Int) -> Int {
+        tabPopToRootTicks[tab, default: 0]
     }
 
     func prepareColdStartResume() {

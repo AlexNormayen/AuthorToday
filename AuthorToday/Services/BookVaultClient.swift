@@ -2,6 +2,7 @@ import Foundation
 
 enum BookVaultError: LocalizedError {
     case disabled
+    case missingToken
     case noUser
     case badURL
     case http(Int, String)
@@ -10,6 +11,7 @@ enum BookVaultError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .disabled: return "Облачная полка выключена"
+        case .missingToken: return "Укажите токен облачной полки (поле «Токен» выше)"
         case .noUser: return "Нужен вход в Author.Today"
         case .badURL: return "Некорректный URL облачной полки"
         case .http(let code, let body): return "Облако \(code): \(body.prefix(160))"
@@ -120,7 +122,7 @@ actor BookVaultClient {
     ) async throws -> (Data, HTTPURLResponse) {
         let snap = await settingsSnapshot()
         guard snap.enabled else { throw BookVaultError.disabled }
-        guard !snap.token.isEmpty else { throw BookVaultError.disabled }
+        guard !snap.token.isEmpty else { throw BookVaultError.missingToken }
 
         var bases = snap.candidates
         if let preferredBase {
