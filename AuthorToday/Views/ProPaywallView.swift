@@ -19,43 +19,18 @@ struct ProPaywallView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    header
-                    if let reason, !reason.isEmpty {
-                        Text(reason)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
+                    if ChitalnyaDistribution.hidesProMarketing {
+                        appStoreDocsSheet
+                    } else {
+                        commerceSheet
                     }
-                    if !pro.isProUnlocked {
-                        OfflineQuotaStatusView(compact: true)
-                    }
-                    bullets
-                    if !pro.isProUnlocked {
-                        if ChitalnyaDistribution.offersInAppPurchases {
-                            storeProducts
-                        } else if ChitalnyaDistribution.allowsWebPurchasedPro {
-                            iapUnavailableNotice
-                        }
-                    }
-#if DEBUG
-                    Toggle(
-                        "DEBUG: Pro без StoreKit",
-                        isOn: Binding(
-                            get: { UserDefaults.standard.bool(forKey: "pro.debugUnlocked") },
-                            set: { pro.setDebugUnlocked($0) }
-                        )
-                    )
-                    .font(.footnote)
-                    redeemBlock
-#endif
-                    legal
                 }
                 .padding(20)
             }
             .background {
                 ThemeAtmosphereView(preset: appearance.themePreset)
             }
-            .navigationTitle("Читальня Pro")
+            .navigationTitle(ChitalnyaDistribution.hidesProMarketing ? "Возможности" : "Читальня Pro")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -68,6 +43,94 @@ struct ProPaywallView: View {
         }
     }
 
+    /// App Store: no Pro branding, no checkout — documentation on author.today only.
+    private var appStoreDocsSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(pro.isProUnlocked ? "Расширенные возможности активны" : "Дополнительные возможности")
+                .font(.title2.weight(.semibold))
+            Text("У Читальни есть расширенная конфигурация клиента (темы, офлайн, закладки, свои файлы). Описание возможностей и как ими пользоваться — в документации на author.today.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let reason, !reason.isEmpty, !pro.isProUnlocked {
+                Text(sanitizedAppStoreReason(reason))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Link(destination: ChitalnyaDistribution.authorTodayDocumentationURL) {
+                Label("Документация на author.today", systemImage: "doc.text")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(.white)
+                    .background(appearance.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            if ChitalnyaDistribution.allowsWebPurchasedPro, !pro.isProUnlocked {
+                Button {
+                    Task { await pro.refreshWebEntitlement() }
+                } label: {
+                    Label("Обновить статус", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+            Text("Книги и оплата контента Author.Today — только на author.today.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func sanitizedAppStoreReason(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: "Читальня Pro", with: "расширенной конфигурации")
+            .replacingOccurrences(of: "Читальни Pro", with: "расширенной конфигурации")
+            .replacingOccurrences(of: "Pro снимает ограничение.", with: "В расширенной конфигурации лимит снимается.")
+            .replacingOccurrences(of: "в Читальня Pro.", with: "в расширенной конфигурации.")
+            .replacingOccurrences(of: "в Читальне Pro.", with: "в расширенной конфигурации.")
+            .replacingOccurrences(of: "— удобство Читальни Pro.", with: "доступны в расширенной конфигурации.")
+            .replacingOccurrences(of: "нужен Читальня Pro", with: "нужна расширенная конфигурация")
+            .replacingOccurrences(of: "Досрочно — в Читальня Pro.", with: "Досрочно — в расширенной конфигурации.")
+    }
+
+    private var commerceSheet: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            if let reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+            if !pro.isProUnlocked {
+                OfflineQuotaStatusView(compact: true)
+            }
+            bullets
+            if !pro.isProUnlocked {
+                if ChitalnyaDistribution.offersInAppPurchases {
+                    storeProducts
+                } else if ChitalnyaDistribution.showsProCommerce {
+                    webCheckoutNotice
+                }
+            }
+#if DEBUG
+            Toggle(
+                "DEBUG: Pro без StoreKit",
+                isOn: Binding(
+                    get: { UserDefaults.standard.bool(forKey: "pro.debugUnlocked") },
+                    set: { pro.setDebugUnlocked($0) }
+                )
+            )
+            .font(.footnote)
+            redeemBlock
+#endif
+            legal
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(pro.isProUnlocked ? "Pro активен" : "Удобства клиента")
@@ -77,7 +140,7 @@ struct ProPaywallView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(appearance.accent)
             } else if pro.isWebPurchasedPro {
-                Label("Pro оформлен на сайте Читальни", systemImage: "checkmark.seal.fill")
+                Label("Pro активен для аккаунта", systemImage: "checkmark.seal.fill")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(appearance.accent)
             } else if pro.isProUnlocked {
@@ -112,11 +175,11 @@ struct ProPaywallView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var iapUnavailableNotice: some View {
+    private var webCheckoutNotice: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Покупка Pro на сайте")
                 .font(.headline)
-            Text("Оплата удобств клиента — на сайте Читальни (не через App Store и не покупка книг). После оплаты войдите тем же аккаунтом Author.Today — Pro подтянется автоматически.")
+            Text("Оплата удобств клиента — на сайте Читальни (не покупка книг Author.Today). После оплаты войдите тем же аккаунтом — Pro подтянется автоматически.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Link(destination: ProWebEntitlementClient.purchasePageURL) {
@@ -164,7 +227,6 @@ struct ProPaywallView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Year first (best value), then month, then week — same tiers as former SBP.
             if let yearly = pro.yearlyProduct {
                 productButton(
                     yearly,
@@ -187,86 +249,26 @@ struct ProPaywallView: View {
                     .frame(minHeight: 44)
             }
             .buttonStyle(.bordered)
-            .disabled(pro.isPurchasing)
-
-            if let err = pro.lastError, !err.isEmpty {
-                Text(err)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
         }
-    }
-
-    private func yearlySavingsHint(yearly: Product, monthly: Product?) -> String? {
-        if let intro = introHint(for: yearly) { return intro }
-        guard let monthly,
-              let yearPrice = priceValue(yearly),
-              let monthPrice = priceValue(monthly) else { return "Один платёж в год" }
-        let year = NSDecimalNumber(decimal: yearPrice).doubleValue
-        let month = NSDecimalNumber(decimal: monthPrice).doubleValue
-        guard month > 0 else { return "Один платёж в год" }
-        let fullYear = month * 12
-        let saved = fullYear - year
-        guard saved > 0, fullYear > 0 else { return "Один платёж в год" }
-        let pct = Int((saved / fullYear * 100).rounded())
-        return "Экономия ~\(pct)% против 12 месяцев"
-    }
-
-    private func introHint(for product: Product) -> String? {
-        guard let sub = product.subscription,
-              let offer = sub.introductoryOffer else { return nil }
-        let price = offer.displayPrice
-        switch offer.paymentMode {
-        case .freeTrial:
-            return "Пробный период: \(offer.periodDebugLabel)"
-        case .payAsYouGo, .payUpFront:
-            return "Intro: \(price) · \(offer.periodDebugLabel)"
-        default:
-            return "Спецпредложение: \(price)"
-        }
-    }
-
-    private func priceValue(_ product: Product) -> Decimal? {
-        product.price
     }
 
 #if DEBUG
     private var redeemBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                showRedeem.toggle()
-            } label: {
-                Text(showRedeem ? "Скрыть промокод" : "У меня есть промокод")
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-            }
-            .buttonStyle(.bordered)
-
+            Button("Промокод / DEBUG redeem") { showRedeem.toggle() }
+                .font(.footnote)
             if showRedeem {
                 TextField("Промокод", text: $redeemCode)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    )
-                Button {
-                    redeem()
-                } label: {
-                    Text("Активировать Pro")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(appearance.accent)
+                Button("Активировать") { redeem() }
                 if let redeemMessage {
                     Text(redeemMessage)
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundStyle(
                             redeemMessage.localizedCaseInsensitiveContains("актив")
-                                ? appearance.accent
-                                : .red
+                                ? AnyShapeStyle(appearance.accent)
+                                : AnyShapeStyle(.secondary)
                         )
                 }
             }
@@ -289,12 +291,11 @@ struct ProPaywallView: View {
             userName: auth.user?.resolvedUserName ?? auth.resolvedUserName
         )
         pro.refreshComplimentaryFromGrants()
-        if pro.isProUnlocked {
-            let grant = ProGrantStore.shared.grants.first {
-                ProFeatures.normalize($0.email) == ProFeatures.normalize(auth.user?.email ?? loginEmail)
-                    || ProFeatures.normalize($0.email) == ProFeatures.normalize(auth.user?.resolvedUserName ?? auth.resolvedUserName)
-            }
-            if let exp = grant?.expiresAt {
+        if let g = ProGrantStore.shared.grants.first(where: {
+            ProFeatures.normalize($0.email) == ProFeatures.normalize(auth.user?.email ?? loginEmail)
+                || ProFeatures.normalize($0.email) == ProFeatures.normalize(auth.user?.resolvedUserName ?? auth.resolvedUserName)
+        }) {
+            if let exp = g.expiresAt {
                 redeemMessage = "Pro до \(exp.formatted(date: .abbreviated, time: .omitted))"
             } else {
                 redeemMessage = "Pro активирован"
@@ -306,15 +307,28 @@ struct ProPaywallView: View {
     }
 #endif
 
+    private func introHint(for product: Product) -> String? {
+        guard let sub = product.subscription,
+              let offer = sub.introductoryOffer else { return nil }
+        return "Intro: \(offer.periodDebugLabel)"
+    }
+
+    private func yearlySavingsHint(yearly: Product, monthly: Product?) -> String? {
+        guard let monthly else { return introHint(for: yearly) }
+        let y = NSDecimalNumber(decimal: yearly.price).doubleValue
+        let m = NSDecimalNumber(decimal: monthly.price).doubleValue
+        guard m > 0 else { return introHint(for: yearly) }
+        let save = Int((((m * 12) - y) / (m * 12) * 100).rounded())
+        if save > 0 { return "≈ −\(save)% к 12×месяц" }
+        return introHint(for: yearly)
+    }
+
     private func productButton(_ product: Product, badge: String?, subtitleHint: String?) -> some View {
         Button {
-            Task {
-                let ok = await pro.purchase(product)
-                if ok { dismiss() }
-            }
+            Task { _ = await pro.purchase(product) }
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(product.displayName)
                             .font(.headline)

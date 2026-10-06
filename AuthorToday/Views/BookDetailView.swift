@@ -335,7 +335,9 @@ struct BookDetailView: View {
                 BookmarksNotesView(workIdFilter: workId)
             } label: {
                 Label(
-                    pro.isProUnlocked ? "Закладки и заметки" : "Закладки и заметки (Pro)",
+                    pro.isProUnlocked || ChitalnyaDistribution.hidesProMarketing
+                        ? "Закладки и заметки"
+                        : "Закладки и заметки (Pro)",
                     systemImage: "bookmark"
                 )
                 .frame(maxWidth: .infinity)

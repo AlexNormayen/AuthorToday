@@ -502,13 +502,22 @@ struct SettingsHubView: View {
                             if ChitalnyaDistribution.offersInAppPurchases {
                                 return "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                             }
+                            if ChitalnyaDistribution.hidesProMarketing {
+                                return "Главное в Читальне — скачивать книги и читать офлайн. Документация по возможностям клиента — на author.today. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                            }
                             if ChitalnyaDistribution.unlocksProFeaturesWithoutPurchase {
                                 return "Главное в Читальне — скачивать книги и читать офлайн. Темы, офлайн, закладки и свои TXT/EPUB доступны в этой версии без покупки. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                             }
                             return "Главное в Читальне — скачивать книги и читать офлайн. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                         }()
                     ) {
-                        if ChitalnyaDistribution.showsProCommerce {
+                        if ChitalnyaDistribution.hidesProMarketing {
+                            Link(destination: ChitalnyaDistribution.authorTodayDocumentationURL) {
+                                Label("Документация на author.today", systemImage: "doc.text")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .settingsChrome(primaryInk)
+                        } else if ChitalnyaDistribution.showsProCommerce {
                             if !pro.isProUnlocked {
                                 OfflineQuotaStatusView(compact: true)
                             }

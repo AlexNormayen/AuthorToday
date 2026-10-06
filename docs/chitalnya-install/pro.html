@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Читальня Pro — оплата</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --paper: #faf7f2;
+      --card: #ffffff;
+      --accent: #0f766e;
+      --line: #e7e5e4;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #d9f3ef 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #f5e6d3 0%, transparent 50%),
+        var(--paper);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    main { max-width: 40rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 2rem; font-weight: 600; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+    .lead { color: var(--muted); margin: 0 0 1.5rem; font-size: 1.05rem; }
+    .note {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+    .plans { display: grid; gap: 0.75rem; margin: 0 0 1.25rem; }
+    .plan {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0.95rem 1.05rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      width: 100%;
+    }
+    .plan:hover { border-color: #99f6e4; }
+    .plan.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent) inset;
+      background: #f0fdfa;
+    }
+    .plan h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+    .plan p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.88rem; }
+    .price { font-size: 1.2rem; font-weight: 600; white-space: nowrap; }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: #ccfbf1;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+      font-family: system-ui, sans-serif;
+    }
+    label { display: block; font-size: 0.92rem; margin: 0.85rem 0 0.35rem; }
+    input {
+      width: 100%;
+      padding: 0.7rem 0.8rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font: inherit;
+      background: var(--card);
+    }
+    .hint { color: var(--muted); font-size: 0.85rem; margin: 0.35rem 0 0; }
+    .cta {
+      display: block;
+      width: 100%;
+      margin-top: 1.25rem;
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      padding: 0.9rem 1.2rem;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      font-family: system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .cta:disabled { opacity: 0.55; cursor: wait; }
+    .error { color: var(--danger); margin-top: 0.75rem; font-size: 0.92rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Читальня Pro</h1>
+    <p class="lead">Расширенная конфигурация клиента: темы, офлайн без лимита, закладки, свои TXT/EPUB. Не покупка книг Author.Today.</p>
+
+    <div class="note">
+      Книги — только на <a href="https://author.today" rel="noopener">author.today</a>.
+      Здесь оплата удобств приложения «Читальня» (карта / СБП через ЮKassa) — не через App Store
+      и не покупка книг портала.
+      После оплаты доступ активируется в приложении для указанного аккаунта Author.Today
+      (цифровая поставка, без физической доставки).
+      Оплата означает согласие с <a href="offer.html">публичной офертой</a>.
+    </div>
+    <p class="muted" style="margin:0 0 1.25rem;">
+      Сначала прочитайте
+      <a href="docs.html">полную документацию</a>
+      (установка, возможности, расширенная конфигурация) и
+      <a href="https://author.today/post/913007" rel="noopener">пост на Author.Today</a>.
+      Эта страница — только для оплаты Pro вне App Store.
+    </p>
+
+    <div class="plans" id="plans">
+      <button type="button" class="plan" data-plan="week">
+        <span aria-hidden="true">○</span>
+        <div>
+          <h2>Неделя</h2>
+          <p>7 дней Pro</p>
+        </div>
+        <div class="price">149 ₽</div>
+      </button>
+      <button type="button" class="plan" data-plan="month">
+        <span aria-hidden="true">○</span>
+        <div>
+          <h2>Месяц</h2>
+          <p>30 дней Pro</p>
+        </div>
+        <div class="price">349 ₽</div>
+      </button>
+      <button type="button" class="plan selected" data-plan="year">
+        <span aria-hidden="true">●</span>
+        <div>
+          <h2>Год <span class="badge">выгодно</span></h2>
+          <p>365 дней · ≈ 249 ₽/мес</p>
+        </div>
+        <div class="price">2990 ₽</div>
+      </button>
+    </div>
+
+    <label for="email">Email Author.Today (предпочтительно)</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+
+    <label for="user">или логин Author.Today</label>
+    <input id="user" type="text" autocomplete="username" placeholder="dark_tarkhan" />
+    <p class="hint">Укажите тот же email/логин, под которым входите в приложение Читальня — иначе Pro не привяжется.</p>
+
+    <button class="cta" id="pay" type="button">Перейти к оплате</button>
+    <p class="error" id="error" hidden></p>
+
+    <p class="muted" style="margin-top:2rem;">
+      <a href="docs.html">Документация</a> ·
+      <a href="offer.html">Оферта</a> ·
+      <a href="requisites.html">Реквизиты</a> ·
+      <a href="support.html">Поддержка</a> ·
+      <a href="privacy.html">Конфиденциальность</a>
+    </p>
+  </main>
+  <script>
+    const API = "/chitalnya/api";
+    let selected = "year";
+    const plans = document.getElementById("plans");
+    const err = document.getElementById("error");
+    const payBtn = document.getElementById("pay");
+
+    function selectPlan(id) {
+      selected = id;
+      plans.querySelectorAll(".plan").forEach((el) => {
+        const on = el.dataset.plan === id;
+        el.classList.toggle("selected", on);
+        el.querySelector("span").textContent = on ? "●" : "○";
+      });
+    }
+
+    plans.addEventListener("click", (e) => {
+      const btn = e.target.closest(".plan");
+      if (btn) selectPlan(btn.dataset.plan);
+    });
+
+    function showError(msg) {
+      err.hidden = !msg;
+      err.textContent = msg || "";
+    }
+
+    payBtn.addEventListener("click", async () => {
+      showError("");
+      const email = document.getElementById("email").value.trim();
+      const user = document.getElementById("user").value.trim();
+      if (!email && !user) {
+        showError("Укажите email или логин Author.Today");
+        return;
+      }
+      payBtn.disabled = true;
+      payBtn.textContent = "Создаём платёж…";
+      try {
+        const res = await fetch(API + "/pro-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ plan: selected, email, user }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || ("Ошибка " + res.status));
+        }
+        if (!data.confirmationUrl) throw new Error("Нет ссылки на оплату");
+        if (data.paymentId) {
+          try { sessionStorage.setItem("chitalnya.pro.paymentId", data.paymentId); } catch (_) {}
+        }
+        location.href = data.confirmationUrl;
+      } catch (e) {
+        showError(e.message || String(e));
+        payBtn.disabled = false;
+        payBtn.textContent = "Перейти к оплате";
+      }
+    });
+
+    fetch(API + "/pro-config")
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (cfg && cfg.paymentsEnabled === false) {
+          showError("Онлайн-оплата ещё не подключена (нужны ключи ЮKassa на сервере).");
+          payBtn.disabled = true;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

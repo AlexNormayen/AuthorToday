@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Читальня Pro — результат оплаты</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: #faf7f2;
+      color: #1c1917;
+      line-height: 1.55;
+    }
+    main { max-width: 36rem; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    h1 { font-size: 1.75rem; font-weight: 600; }
+    .muted { color: #57534e; }
+    a { color: #0f766e; }
+    .box {
+      background: #fff;
+      border: 1px solid #e7e5e4;
+      border-radius: 14px;
+      padding: 1.1rem 1.2rem;
+      margin: 1.25rem 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Оплата Читальня Pro</h1>
+    <div class="box">
+      <p id="status">Проверяем платёж…</p>
+      <p class="muted" id="hint">Если оплата прошла, откройте приложение → Читальня Pro → «Проверить оплату».</p>
+    </div>
+    <p><a href="pro.html">Вернуться к тарифам</a> · <a href="support.html">Поддержка</a></p>
+  </main>
+  <script>
+    const statusEl = document.getElementById("status");
+    const params = new URLSearchParams(location.search);
+    let paymentId = params.get("paymentId");
+    if (!paymentId) {
+      try { paymentId = sessionStorage.getItem("chitalnya.pro.paymentId"); } catch (_) {}
+    }
+
+    async function syncOnce() {
+      if (!paymentId) {
+        statusEl.textContent = "Если вы оплатили — Pro уже должен активироваться. В приложении нажмите «Проверить оплату».";
+        return;
+      }
+      try {
+        const res = await fetch("/chitalnya/api/pro-sync?paymentId=" + encodeURIComponent(paymentId));
+        const data = await res.json().catch(() => ({}));
+        if (data.applied) {
+          statusEl.textContent = "Оплата подтверждена. Pro активен для указанного аккаунта Author.Today.";
+        } else {
+          statusEl.textContent = "Платёж ещё обрабатывается. Обычно это минута. Обновите страницу или проверьте в приложении чуть позже.";
+        }
+      } catch (e) {
+        statusEl.textContent = "Не удалось проверить статус. Если деньги списались — напишите в поддержку, Pro включим.";
+      }
+    }
+
+    syncOnce();
+    setTimeout(syncOnce, 2500);
+    setTimeout(syncOnce, 8000);
+  </script>
+</body>
+</html>

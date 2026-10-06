@@ -57,6 +57,12 @@ enum ChitalnyaDistribution {
     /// Do not auto-unlock everything on App Store — Pro comes from web purchase (or future IAP).
     static var unlocksProFeaturesWithoutPurchase: Bool { false }
 
+    /// App Store: no «Pro» / pricing / checkout copy — only docs + silent account unlock.
+    static var hidesProMarketing: Bool { isAppStore && !offersInAppPurchases }
+
+    /// Author.Today documentation post (no payment links in the post for App Review).
+    static let authorTodayDocumentationURL = URL(string: "https://author.today/post/913007")!
+
     static var channelLabel: String {
         isAppStore ? "App Store" : "Sideload"
     }
