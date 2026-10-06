@@ -503,7 +503,7 @@ struct SettingsHubView: View {
                                 return "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                             }
                             if ChitalnyaDistribution.hidesProMarketing {
-                                return "Главное в Читальне — скачивать книги и читать офлайн. Документация по возможностям клиента — на author.today. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                                return "Главное в Читальне — скачивать книги и читать офлайн. Документация по возможностям клиента — в посте на Author.Today (кнопка ниже). Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
                             }
                             if ChitalnyaDistribution.unlocksProFeaturesWithoutPurchase {
                                 return "Главное в Читальне — скачивать книги и читать офлайн. Темы, офлайн, закладки и свои TXT/EPUB доступны в этой версии без покупки. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
@@ -513,8 +513,13 @@ struct SettingsHubView: View {
                     ) {
                         if ChitalnyaDistribution.hidesProMarketing {
                             Link(destination: ChitalnyaDistribution.authorTodayDocumentationURL) {
-                                Label("Документация на author.today", systemImage: "doc.text")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Label("Документация Читальни", systemImage: "doc.text")
+                                    Text("author.today/post/913007")
+                                        .font(.caption)
+                                        .foregroundStyle(secondaryInk)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .settingsChrome(primaryInk)
                         } else if ChitalnyaDistribution.showsProCommerce {

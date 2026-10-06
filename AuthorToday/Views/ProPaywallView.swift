@@ -48,7 +48,7 @@ struct ProPaywallView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(pro.isProUnlocked ? "Расширенные возможности активны" : "Дополнительные возможности")
                 .font(.title2.weight(.semibold))
-            Text("У Читальни есть расширенная конфигурация клиента (темы, офлайн, закладки, свои файлы). Описание возможностей и как ими пользоваться — в документации на author.today.")
+            Text("У Читальни есть расширенная конфигурация клиента (темы, офлайн, закладки, свои файлы). Описание и как пользоваться — в посте на Author.Today.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if let reason, !reason.isEmpty, !pro.isProUnlocked {
@@ -57,13 +57,18 @@ struct ProPaywallView: View {
                     .foregroundStyle(.secondary)
             }
             Link(destination: ChitalnyaDistribution.authorTodayDocumentationURL) {
-                Label("Документация на author.today", systemImage: "doc.text")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .foregroundStyle(.white)
-                    .background(appearance.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(spacing: 4) {
+                    Label("Открыть пост с документацией", systemImage: "doc.text")
+                        .font(.headline)
+                    Text("author.today/post/913007")
+                        .font(.caption.weight(.medium))
+                        .opacity(0.9)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(.white)
+                .background(appearance.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             if ChitalnyaDistribution.allowsWebPurchasedPro, !pro.isProUnlocked {
                 Button {
