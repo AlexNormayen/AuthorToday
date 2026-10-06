@@ -207,14 +207,16 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         isFuturisticFamily || isDaredevilFamily
     }
 
-    /// Ink on chrome: dark labels on pale flat grounds; light labels on photo / neon.
+    /// Ink on chrome: sampled from backdrop luminance when possible.
     var chromeInk: ThemeChromeInk {
+        if backgroundImageName != nil {
+            return ThemeContrast.readableInk(for: self)
+        }
         switch self {
         case .authorToday, .paper, .cloud, .stone, .custom:
             return .onLight
-        // All photo themes are busy/dark enough that pale plates + dark ink fail
-        // (Мох forest, Песок dunes, Океан, Вино, Графит, Futuristic, DD).
         case .moss, .ocean, .sand, .wine, .graphite:
+            // Flat fallbacks if image missing from the bundle.
             return .onDark
         case _ where prefersDark:
             return .onDark
@@ -223,22 +225,15 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Soft wash over photo themes so list chrome reads without plates (Option A).
-    /// Мох needs a stronger veil — bright mist kills white labels.
+    /// Soft wash over photo themes. Strength from raw photo luminance (no chromeInk dependency).
     var contentScrimOpacity: Double {
-        guard backgroundImageName != nil else { return 0 }
-        switch self {
-        case .moss:
-            return 0.50
-        case .ocean:
-            return 0.42
-        case .sand, .wine, .graphite:
-            return 0.40
-        case _ where prefersDark:
-            return 0.38
-        default:
-            return 0.40
-        }
+        guard let name = backgroundImageName else { return 0 }
+        return ThemeContrast.scrimStrength(rawLuminance: ThemeContrast.averageLuminance(imageNamed: name))
+    }
+
+    /// Scrim color: dark veil on dark photos, light wash on bright ones (so dark labels work).
+    var contentScrimUsesLightWash: Bool {
+        chromeInk == .onLight && backgroundImageName != nil
     }
 
     /// Soft plates / chips / empty-state cards — tinted glass, never system white.
@@ -273,19 +268,17 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Primary labels — follow active Light/Dark, not only the preset’s default ink.
+    /// Primary labels — contrast against the atmosphere, not a hard-coded photo=white rule.
     func chromePrimaryText(colorScheme: ColorScheme) -> Color {
-        // Photo themes always use bright white chrome — Light/Dark must not grey the ink.
-        if backgroundImageName != nil {
-            return Color(white: 1.0)
-        }
-        switch colorScheme {
-        case .dark:
+        switch chromeInk {
+        case .onDark:
             return Color(white: 0.98)
-        case .light:
+        case .onLight:
+            // Prefer dark ink on light grounds; if system is dark (flat themes), stay light.
+            if backgroundImageName == nil, colorScheme == .dark {
+                return Color(white: 0.98)
+            }
             return Color(red: 0.10, green: 0.12, blue: 0.13)
-        @unknown default:
-            return Color.primary
         }
     }
 
@@ -293,19 +286,19 @@ enum AppThemePreset: String, CaseIterable, Identifiable, Codable {
         chromePrimaryText(colorScheme: preferredContentScheme)
     }
 
-    /// Secondary copy: same ink as primary on photo themes (italic + smaller applied by views).
+    /// Secondary copy: same family as primary, slightly softer on flat themes.
     func chromeSecondaryText(accent: Color, colorScheme: ColorScheme) -> Color {
-        // Photo themes: match primary — dim/moss accents vanish on the forest/sand photos.
-        if backgroundImageName != nil {
-            return chromePrimaryText(colorScheme: colorScheme)
-        }
-        switch colorScheme {
-        case .dark:
-            return accent.blended(toward: .white, amount: 0.93)
-        case .light:
+        switch chromeInk {
+        case .onDark:
+            return chromePrimaryText(colorScheme: colorScheme).opacity(0.92)
+        case .onLight:
+            if backgroundImageName == nil, colorScheme == .dark {
+                return accent.blended(toward: .white, amount: 0.93)
+            }
+            if backgroundImageName != nil {
+                return chromePrimaryText(colorScheme: colorScheme).opacity(0.82)
+            }
             return accent.blended(toward: .black, amount: 0.62)
-        @unknown default:
-            return accent
         }
     }
 
@@ -591,10 +584,9 @@ final class AppAppearanceStore: ObservableObject {
     }
 
     var preferredColorScheme: ColorScheme? {
-        // Photo themes keep dark system chrome so menus/pickers stay light-on-photo.
-        // The photo itself is not re-washed by Light/Dark (see ThemeAtmosphereView).
+        // Photo themes: scheme follows sampled chrome ink (light photo → light chrome).
         if themePreset.backgroundImageName != nil {
-            return .dark
+            return themePreset.preferredContentScheme
         }
         if let forced = colorMode.colorScheme {
             return forced

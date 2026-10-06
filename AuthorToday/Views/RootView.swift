@@ -67,8 +67,9 @@ struct RootView: View {
         tab.shadowColor = .clear
         tab.shadowImage = UIImage()
 
-        let bright = photo ? UIColor.white : UIColor.label
-        let idle = photo ? UIColor.white.withAlphaComponent(0.88) : UIColor.secondaryLabel
+        let scheme = preset.preferredContentScheme
+        let bright = UIColor(preset.chromePrimaryText(colorScheme: scheme))
+        let idle = UIColor(preset.chromeSecondaryText(accent: preset.accent, colorScheme: scheme))
         let item = UITabBarItemAppearance()
         item.normal.iconColor = idle
         item.normal.titleTextAttributes = [
@@ -97,13 +98,12 @@ struct RootView: View {
         nav.backgroundColor = .clear
         nav.shadowColor = .clear
         if photo {
-            let title = UIColor.white
             nav.titleTextAttributes = [
-                .foregroundColor: title,
+                .foregroundColor: bright,
                 .font: UIFont.systemFont(ofSize: 17, weight: .semibold)
             ]
             nav.largeTitleTextAttributes = [
-                .foregroundColor: title,
+                .foregroundColor: bright,
                 .font: UIFont.systemFont(ofSize: 34, weight: .bold)
             ]
         }
@@ -212,12 +212,12 @@ struct MainTabView: View {
     }
 
     private var iPhoneTabShell: some View {
-        let ink = appearance.themePreset.backgroundImageName != nil
-            ? Color.white
-            : appearance.accent
-        let idle = appearance.themePreset.backgroundImageName != nil
-            ? Color.white.opacity(0.88)
-            : Color.secondary
+        let scheme = appearance.themePreset.preferredContentScheme
+        let ink = appearance.themePreset.chromePrimaryText(colorScheme: scheme)
+        let idle = appearance.themePreset.chromeSecondaryText(
+            accent: appearance.accent,
+            colorScheme: scheme
+        )
 
         // Custom tab shell: page content and icons are separate layout siblings —
         // scroll views physically cannot paint under the icons (unlike UITabBar).
@@ -440,17 +440,11 @@ struct SettingsHubView: View {
     @ObservedObject private var session = ReadingSessionStore.shared
 
     private var primaryInk: Color {
-        // Photo themes: pure white (not greyed system secondary).
-        appearance.themePreset.backgroundImageName != nil
-            ? Color.white
-            : appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
     }
 
     private var secondaryInk: Color {
-        // On photo themes keep secondary the same bright white as primary.
-        appearance.themePreset.backgroundImageName != nil
-            ? Color.white
-            : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
+        appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
     }
 
     var body: some View {

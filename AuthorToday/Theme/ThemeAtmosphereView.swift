@@ -31,21 +31,37 @@ struct ThemeAtmosphereView: View {
                         .opacity(intensity)
 
                     if showsContentScrim, preset.contentScrimOpacity > 0.001 {
-                        // Photo themes: fixed dark veil (not Light/Dark) — Мох should read like a
-                        // moody forest, not a bright mist wash behind white chrome.
-                        let strength = min(max(preset.contentScrimOpacity, 0.36), 0.58)
-                        Color.black.opacity(0.18 * intensity)
+                        if preset.contentScrimUsesLightWash {
+                            // Bright photo → pale wash so dark chrome ink stays readable.
+                            let strength = min(max(preset.contentScrimOpacity, 0.18), 0.40)
+                            Color.white.opacity(0.10 * intensity)
+                                .allowsHitTesting(false)
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(strength * 0.55 * intensity),
+                                    Color.white.opacity(strength * 0.72 * intensity),
+                                    Color.white.opacity(min(strength * 0.85, 0.36) * intensity)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                             .allowsHitTesting(false)
-                        LinearGradient(
-                            colors: [
-                                Color.black.opacity(strength * 0.72 * intensity),
-                                Color.black.opacity(strength * 0.92 * intensity),
-                                Color.black.opacity(min(strength * 1.12, 0.64) * intensity)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .allowsHitTesting(false)
+                        } else {
+                            // Dark / busy photo → dark veil for white chrome.
+                            let strength = min(max(preset.contentScrimOpacity, 0.36), 0.58)
+                            Color.black.opacity(0.18 * intensity)
+                                .allowsHitTesting(false)
+                            LinearGradient(
+                                colors: [
+                                    Color.black.opacity(strength * 0.72 * intensity),
+                                    Color.black.opacity(strength * 0.92 * intensity),
+                                    Color.black.opacity(min(strength * 1.12, 0.64) * intensity)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .allowsHitTesting(false)
+                        }
                     }
                 } else {
                     LinearGradient(

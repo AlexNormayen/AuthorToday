@@ -12,15 +12,11 @@ struct ReaderSettingsView: View {
     @State private var paywallReason: String?
 
     private var ink: Color {
-        appearance.themePreset.backgroundImageName != nil
-            ? Color.white
-            : appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
+        appearance.themePreset.chromePrimaryText(colorScheme: colorScheme)
     }
 
     private var secondaryInk: Color {
-        appearance.themePreset.backgroundImageName != nil
-            ? Color.white.opacity(0.88)
-            : appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
+        appearance.themePreset.chromeSecondaryText(accent: appearance.accent, colorScheme: colorScheme)
     }
 
     var body: some View {
