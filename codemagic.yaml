@@ -257,7 +257,7 @@ workflows:
             --config Release \
             --archive-directory "$CM_BUILD_DIR/build/ios/xcarchive" \
             --ipa-directory "$CM_BUILD_DIR/build/ios/ipa" \
-            --archive-xcargs "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM CURRENT_PROJECT_VERSION=${PROJECT_BUILD_NUMBER:-2} SWIFT_ACTIVE_COMPILATION_CONDITIONS=APPSTORE INFOPLIST_KEY_ChitalnyaDistribution=appstore"
+            --archive-xcargs "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM CURRENT_PROJECT_VERSION=${PROJECT_BUILD_NUMBER:-101} SWIFT_ACTIVE_COMPILATION_CONDITIONS=APPSTORE INFOPLIST_KEY_ChitalnyaDistribution=appstore"
           cp "$CM_BUILD_DIR"/build/ios/ipa/*.ipa "$CM_BUILD_DIR/Chitalnya.ipa"
           ls -lh "$CM_BUILD_DIR/Chitalnya.ipa"
           unzip -l "$CM_BUILD_DIR/Chitalnya.ipa" | head -n 40 || true

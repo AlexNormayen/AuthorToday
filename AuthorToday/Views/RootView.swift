@@ -498,42 +498,48 @@ struct SettingsHubView: View {
 
                     settingsGroup(
                         title: "Поддержка",
-                        footer: ChitalnyaDistribution.offersInAppPurchases
-                            ? "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
-                            : "Главное в Читальне — скачивать книги и читать офлайн. Pro (темы, расширенный офлайн, TXT/EPUB) — в будущем обновлении. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                        footer: {
+                            if ChitalnyaDistribution.offersInAppPurchases {
+                                return "Главное в Читальне — скачивать книги и читать офлайн. Pro снимает лимит офлайна и открывает темы, закладки и свои TXT/EPUB. Оплата через App Store. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                            }
+                            if ChitalnyaDistribution.unlocksProFeaturesWithoutPurchase {
+                                return "Главное в Читальне — скачивать книги и читать офлайн. Темы, офлайн, закладки и свои TXT/EPUB доступны в этой версии без покупки. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                            }
+                            return "Главное в Читальне — скачивать книги и читать офлайн. Книги и оплата контента — только на author.today. Виджет «Продолжить» бесплатный."
+                        }()
                     ) {
-                        if !pro.isProUnlocked {
-                            OfflineQuotaStatusView(compact: true)
-                        }
-                        NavigationLink {
-                            ProPaywallView()
-                        } label: {
-                            HStack {
-                                Label(
-                                    pro.isProUnlocked
-                                        ? "Читальня Pro"
-                                        : (ChitalnyaDistribution.offersInAppPurchases
-                                            ? "Открыть Читальню Pro"
-                                            : "О Читальне Pro"),
-                                    systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
-                                )
-                                Spacer()
-                                if pro.isComplimentaryPro {
-                                    Text("По аккаунту")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(secondaryInk)
-                                } else if pro.isProUnlocked {
-                                    Text("Активен")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(secondaryInk)
-                                } else {
-                                    Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(secondaryInk)
+                        if ChitalnyaDistribution.showsProCommerce {
+                            if !pro.isProUnlocked {
+                                OfflineQuotaStatusView(compact: true)
+                            }
+                            NavigationLink {
+                                ProPaywallView()
+                            } label: {
+                                HStack {
+                                    Label(
+                                        pro.isProUnlocked
+                                            ? "Читальня Pro"
+                                            : "Открыть Читальню Pro",
+                                        systemImage: pro.isProUnlocked ? "checkmark.seal.fill" : "sparkles"
+                                    )
+                                    Spacer()
+                                    if pro.isComplimentaryPro {
+                                        Text("По аккаунту")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(secondaryInk)
+                                    } else if pro.isProUnlocked {
+                                        Text("Активен")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(secondaryInk)
+                                    } else {
+                                        Text("\(offline.fullyDownloadedCount)/\(ProFeatures.freeFullDownloadLimit) офлайн")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(secondaryInk)
+                                    }
                                 }
                             }
+                            .settingsChrome(primaryInk)
                         }
-                        .settingsChrome(primaryInk)
                         NavigationLink {
                             BookmarksNotesView()
                         } label: {

@@ -28,20 +28,34 @@ enum ChitalnyaDistribution {
 
     /// Promo / complimentary Pro (owner allowlist + invite grants).
     /// - Debug: always on
-    /// - Sideload Release: on (your builds / SideStore — not App Store review)
-    /// - App Store / TestFlight: off — StoreKit only (Guideline 3.1.1)
+    /// - Sideload Release: on
+    /// - App Store: on only while IAP is off (web-purchased Pro / grants — reader account model)
     static var allowsComplimentaryPro: Bool {
         #if DEBUG
         return true
         #else
-        return isSideload
+        return isSideload || !offersInAppPurchases
         #endif
     }
 
     /// StoreKit purchase / restore UI and Pro buy nudges.
-    /// Off while Paid Applications Agreement is unavailable (RF legal entity).
+    /// Off while Paid Applications Agreement is unavailable (RF legal entity / sanctions).
     /// When Paid Apps is Active: set to `isAppStore` and ship a new version with IAP attached.
     static var offersInAppPurchases: Bool { false }
+
+    /// Unlock Pro after purchase on at.theinquisitor.ru (silent status check).
+    /// On while IAP is off — App Store and sideload. Buy UI is gated separately.
+    static var allowsWebPurchasedPro: Bool { !offersInAppPurchases }
+
+    /// Upsell / «buy Pro» entry points (StoreKit or web checkout button).
+    /// App Store: no commerce UI while IAP unavailable (Guideline 2.2); paid users still unlock via status API.
+    static var showsProCommerce: Bool {
+        if offersInAppPurchases { return true }
+        return isSideload && allowsWebPurchasedPro
+    }
+
+    /// Do not auto-unlock everything on App Store — Pro comes from web purchase (or future IAP).
+    static var unlocksProFeaturesWithoutPurchase: Bool { false }
 
     static var channelLabel: String {
         isAppStore ? "App Store" : "Sideload"

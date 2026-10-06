@@ -2,7 +2,7 @@ import Foundation
 import StoreKit
 import Combine
 
-/// StoreKit 2 entitlements for «Читальня Pro».
+/// Entitlements for «Читальня Pro»: StoreKit and/or web purchase on our VPS.
 @MainActor
 final class ProEntitlementStore: ObservableObject {
     static let shared = ProEntitlementStore()
@@ -19,6 +19,8 @@ final class ProEntitlementStore: ObservableObject {
     @Published private(set) var isProUnlocked = false
     /// Pro granted by email/username allowlist (not StoreKit).
     @Published private(set) var isComplimentaryPro = false
+    /// Pro from purchase on at.theinquisitor.ru.
+    @Published private(set) var isWebPurchasedPro = false
     @Published private(set) var products: [Product] = []
     @Published private(set) var purchasedProductID: String?
     @Published var lastError: String?
@@ -27,10 +29,14 @@ final class ProEntitlementStore: ObservableObject {
 
     private var transactionListener: Task<Void, Never>?
     private let debugUnlockKey = "pro.debugUnlocked"
+    private let webActiveKey = "pro.web.active"
+    private let webExpiresKey = "pro.web.expires"
     private var allowlistEmail: String?
     private var allowlistUserName: String?
+    private var webRefreshTask: Task<Void, Never>?
 
     private init() {
+        isWebPurchasedPro = cachedWebActive()
         refreshUnlockedFlag()
         transactionListener = Task { [weak self] in
             guard let self else { return }
@@ -43,9 +49,15 @@ final class ProEntitlementStore: ObservableObject {
 
     /// Call after login / profile refresh / logout so allowlisted accounts get Pro.
     func applyAccount(email: String?, userName: String?) {
-        allowlistEmail = email
-        allowlistUserName = userName
+        let loginEmail = UserDefaults.standard.string(forKey: "at.auth.loginEmail")
+        allowlistEmail = ProFeatures.normalize(email) ?? ProFeatures.normalize(loginEmail)
+        allowlistUserName = ProFeatures.normalize(userName)
+        // If login field looks like email and profile email missing, keep it as email.
+        if allowlistEmail == nil, let login = ProFeatures.normalize(loginEmail), login.contains("@") {
+            allowlistEmail = login
+        }
         refreshUnlockedFlag()
+        scheduleWebEntitlementRefresh()
     }
 
     func applyAccount(_ user: CurrentUser?) {
@@ -67,6 +79,7 @@ final class ProEntitlementStore: ObservableObject {
     func refresh() async {
         await loadProducts()
         await refreshEntitlements()
+        await refreshWebEntitlement()
     }
 
     func loadProducts() async {
@@ -162,7 +175,46 @@ final class ProEntitlementStore: ObservableObject {
         refreshUnlockedFlag()
     }
 
+    func refreshWebEntitlement() async {
+        guard ChitalnyaDistribution.allowsWebPurchasedPro else {
+            clearWebCache()
+            isWebPurchasedPro = false
+            refreshUnlockedFlag()
+            return
+        }
+        guard allowlistEmail != nil || allowlistUserName != nil else {
+            clearWebCache()
+            isWebPurchasedPro = false
+            refreshUnlockedFlag()
+            return
+        }
+        guard let status = await ProWebEntitlementClient.fetch(
+            email: allowlistEmail,
+            userName: allowlistUserName
+        ) else {
+            // Keep last known cache when offline / API down.
+            isWebPurchasedPro = cachedWebActive()
+            refreshUnlockedFlag()
+            return
+        }
+        persistWebCache(active: status.active, expiresAt: status.expiresAt)
+        isWebPurchasedPro = cachedWebActive()
+        refreshUnlockedFlag()
+    }
+
+    private func scheduleWebEntitlementRefresh() {
+        webRefreshTask?.cancel()
+        webRefreshTask = Task { [weak self] in
+            await self?.refreshWebEntitlement()
+        }
+    }
+
     private func refreshUnlockedFlag() {
+        if ChitalnyaDistribution.unlocksProFeaturesWithoutPurchase {
+            isComplimentaryPro = false
+            isProUnlocked = true
+            return
+        }
         var complimentary = false
         if ChitalnyaDistribution.allowsComplimentaryPro {
             let builtIn = ProFeatures.isOwnerAccount(
@@ -181,7 +233,8 @@ final class ProEntitlementStore: ObservableObject {
         #else
         let debug = false
         #endif
-        isProUnlocked = isPro || isComplimentaryPro || debug
+        let web = ChitalnyaDistribution.allowsWebPurchasedPro && isWebPurchasedPro
+        isProUnlocked = isPro || isComplimentaryPro || web || debug
     }
 
     /// After admin grant / invite redeem.
@@ -202,5 +255,27 @@ final class ProEntitlementStore: ObservableObject {
         case .verified(let value):
             return value
         }
+    }
+
+    private func persistWebCache(active: Bool, expiresAt: Date?) {
+        UserDefaults.standard.set(active, forKey: webActiveKey)
+        if let expiresAt {
+            UserDefaults.standard.set(expiresAt, forKey: webExpiresKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: webExpiresKey)
+        }
+    }
+
+    private func clearWebCache() {
+        UserDefaults.standard.removeObject(forKey: webActiveKey)
+        UserDefaults.standard.removeObject(forKey: webExpiresKey)
+    }
+
+    private func cachedWebActive() -> Bool {
+        guard UserDefaults.standard.bool(forKey: webActiveKey) else { return false }
+        if let expires = UserDefaults.standard.object(forKey: webExpiresKey) as? Date {
+            return expires > Date()
+        }
+        return true
     }
 }

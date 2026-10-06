@@ -33,7 +33,7 @@ struct ProPaywallView: View {
                     if !pro.isProUnlocked {
                         if ChitalnyaDistribution.offersInAppPurchases {
                             storeProducts
-                        } else {
+                        } else if ChitalnyaDistribution.allowsWebPurchasedPro {
                             iapUnavailableNotice
                         }
                     }
@@ -76,6 +76,10 @@ struct ProPaywallView: View {
                 Label("Pro по аккаунту (без App Store)", systemImage: "person.crop.circle.badge.checkmark")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(appearance.accent)
+            } else if pro.isWebPurchasedPro {
+                Label("Pro оформлен на сайте Читальни", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(appearance.accent)
             } else if pro.isProUnlocked {
                 Label("Спасибо за поддержку", systemImage: "checkmark.seal.fill")
                     .font(.subheadline.weight(.medium))
@@ -109,12 +113,28 @@ struct ProPaywallView: View {
     }
 
     private var iapUnavailableNotice: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Покупка Pro")
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Покупка Pro на сайте")
                 .font(.headline)
-            Text("Оплата через App Store временно недоступна в этой версии. Базовое чтение, библиотека и офлайн в бесплатном лимите работают без Pro. Подписку добавим в обновлении, когда станет доступна.")
+            Text("Оплата удобств клиента — на сайте Читальни (не через App Store и не покупка книг). После оплаты войдите тем же аккаунтом Author.Today — Pro подтянется автоматически.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            Link(destination: ProWebEntitlementClient.purchasePageURL) {
+                Text("Оформить на сайте")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(.white)
+                    .background(appearance.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            Button {
+                Task { await pro.refreshWebEntitlement() }
+            } label: {
+                Label("Проверить оплату", systemImage: "arrow.clockwise")
+                    .font(.subheadline.weight(.medium))
+            }
+            .disabled(pro.isPurchasing)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -344,7 +364,7 @@ struct ProPaywallView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Pro — удобства клиента Читальня (темы, офлайн-лимит, TXT/EPUB), не покупка книг Author.Today. Книги и оплата контента — только на author.today.")
+                Text("Pro — удобства клиента Читальня (темы, офлайн-лимит, TXT/EPUB). Оплата Pro — на сайте Читальни. Книги Author.Today — только на author.today.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

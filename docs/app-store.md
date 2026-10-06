@@ -46,8 +46,8 @@ Author.Today не отвечает за работу этого клиента.
 • Библиотека, поиск, читалка и офлайн-кэш
 • Локальные оповещения о обновлениях
 • Покупка книг только на официальном сайте author.today
-• Опционально: «Читальня Pro» (темы, расширенный офлайн, свои TXT/EPUB) — через Apple IAP;
-  это оплата удобств клиента, не книг портала
+• Темы, офлайн, закладки и свои TXT/EPUB доступны бесплатно в этой версии
+  (App Store IAP недоступен для учётной записи; Paid Apps / sanctions)
 ```
 
 **Keywords:** чтение, книги, библиотека, офлайн, фэнтези, litrpg (без «официальный Author.Today»).
@@ -81,8 +81,14 @@ Lifetime / навсегда — **нет**.
 Если у аккаунта включено подтверждение устройства — после пароля приложение запрашивает код из письма Author.Today.
 
 Покупки книг открывают официальный сайт author.today (WebView).
-Отдельно: подписка «Читальня Pro» через Apple IAP — только удобства клиента
-(темы, офлайн-лимит, режимы читалки, локальные TXT/EPUB). Pro НЕ продаёт и НЕ разблокирует книги Author.Today.
+
+This build has NO In-App Purchases and NO subscription purchase UI.
+Apple Developer Support (case 102980242033) confirmed Paid Apps / IAP are unavailable for this
+account due to RF entity / U.S. sanctions. The app is a complete free reader under Schedule 1.
+
+Previously rejected under 2.2 for incomplete subscription UI — removed. Client conveniences
+(themes, offline, bookmarks, local TXT/EPUB) are fully unlocked in this App Store build with
+no purchase flow. Book content is still purchased only on author.today (WebView).
 
 Демо-аккаунт: [вставить логин/пароль тестового AT-аккаунта для ревьюеров].
 ```
@@ -168,18 +174,42 @@ Lifetime / навсегда — **нет**.
 
 1. ~~Разрешение Author.Today~~ — есть.
 2. ~~Team ID~~ — `57FVB8DUWX` → Codemagic `DEVELOPMENT_TEAM`.
-3. Paid Apps + Tax/Banking в App Store Connect.
-4. Identifiers: main + widget + App Group + IAP.
+3. ~~Paid Apps~~ — **недоступно** (Support case `102980242033`, RF / sanctions). Билд **без IAP**.
+4. Identifiers: main + widget + App Group (IAP capability можно не цеплять к версии).
 5. New App «Читальня» в Connect.
-6. IAP products Ready to Submit.
+6. ~~IAP products~~ — не прикладывать к версии, пока нет Paid Apps.
 7. Privacy URL живой: `https://at.theinquisitor.ru/chitalnya/privacy.html`.
 8. Codemagic: secrets для **unsigned** publish (`CHITALNYA_SSH_KEY_B64` / `CHITALNYA_PUBLISH_TOKEN`) — только в UI, не в git.
 9. Запуск workflow **Читальня App Store (signed)** → TestFlight.
-10. Скриншоты 6.7" + Review Notes + демо AT-аккаунт → Submit for Review.
+10. Скриншоты 6.7" + Review Notes (web Pro) + демо AT-аккаунт → Submit for Review.
+
+## Читальня Pro — оплата на VPS (YooKassa, автовыдача)
+
+Книги = **author.today**. Pro клиента = **at.theinquisitor.ru** (ЮKassa).
+
+1. Магазин в [ЮKassa](https://yookassa.ru/) → shopId + секретный ключ.
+2. В кабинете ЮKassa → HTTP-уведомления → URL  
+   `https://at.theinquisitor.ru/chitalnya/api/pro-webhook`  
+   события: `payment.succeeded` (и при желании `payment.canceled`).
+3. На VPS: `/opt/chitalnya/.pro_env` из `docs/chitalnya-install/pro_env.example` с реальными ключами (`chmod 600`).
+4. Файлы: `pro_api.py`, `pro.html`, `pro-return.html`, systemd `chitalnya-pro.service`.
+5. Nginx (фрагмент):
+   ```
+   location ^~ /chitalnya/api/pro- {
+     proxy_pass http://127.0.0.1:8792;
+     proxy_set_header Host $host;
+     proxy_set_header X-Real-IP $remote_addr;
+     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   }
+   ```
+6. `systemctl enable --now chitalnya-pro`
+
+После оплаты webhook (или `pro-return` → `/pro-sync`) пишет grant в SQLite `/opt/chitalnya/pro.db`.  
+Приложение опрашивает `/chitalnya/api/pro-status?email=…&user=…`.
 
 ## Каналы сборки (код)
 
-| Канал | Как | Обновления IPA | Book Vault | Pro promo |
-|-------|-----|----------------|------------|-----------|
-| Sideload | unsigned Codemagic / Xcode без `APPSTORE` | да | default on | только DEBUG |
-| App Store | signed workflow / `APPSTORE` | нет | default off, opt-in | только DEBUG |
+| Канал | Как | Обновления IPA | Book Vault | Pro |
+|-------|-----|----------------|------------|-----|
+| Sideload | unsigned Codemagic / Xcode без `APPSTORE` | да | default on | web + promo |
+| App Store | signed workflow / `APPSTORE` | нет | default off, opt-in | web (пока IAP off) |
