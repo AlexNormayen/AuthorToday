@@ -564,12 +564,24 @@ struct SettingsHubView: View {
 
                     settingsGroup(
                         title: "Оповещения",
-                        footer: "Читальня опрашивает ленту и новые главы, пока приложение открыто или в фоне. Это локальные оповещения на устройстве, не удалённые push с сервера Author.Today."
+                        footer: notifications.relayEnabled
+                            ? "VPS опрашивает Author.Today ~каждые 45 с; приложение забирает дельту каждые 20 с. На сервер уходит ваш токен AT (можно выключить). Локальные баннеры — на устройстве."
+                            : "Без VPS лента опрашивается на телефоне раз в ~90 с (в фоне реже). Включите VPS-релей для меньшей задержки."
                     ) {
-                        Toggle("Пуш об обновлениях Author.Today", isOn: $notifications.alertsEnabled)
+                        Toggle("Локальные оповещения", isOn: $notifications.alertsEnabled)
                             .tint(.green)
                             .foregroundStyle(primaryInk)
                             .themedReadableText()
+                        Toggle("Быстрый опрос через VPS", isOn: $notifications.relayEnabled)
+                            .tint(.green)
+                            .foregroundStyle(primaryInk)
+                            .themedReadableText()
+                        if !notifications.relayStatusText.isEmpty {
+                            Text(notifications.relayStatusText)
+                                .font(.caption)
+                                .foregroundStyle(secondaryInk)
+                                .themedReadableText()
+                        }
                     }
 
                     settingsGroup(title: "Оформление") {

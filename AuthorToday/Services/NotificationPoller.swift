@@ -29,14 +29,29 @@ final class NotificationPoller: ObservableObject {
     private let readKey = "at.readNotificationIds"
     private let kindsKey = "at.feedEnabledKinds"
     private let alertsKey = "at.localAlertsEnabled"
+    private let relayKey = "at.notifyRelayEnabled"
+    private let relaySinceKey = "at.notifyRelaySince"
     private let chapterCountsKey = "at.knownChapterCounts"
+    /// Direct Author.Today poll while app is open (fallback / full feed sync).
     private let pollInterval: TimeInterval = 90
+    /// Cheap VPS delta when relay is on — much lower latency without hammering AT.
+    private let relayInterval: TimeInterval = 20
     @Published var alertsEnabled: Bool {
         didSet { UserDefaults.standard.set(alertsEnabled, forKey: alertsKey) }
     }
+    /// Opt-in: VPS stores AT bearer and polls for this account.
+    @Published var relayEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(relayEnabled, forKey: relayKey)
+            Task { await applyRelayPreferenceChange() }
+        }
+    }
+    @Published var relayStatusText: String = ""
     private let pageSize = 20
     private var cursor: String?
     private var seenStableIds = Set<String>()
+    private var relayTimer: Timer?
+    private var lastDirectPollAt: Date = .distantPast
 
     private init() {
         if let saved = UserDefaults.standard.array(forKey: knownKey) as? [String] {
@@ -56,6 +71,7 @@ final class NotificationPoller: ObservableObject {
         } else {
             alertsEnabled = UserDefaults.standard.bool(forKey: alertsKey)
         }
+        relayEnabled = UserDefaults.standard.bool(forKey: relayKey)
     }
 
     static func registerBackgroundRefresh() {
@@ -82,17 +98,143 @@ final class NotificationPoller: ObservableObject {
     func startPolling() {
         stopPolling()
         scheduleBackgroundRefresh()
-        Task { await refresh(announceNew: false) }
+        Task {
+            await refresh(announceNew: false)
+            if relayEnabled {
+                await syncRelayRegistration()
+                await pollRelayDelta(announceNew: false)
+            }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.refresh(announceNew: true)
+                guard let self else { return }
+                // With relay on, full AT feed sync is less urgent — every ~3 min.
+                if self.relayEnabled, Date().timeIntervalSince(self.lastDirectPollAt) < 180 {
+                    return
+                }
+                await self.refresh(announceNew: true)
             }
+        }
+        if relayEnabled {
+            startRelayTimer()
         }
     }
 
     func stopPolling() {
         timer?.invalidate()
         timer = nil
+        relayTimer?.invalidate()
+        relayTimer = nil
+    }
+
+    private func startRelayTimer() {
+        relayTimer?.invalidate()
+        relayTimer = Timer.scheduledTimer(withTimeInterval: relayInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.pollRelayDelta(announceNew: true)
+            }
+        }
+    }
+
+    private func applyRelayPreferenceChange() async {
+        if relayEnabled {
+            await syncRelayRegistration()
+            startRelayTimer()
+            await pollRelayDelta(announceNew: true)
+        } else {
+            relayTimer?.invalidate()
+            relayTimer = nil
+            await unregisterRelay()
+            relayStatusText = "VPS-оповещения выключены"
+        }
+    }
+
+    private func resolvedUserId() async -> Int? {
+        if let id = await APIClient.shared.currentUserId(), id > 0 { return id }
+        if let id = UserDefaults.standard.object(forKey: "at.auth.userId") as? Int, id > 0 { return id }
+        return nil
+    }
+
+    /// Push current AT bearer to VPS (opt-in). Call after login / token refresh.
+    func syncRelayRegistration() async {
+        guard relayEnabled else { return }
+        guard let userId = await resolvedUserId() else {
+            relayStatusText = "Нужен вход в Author.Today"
+            return
+        }
+        guard let token = AuthService.shared.loadTokenForRelay(), !token.isEmpty else {
+            relayStatusText = "Нет токена Author.Today"
+            return
+        }
+        // Ensure vault bearer is available for notify API auth.
+        if BookVaultSettings.shared.apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            BookVaultSettings.shared.applySharedShelfToken()
+        }
+        if let res = await NotifyRelayClient.register(userId: userId, atToken: token, enabled: true) {
+            if let err = res.error, !err.isEmpty {
+                relayStatusText = "VPS: \(err)"
+            } else {
+                let seeded = res.seeded ?? 0
+                relayStatusText = seeded > 0
+                    ? "VPS: активно · засеяно \(seeded)"
+                    : "VPS: активно · опрос ~\(res.pollSeconds ?? 45)с"
+            }
+        } else {
+            relayStatusText = "VPS: не удалось зарегистрировать"
+        }
+    }
+
+    private func unregisterRelay() async {
+        guard let userId = await resolvedUserId() else { return }
+        await NotifyRelayClient.unregister(userId: userId, forgetToken: true)
+        UserDefaults.standard.removeObject(forKey: relaySinceKey)
+    }
+
+    func pollRelayDelta(announceNew: Bool) async {
+        guard relayEnabled else { return }
+        guard let userId = await resolvedUserId() else { return }
+        let since = UserDefaults.standard.string(forKey: relaySinceKey)
+        guard let delta = await NotifyRelayClient.delta(userId: userId, since: since) else {
+            relayStatusText = "VPS: нет ответа delta"
+            return
+        }
+        if let serverTime = delta.serverTime, !serverTime.isEmpty {
+            UserDefaults.standard.set(serverTime, forKey: relaySinceKey)
+        }
+        if let err = delta.lastError, !err.isEmpty {
+            relayStatusText = "VPS: \(err)"
+        } else if let check = delta.lastCheckAt {
+            relayStatusText = "VPS: ок · \(check)"
+        }
+        guard announceNew, !delta.items.isEmpty else { return }
+        for item in delta.items {
+            let sid = "relay:\(item.id)"
+            if knownIds.contains(sid) { continue }
+            knownIds.insert(sid)
+            await postRelayLocal(item)
+        }
+        persistKnown()
+        // Refresh in-app feed list so badge/tab catch up without waiting for 90s AT poll.
+        await refresh(announceNew: false)
+    }
+
+    private func postRelayLocal(_ item: NotifyRelayClient.DeltaItem) async {
+        guard alertsEnabled, isAuthorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = item.title?.isEmpty == false ? (item.title ?? "Читальня") : "Читальня"
+        content.body = item.body?.isEmpty == false ? (item.body ?? "Новое уведомление") : "Новое уведомление Author.Today"
+        content.sound = .default
+        if let workId = item.workId {
+            content.userInfo = ["workId": workId]
+        } else if let postId = item.postId {
+            content.userInfo = ["postId": postId]
+        }
+        let request = UNNotificationRequest(
+            identifier: "relay-\(item.id)",
+            content: content,
+            trigger: nil
+        )
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     func isUnread(_ item: NotificationItem) -> Bool {
@@ -148,6 +290,7 @@ final class NotificationPoller: ObservableObject {
                 persistKnown()
             }
             lastError = nil
+            lastDirectPollAt = .now
             await applyAppBadge()
             if announceNew {
                 await checkLibraryChapterUpdates()
@@ -351,8 +494,10 @@ final class NotificationPoller: ObservableObject {
         seenStableIds = []
         hasMore = false
         lastError = nil
+        relayStatusText = ""
         UserDefaults.standard.removeObject(forKey: knownKey)
         UserDefaults.standard.removeObject(forKey: readKey)
         UserDefaults.standard.removeObject(forKey: chapterCountsKey)
+        UserDefaults.standard.removeObject(forKey: relaySinceKey)
     }
 }

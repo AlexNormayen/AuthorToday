@@ -102,6 +102,10 @@ actor APIClient {
 
     func currentToken() -> String { token }
 
+    func currentUserId() -> Int? {
+        Int(userId)
+    }
+
     // MARK: - Auth
 
     /// Login with email/password. Pass `code` after Author.Today emails a device confirmation code.

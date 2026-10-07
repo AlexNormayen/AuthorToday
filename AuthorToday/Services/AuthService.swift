@@ -101,6 +101,11 @@ final class AuthService: ObservableObject {
         return nil
     }
 
+    /// Opt-in VPS notification relay — never logs the value.
+    func loadTokenForRelay() -> String? {
+        loadPersistedToken()
+    }
+
     private func persistToken(_ token: String) {
         KeychainStore.set(token, for: tokenKey)
         SessionFileBackup.update { $0.token = token }
@@ -293,6 +298,7 @@ final class AuthService: ObservableObject {
     }
 
     func logout() {
+        let previousUserId = UserDefaults.standard.object(forKey: userIdKey) as? Int
         KeychainStore.delete(tokenKey)
         SessionFileBackup.clear()
         UserDefaults.standard.removeObject(forKey: userIdKey)
@@ -303,12 +309,16 @@ final class AuthService: ObservableObject {
         pendingPassword = ""
         OfflineStore.shared.prepareForAccount(userId: nil)
         Task {
+            if let previousUserId, previousUserId > 0 {
+                await NotifyRelayClient.unregister(userId: previousUserId, forgetToken: true)
+            }
             await APIClient.shared.setToken("guest")
             await APIClient.shared.setUserId(nil)
         }
         user = nil
         isAuthenticated = false
         ProEntitlementStore.shared.applyAccount(nil)
+        NotificationPoller.shared.clearAccountLocalState()
     }
 }
 
