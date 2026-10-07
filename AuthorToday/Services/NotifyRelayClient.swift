@@ -41,16 +41,15 @@ enum NotifyRelayClient {
         let pollSeconds: Int?
     }
 
-    private static func vaultToken() -> String {
-        let trimmed = BookVaultSettings.shared.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-        return BookVaultSettings.BuiltIn.sharedShelfToken
+    /// Same shared shelf token the notify API expects (not MainActor-bound).
+    private static var vaultToken: String {
+        BookVaultSettings.BuiltIn.sharedShelfToken
     }
 
-    private static func authorizedRequest(path: String, method: String, body: Data? = None) -> URLRequest {
+    private static func authorizedRequest(path: String, method: String, body: Data? = nil) -> URLRequest {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = method
-        request.setValue("Bearer \(vaultToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(vaultToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 20
         if let body {
@@ -94,7 +93,7 @@ enum NotifyRelayClient {
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(vaultToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(vaultToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
         return await decode(DeltaResponse.self, request: request)
@@ -132,7 +131,7 @@ enum NotifyRelayClient {
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(vaultToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(vaultToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 12
         return await decode(StatusResponse.self, request: request)
     }
