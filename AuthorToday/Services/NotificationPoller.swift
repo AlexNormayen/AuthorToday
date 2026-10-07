@@ -86,12 +86,35 @@ final class NotificationPoller: ObservableObject {
         }
     }
 
+    private let deviceTokenKey = "at.apnsDeviceToken"
+
     func configure() async {
         let center = UNUserNotificationCenter.current()
         do {
             isAuthorized = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+            if isAuthorized {
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    /// Called from AppPushDelegate after APNs registration.
+    func handleDeviceToken(_ hex: String) async {
+        UserDefaults.standard.set(hex, forKey: deviceTokenKey)
+        guard relayEnabled else { return }
+        guard let userId = await resolvedUserId() else { return }
+        #if DEBUG && !APPSTORE
+        let env = "sandbox"
+        #else
+        let env = "production"
+        #endif
+        await NotifyRelayClient.registerDeviceToken(userId: userId, deviceToken: hex, environment: env)
+        if relayStatusText.isEmpty || relayStatusText.contains("APNs") {
+            relayStatusText = "APNs token зарегистрирован"
         }
     }
 
@@ -182,10 +205,20 @@ final class NotificationPoller: ObservableObject {
         } else {
             relayStatusText = "VPS: не удалось зарегистрировать"
         }
+        if let hex = UserDefaults.standard.string(forKey: deviceTokenKey), !hex.isEmpty {
+            await handleDeviceToken(hex)
+        } else if isAuthorized {
+            await MainActor.run {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
     }
 
     private func unregisterRelay() async {
         guard let userId = await resolvedUserId() else { return }
+        if let hex = UserDefaults.standard.string(forKey: deviceTokenKey), !hex.isEmpty {
+            await NotifyRelayClient.unregisterDeviceToken(userId: userId, deviceToken: hex)
+        }
         await NotifyRelayClient.unregister(userId: userId, forgetToken: true)
         UserDefaults.standard.removeObject(forKey: relaySinceKey)
     }

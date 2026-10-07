@@ -1,0 +1,12 @@
+# Optional overrides (defaults work with shared shelf token)
+# BOOK_VAULT_TOKEN=4db49ebc4117e7a44602e94dc5ea43bb
+# NOTIFY_POLL_SECONDS=45
+
+# APNs (required for push while app is closed)
+# Create at: https://developer.apple.com/account/resources/authkeys/list
+# → Keys → + → Apple Push Notifications service (APNs)
+APNS_KEY_ID=
+APNS_TEAM_ID=57FVB8DUWX
+APNS_BUNDLE_ID=ru.chitalnya.reader
+APNS_KEY_PATH=/opt/chitalnya/AuthKey_APNs.p8
+# APNS_USE_SANDBOX=0

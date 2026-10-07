@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct AuthorTodayApp: App {
+    @UIApplicationDelegateAdaptor(AppPushDelegate.self) private var pushDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth = AuthService.shared
     @StateObject private var readerSettings = ReaderSettingsStore()

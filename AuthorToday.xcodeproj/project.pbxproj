@@ -48,6 +48,7 @@
 		100000000000000000000063 /* ChitalnyaDistribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* ChitalnyaDistribution.swift */; };
 		100000000000000000000064 /* ProWebEntitlementClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* ProWebEntitlementClient.swift */; };
 		100000000000000000000066 /* NotifyRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* NotifyRelayClient.swift */; };
+		100000000000000000000067 /* AppPushDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005A /* AppPushDelegate.swift */; };
 		100000000000000000000038 /* ProEntitlementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* ProEntitlementStore.swift */; };
 		100000000000000000000039 /* ProPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* ProPaywallView.swift */; };
 		10000000000000000000003A /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003A /* Products.storekit */; };
@@ -140,6 +141,7 @@
 		200000000000000000000056 /* ChitalnyaDistribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChitalnyaDistribution.swift; sourceTree = "<group>"; };
 		200000000000000000000057 /* ProWebEntitlementClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProWebEntitlementClient.swift; sourceTree = "<group>"; };
 		200000000000000000000059 /* NotifyRelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotifyRelayClient.swift; sourceTree = "<group>"; };
+		20000000000000000000005A /* AppPushDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPushDelegate.swift; sourceTree = "<group>"; };
 		200000000000000000000038 /* ProEntitlementStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProEntitlementStore.swift; sourceTree = "<group>"; };
 		200000000000000000000039 /* ProPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProPaywallView.swift; sourceTree = "<group>"; };
 		20000000000000000000003A /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
@@ -294,6 +296,7 @@
 				200000000000000000000056 /* ChitalnyaDistribution.swift */,
 				200000000000000000000057 /* ProWebEntitlementClient.swift */,
 				200000000000000000000059 /* NotifyRelayClient.swift */,
+				20000000000000000000005A /* AppPushDelegate.swift */,
 				200000000000000000000038 /* ProEntitlementStore.swift */,
 				200000000000000000000041 /* ProGrantStore.swift */,
 				200000000000000000000047 /* ProNudgeStore.swift */,
@@ -499,6 +502,7 @@
 				100000000000000000000063 /* ChitalnyaDistribution.swift in Sources */,
 				100000000000000000000064 /* ProWebEntitlementClient.swift in Sources */,
 				100000000000000000000066 /* NotifyRelayClient.swift in Sources */,
+				100000000000000000000067 /* AppPushDelegate.swift in Sources */,
 				100000000000000000000038 /* ProEntitlementStore.swift in Sources */,
 				100000000000000000000039 /* ProPaywallView.swift in Sources */,
 				100000000000000000000043 /* OfflineQuotaStatusView.swift in Sources */,
@@ -591,7 +595,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIBackgroundModes = fetch;
+				INFOPLIST_KEY_UIBackgroundModes = "fetch remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
@@ -627,7 +631,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к фото, чтобы выбрать свой фон для читалки.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIBackgroundModes = fetch;
+				INFOPLIST_KEY_UIBackgroundModes = "fetch remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";

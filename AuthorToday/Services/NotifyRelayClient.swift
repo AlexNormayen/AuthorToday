@@ -100,6 +100,29 @@ enum NotifyRelayClient {
         return await decode(DeltaResponse.self, request: request)
     }
 
+    static func registerDeviceToken(userId: Int, deviceToken: String, environment: String) async {
+        let payload: [String: Any] = [
+            "userId": userId,
+            "deviceToken": deviceToken,
+            "environment": environment,
+            "bundleId": Bundle.main.bundleIdentifier ?? "ru.chitalnya.reader",
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        let request = authorizedRequest(path: "notify-device", method: "POST", body: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    static func unregisterDeviceToken(userId: Int, deviceToken: String) async {
+        let payload: [String: Any] = [
+            "userId": userId,
+            "deviceToken": deviceToken,
+            "forget": true,
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        let request = authorizedRequest(path: "notify-device", method: "POST", body: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     static func status(userId: Int) async -> StatusResponse? {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("notify-status"),

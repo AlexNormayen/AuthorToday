@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Читальня — VPS relay for Author.Today notifications.
+"""Читальня — VPS relay for Author.Today notifications + optional APNs.
 
 Stores opt-in AT bearer tokens, polls api.author.today, exposes a cheap delta
-endpoint for the app. Push (APNs) can be added later on top of the same queue.
+endpoint, and can push via Apple APNs when .p8 credentials are configured.
 
 Auth for all routes: Authorization: Bearer <BOOK_VAULT_TOKEN>
-  (same shared shelf token as TubeVault / BookVaultSettings.sharedShelfToken)
 
 Listen: 127.0.0.1:8793
-Env: /opt/chitalnya/.notify_env  (optional; BOOK_VAULT_TOKEN, POLL_SECONDS)
+Env: /opt/chitalnya/.notify_env
 DB:  /opt/chitalnya/notify.db
 """
 from __future__ import annotations
@@ -38,6 +37,7 @@ UA = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Chitalnya/7.2.0"
 )
 DEFAULT_TOKEN = "4db49ebc4117e7a44602e94dc5ea43bb"
+DEFAULT_BUNDLE = "ru.chitalnya.reader"
 
 
 def load_env_file(path: Path) -> None:
@@ -58,6 +58,21 @@ load_env_file(ENV_PATH)
 
 BOOK_VAULT_TOKEN = (os.environ.get("BOOK_VAULT_TOKEN") or DEFAULT_TOKEN).strip()
 POLL_SECONDS = max(30, int(os.environ.get("NOTIFY_POLL_SECONDS") or "45"))
+
+APNS_KEY_ID = (os.environ.get("APNS_KEY_ID") or "").strip()
+APNS_TEAM_ID = (os.environ.get("APNS_TEAM_ID") or "57FVB8DUWX").strip()
+APNS_BUNDLE_ID = (os.environ.get("APNS_BUNDLE_ID") or DEFAULT_BUNDLE).strip()
+APNS_KEY_PATH = Path(os.environ.get("APNS_KEY_PATH") or str(ROOT / "AuthKey_APNs.p8"))
+APNS_USE_SANDBOX_DEFAULT = (os.environ.get("APNS_USE_SANDBOX") or "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+_apns_jwt: str | None = None
+_apns_jwt_at = 0.0
+_apns_lock = threading.Lock()
+_httpx_client = None
 
 
 def utc_now() -> datetime:
@@ -104,8 +119,138 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_events_user_seen
               ON events(user_id, seen_at);
+            CREATE TABLE IF NOT EXISTS device_tokens (
+              device_token TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              environment TEXT NOT NULL DEFAULT 'production',
+              bundle_id TEXT,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_device_user ON device_tokens(user_id);
             """
         )
+
+
+def apns_configured() -> bool:
+    return bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_KEY_PATH.is_file())
+
+
+def apns_jwt() -> str | None:
+    global _apns_jwt, _apns_jwt_at
+    if not apns_configured():
+        return None
+    with _apns_lock:
+        if _apns_jwt and (time.time() - _apns_jwt_at) < 3000:
+            return _apns_jwt
+        try:
+            import jwt  # PyJWT
+        except ImportError:
+            print("notify: PyJWT missing — pip install PyJWT cryptography httpx[http2]", flush=True)
+            return None
+        key = APNS_KEY_PATH.read_text(encoding="utf-8")
+        token = jwt.encode(
+            {"iss": APNS_TEAM_ID, "iat": int(time.time())},
+            key,
+            algorithm="ES256",
+            headers={"alg": "ES256", "kid": APNS_KEY_ID},
+        )
+        if isinstance(token, bytes):
+            token = token.decode("ascii")
+        _apns_jwt = token
+        _apns_jwt_at = time.time()
+        return _apns_jwt
+
+
+def httpx_client():
+    global _httpx_client
+    if _httpx_client is not None:
+        return _httpx_client
+    try:
+        import httpx
+    except ImportError:
+        print("notify: httpx missing — pip install 'httpx[http2]'", flush=True)
+        return None
+    _httpx_client = httpx.Client(http2=True, timeout=20.0)
+    return _httpx_client
+
+
+def send_apns(
+    device_token: str,
+    *,
+    title: str,
+    body: str,
+    environment: str,
+    bundle_id: str | None,
+    work_id: int | None = None,
+    post_id: int | None = None,
+) -> tuple[bool, str]:
+    token = apns_jwt()
+    if not token:
+        return False, "apns not configured"
+    client = httpx_client()
+    if client is None:
+        return False, "httpx unavailable"
+    topic = (bundle_id or APNS_BUNDLE_ID).strip() or APNS_BUNDLE_ID
+    host = (
+        "api.sandbox.push.apple.com"
+        if environment == "sandbox" or APNS_USE_SANDBOX_DEFAULT
+        else "api.push.apple.com"
+    )
+    url = f"https://{host}/3/device/{device_token}"
+    payload: dict[str, Any] = {
+        "aps": {
+            "alert": {"title": title[:80] or "Читальня", "body": (body or "")[:240]},
+            "sound": "default",
+        }
+    }
+    if work_id:
+        payload["workId"] = work_id
+    if post_id:
+        payload["postId"] = post_id
+    headers = {
+        "authorization": f"bearer {token}",
+        "apns-topic": topic,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        "content-type": "application/json",
+    }
+    try:
+        resp = client.post(url, headers=headers, content=json.dumps(payload).encode("utf-8"))
+    except Exception as exc:
+        return False, str(exc)
+    if resp.status_code == 200:
+        return True, "ok"
+    detail = resp.text[:200]
+    if resp.status_code == 410:
+        with db() as conn:
+            conn.execute("DELETE FROM device_tokens WHERE device_token = ?", (device_token,))
+        return False, f"410 unregistered: {detail}"
+    return False, f"{resp.status_code}: {detail}"
+
+
+def push_event_to_user(user_id: int, event: dict[str, Any]) -> None:
+    if not apns_configured():
+        return
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT device_token, environment, bundle_id FROM device_tokens WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+    if not rows:
+        return
+    title = event.get("title") or "Читальня"
+    body = event.get("body") or "Новое уведомление Author.Today"
+    for row in rows:
+        ok, msg = send_apns(
+            row["device_token"],
+            title=title,
+            body=body,
+            environment=(row["environment"] or "production"),
+            bundle_id=row["bundle_id"],
+            work_id=event.get("workId"),
+            post_id=event.get("postId"),
+        )
+        print(f"notify: apns user={user_id} ok={ok} {msg}", flush=True)
 
 
 def require_bearer(handler: BaseHTTPRequestHandler) -> bool:
@@ -271,6 +416,7 @@ def poll_user(user_id: int, token: str) -> tuple[int, str | None]:
         if not isinstance(items, list):
             items = []
         now = iso()
+        new_events: list[dict[str, Any]] = []
         with db() as conn:
             for raw in items:
                 if not isinstance(raw, dict):
@@ -295,7 +441,20 @@ def poll_user(user_id: int, token: str) -> tuple[int, str | None]:
                         now,
                     ),
                 )
-                inserted += cur.rowcount
+                if cur.rowcount:
+                    inserted += 1
+                    new_events.append(norm)
+
+        # First seed after register: do not spam APNs for the whole backlog.
+        with db() as conn:
+            row = conn.execute(
+                "SELECT registered_at, last_check_at FROM subscribers WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        first_poll = bool(row and row["last_check_at"] is None)
+        if not first_poll:
+            for ev in new_events:
+                push_event_to_user(user_id, ev)
 
     with db() as conn:
         conn.execute(
@@ -357,7 +516,15 @@ class Handler(BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(parsed.query)
 
         if path.endswith("/notify-health") or path.endswith("/health"):
-            write_json(self, 200, {"ok": True, "pollSeconds": POLL_SECONDS})
+            write_json(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "pollSeconds": POLL_SECONDS,
+                    "apnsConfigured": apns_configured(),
+                },
+            )
             return
 
         if not require_bearer(self):
@@ -544,6 +711,51 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, 200, {"ok": err is None, "inserted": inserted, "error": err})
             return
 
+        if path.endswith("/notify-device"):
+            try:
+                user_id = int(data.get("userId") or data.get("user_id") or 0)
+            except (TypeError, ValueError):
+                user_id = 0
+            device_token = (data.get("deviceToken") or data.get("token") or "").strip().lower()
+            if user_id <= 0 or not device_token:
+                write_json(self, 400, {"error": "userId and deviceToken required"})
+                return
+            if data.get("forget"):
+                with db() as conn:
+                    conn.execute(
+                        "DELETE FROM device_tokens WHERE device_token = ? AND user_id = ?",
+                        (device_token, user_id),
+                    )
+                write_json(self, 200, {"ok": True, "removed": True})
+                return
+            environment = (data.get("environment") or "production").strip().lower()
+            if environment not in ("production", "sandbox"):
+                environment = "production"
+            bundle_id = (data.get("bundleId") or APNS_BUNDLE_ID).strip()
+            with db() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO device_tokens (device_token, user_id, environment, bundle_id, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(device_token) DO UPDATE SET
+                      user_id = excluded.user_id,
+                      environment = excluded.environment,
+                      bundle_id = excluded.bundle_id,
+                      updated_at = excluded.updated_at
+                    """,
+                    (device_token, user_id, environment, bundle_id, iso()),
+                )
+            write_json(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "apnsConfigured": apns_configured(),
+                    "environment": environment,
+                },
+            )
+            return
+
         self.send_error(404, "Not found")
 
 
@@ -552,7 +764,10 @@ def main() -> None:
     t = threading.Thread(target=worker_loop, name="notify-worker", daemon=True)
     t.start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"notify_api on http://{HOST}:{PORT} · poll every {POLL_SECONDS}s", flush=True)
+    print(
+        f"notify_api on http://{HOST}:{PORT} · poll every {POLL_SECONDS}s · apns={apns_configured()}",
+        flush=True,
+    )
     httpd.serve_forever()
 
 
