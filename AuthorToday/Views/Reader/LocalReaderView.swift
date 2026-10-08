@@ -9,6 +9,7 @@ struct LocalReaderView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var localLibrary: LocalLibraryStore
     @EnvironmentObject private var settings: ReaderSettingsStore
+    @EnvironmentObject private var appearance: AppAppearanceStore
 
     @State private var bookTitle = "Чтение"
     @State private var chapters: [LocalChapter] = []
@@ -122,6 +123,7 @@ struct LocalReaderView: View {
                     }
                 }
             }
+            .preferredColorScheme(appearance.preferredColorScheme)
         }
         .task { bootstrap() }
         .onAppear {

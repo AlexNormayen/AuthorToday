@@ -182,6 +182,12 @@ struct MainTabView: View {
         .onChange(of: selectedTab) { _, tab in
             session.setSelectedTab(tab)
         }
+        .onChange(of: session.selectedTab) { _, tab in
+            let clamped = min(max(tab, 0), MainDestination.allCases.count - 1)
+            if selectedTab != clamped {
+                selectedTab = clamped
+            }
+        }
         .onChange(of: sizeClass) { _, _ in
             // Keep selection when rotating / entering Split View.
             selectedTab = min(max(selectedTab, 0), MainDestination.allCases.count - 1)
@@ -205,6 +211,31 @@ struct MainTabView: View {
             NavigationStack {
                 ReaderView(workId: item.workId, initialChapterId: item.chapterId)
             }
+        }
+        .sheet(
+            item: Binding(
+                get: { session.pendingNotificationDeepLink },
+                set: { session.pendingNotificationDeepLink = $0 }
+            )
+        ) { link in
+            NavigationStack {
+                Group {
+                    switch link.target {
+                    case .work(let workId):
+                        BookDetailView(workId: workId)
+                    case .post(let postId):
+                        FeedPostDetailView(postId: postId)
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Закрыть") {
+                            session.clearNotificationDeepLink()
+                        }
+                    }
+                }
+            }
+            .preferredColorScheme(appearance.preferredColorScheme)
         }
         .sheet(isPresented: $nudge.showPaywall) {
             ProPaywallView(reason: "Вы уже читаете в Читальне несколько дней. Pro снимает лимит офлайна и открывает темы, закладки и «Мои книги».")

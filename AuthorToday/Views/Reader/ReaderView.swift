@@ -159,6 +159,8 @@ struct ReaderView: View {
                     }
                 }
             }
+            // Reader chrome may force .dark for status-bar contrast; don't inherit that into the sheet.
+            .preferredColorScheme(appearance.preferredColorScheme)
         }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
@@ -192,6 +194,7 @@ struct ReaderView: View {
                 }
             }
             .presentationDetents([.medium, .large])
+            .preferredColorScheme(appearance.preferredColorScheme)
         }
         .task {
             await bootstrap()

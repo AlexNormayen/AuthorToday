@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 import UserNotifications
 
-/// Bridges APNs device token → VPS notify relay.
+/// Bridges APNs device token → VPS notify relay and notification taps → in-app deep links.
 final class AppPushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
@@ -38,5 +38,17 @@ final class AppPushDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound, .badge]
+    }
+
+    // Tap → open book page / post (workId / postId in payload).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let userInfo = response.notification.request.content.userInfo
+        await MainActor.run {
+            ReadingSessionStore.shared.openFromNotification(userInfo: userInfo)
+        }
     }
 }

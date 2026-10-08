@@ -74,6 +74,22 @@ final class ReadingSessionStore: ObservableObject {
         }
     }
 
+    /// Open book/post from a local or APNs notification tap.
+    struct NotificationDeepLink: Identifiable, Equatable {
+        enum Target: Equatable {
+            case work(Int)
+            case post(Int)
+        }
+
+        let id: UUID
+        let target: Target
+
+        init(target: Target, id: UUID = UUID()) {
+            self.id = id
+            self.target = target
+        }
+    }
+
     private struct SessionBlob: Codable {
         var selectedTab: Int
         var isReading: Bool
@@ -89,11 +105,14 @@ final class ReadingSessionStore: ObservableObject {
     /// Bumped when the user re-taps the already selected tab — each tab clears its NavigationPath.
     @Published private(set) var tabPopToRootTicks: [Int: Int] = [:]
     @Published var pendingResume: ResumeReader?
+    @Published var pendingNotificationDeepLink: NotificationDeepLink?
 
     private var checkpoints: [String: Checkpoint] = [:]
     private(set) var isReading = false
     private var activeWorkId: Int?
     private var activeChapterId: Int?
+    /// Notification tap wins over restoring the previous reader session.
+    private var preferNotificationOverColdResume = false
 
     private var fileURL: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -172,6 +191,29 @@ final class ReadingSessionStore: ObservableObject {
         pendingResume = ResumeReader(workId: workId, chapterId: chapterId)
     }
 
+    /// Handle tap on local/APNs notification (`workId` / `postId` in userInfo).
+    func openFromNotification(userInfo: [AnyHashable: Any]) {
+        let workId = Self.intValue(userInfo["workId"])
+        let postId = Self.intValue(userInfo["postId"])
+        preferNotificationOverColdResume = true
+        endReading()
+        if let workId {
+            pendingNotificationDeepLink = NotificationDeepLink(target: .work(workId))
+            return
+        }
+        if let postId {
+            pendingNotificationDeepLink = NotificationDeepLink(target: .post(postId))
+            return
+        }
+        // No target in payload — at least show the feed.
+        selectedTab = 4
+        persistSession()
+    }
+
+    func clearNotificationDeepLink() {
+        pendingNotificationDeepLink = nil
+    }
+
     func updateActiveChapter(_ chapterId: Int) {
         guard isReading else { return }
         activeChapterId = chapterId
@@ -187,6 +229,7 @@ final class ReadingSessionStore: ObservableObject {
     }
 
     func setSelectedTab(_ tab: Int) {
+        guard selectedTab != tab else { return }
         selectedTab = tab
         persistSession()
     }
@@ -201,12 +244,29 @@ final class ReadingSessionStore: ObservableObject {
     }
 
     func prepareColdStartResume() {
+        if preferNotificationOverColdResume || pendingNotificationDeepLink != nil {
+            pendingResume = nil
+            return
+        }
         guard isReading, let workId = activeWorkId else {
             pendingResume = nil
             return
         }
         let chapter = activeChapterId ?? checkpoint(for: workId)?.chapterId
         pendingResume = ResumeReader(workId: workId, chapterId: chapter)
+    }
+
+    private static func intValue(_ raw: Any?) -> Int? {
+        switch raw {
+        case let value as Int:
+            return value
+        case let value as NSNumber:
+            return value.intValue
+        case let value as String:
+            return Int(value)
+        default:
+            return nil
+        }
     }
 
     private func loadFromDisk() {
