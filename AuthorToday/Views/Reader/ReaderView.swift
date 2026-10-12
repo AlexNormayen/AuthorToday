@@ -27,7 +27,6 @@ struct ReaderView: View {
     @State private var showChrome = false
     @State private var showSettings = false
     @State private var showTOC = false
-    @State private var showPurchase = false
     @State private var showPaywall = false
     @State private var paywallReason: String?
     @State private var showNoteComposer = false
@@ -138,11 +137,6 @@ struct ReaderView: View {
                             Button("Готово") { showSettings = false }
                         }
                     }
-            }
-        }
-        .sheet(isPresented: $showPurchase) {
-            if let details {
-                PurchaseWebView(url: details.purchaseURL, title: "Покупка")
             }
         }
         .sheet(isPresented: $showTOC) {
@@ -686,13 +680,7 @@ struct ReaderView: View {
         let locked = !chapter.isAvailableEffective
         let missingOffline = !downloads.online && !offline.isChapterCached(workId: workId, chapterId: chapter.id)
         return Button {
-            guard !locked else {
-                if details?.needsPurchase == true {
-                    showTOC = false
-                    showPurchase = true
-                }
-                return
-            }
+            guard !locked else { return }
             guard !missingOffline else { return }
             showTOC = false
             Task { await openChapter(at: idx) }
@@ -703,7 +691,9 @@ struct ReaderView: View {
                         .foregroundStyle((locked || missingOffline) ? Color.secondary : Color.primary)
                         .multilineTextAlignment(.leading)
                     if locked {
-                        Text("Недоступна · нужна покупка")
+                        Text(details?.needsPurchase == true
+                             ? "Недоступна · покупка на author.today вне приложения"
+                             : "Недоступна")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     } else if missingOffline {
@@ -731,7 +721,7 @@ struct ReaderView: View {
                 }
             }
         }
-        .disabled(missingOffline || (locked && details?.needsPurchase != true))
+        .disabled(locked || missingOffline)
     }
 
     // MARK: - Logic
@@ -844,11 +834,9 @@ struct ReaderView: View {
         guard chapters.indices.contains(index) else { return }
         let chapter = chapters[index]
         guard chapter.isAvailableEffective else {
-            if details?.needsPurchase == true {
-                showPurchase = true
-            } else {
-                error = "Эта глава недоступна"
-            }
+            error = details?.needsPurchase == true
+                ? "Эта глава доступна после покупки на author.today вне приложения. Обновите книгу после покупки."
+                : "Эта глава недоступна"
             return
         }
         let alreadyCached = offline.isChapterCached(workId: workId, chapterId: chapter.id)

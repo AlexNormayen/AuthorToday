@@ -14,7 +14,6 @@ struct BookDetailView: View {
     @State private var error: String?
     @State private var isLoading = true
     @ObservedObject private var readingSession = ReadingSessionStore.shared
-    @State private var showPurchase = false
     @State private var showTOC = false
     @State private var openAuthorProfile = false
     @State private var openSeries = false
@@ -77,11 +76,6 @@ struct BookDetailView: View {
         .navigationDestination(isPresented: $openSeries) {
             seriesDestination
         }
-        .sheet(isPresented: $showPurchase, onDismiss: {
-            Task { await load() }
-        }) {
-            purchaseSheet
-        }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView(reason: paywallReason)
                 .environmentObject(pro)
@@ -96,10 +90,6 @@ struct BookDetailView: View {
                 onOpen: { id in
                     showTOC = false
                     readingSession.presentReader(workId: workId, chapterId: id)
-                },
-                onPurchase: {
-                    showTOC = false
-                    showPurchase = true
                 },
                 onClose: { showTOC = false }
             )
@@ -146,15 +136,6 @@ struct BookDetailView: View {
                 systemImage: "books.vertical",
                 description: Text("У этой книги не указана серия.")
             )
-        }
-    }
-
-    @ViewBuilder
-    private var purchaseSheet: some View {
-        if let details {
-            PurchaseWebView(url: details.purchaseURL, title: "Покупка")
-        } else {
-            ProgressView()
         }
     }
 
@@ -265,19 +246,13 @@ struct BookDetailView: View {
     private func actions(_ details: WorkDetails) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if details.needsPurchase {
-                Button {
-                    Task {
-                        try? await APIClient.shared.establishWebSession()
-                        showPurchase = true
-                    }
-                } label: {
-                    Text(details.displayPriceText.map { "Купить за \($0)" } ?? "Купить на author.today")
+                // No in-app buy CTA / WebView — App Store 3.1.1 (digital goods outside IAP).
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Часть глав доступна после покупки на сайте author.today вне этого приложения.")
+                    Text("Купите книгу в браузере на author.today, затем нажмите «Обновить» сверху — купленное откроется под тем же аккаунтом.")
                 }
-                .buttonStyle(PrimaryButtonStyle())
-
-                Text("Оплата проходит на сайте author.today в защищённом окне. После покупки нажмите «Обновить» и откройте книгу снова.")
-                    .font(.caption)
-                    .themedSecondaryText()
+                .font(.caption)
+                .themedSecondaryText()
             }
 
             Button {
@@ -583,7 +558,6 @@ private struct BookTOCSheet: View {
     let chapters: [ChapterMeta]
     let needsPurchase: Bool
     let onOpen: (Int) -> Void
-    let onPurchase: () -> Void
     let onClose: () -> Void
 
     @EnvironmentObject private var offline: OfflineStore
@@ -593,18 +567,17 @@ private struct BookTOCSheet: View {
         NavigationStack {
             List(chapters) { chapter in
                 Button {
-                    if chapter.isAvailableEffective {
-                        onOpen(chapter.id)
-                    } else if needsPurchase {
-                        onPurchase()
-                    }
+                    guard chapter.isAvailableEffective else { return }
+                    onOpen(chapter.id)
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(chapter.displayTitle)
                                 .foregroundStyle(chapter.isAvailableEffective ? Color.primary : .secondary)
                             if !chapter.isAvailableEffective {
-                                Text("Недоступна")
+                                Text(needsPurchase
+                                     ? "Нужна покупка на author.today вне приложения"
+                                     : "Недоступна")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -621,6 +594,7 @@ private struct BookTOCSheet: View {
                         }
                     }
                 }
+                .disabled(!chapter.isAvailableEffective)
             }
             .navigationTitle("Оглавление")
             .toolbar {

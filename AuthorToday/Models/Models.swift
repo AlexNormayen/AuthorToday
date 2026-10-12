@@ -415,11 +415,6 @@ struct WorkDetails: Codable, Identifiable, Sendable {
         return String(format: "%.0f ₽", price)
     }
 
-    var purchaseURL: URL {
-        // Work page with buy intent; PurchaseWebView forces mobile viewport/UA.
-        URL(string: "https://author.today/work/\(id)?buy=1")!
-    }
-
     /// Prefer saved TOC; if empty, rebuild from downloaded chapter rows so offline open works.
     func mergingOfflineChapters(_ cached: [CachedChapter], workId: Int) -> WorkDetails {
         var chapters = self.chapters ?? []

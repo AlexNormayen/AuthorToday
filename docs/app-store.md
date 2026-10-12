@@ -80,15 +80,17 @@ Lifetime / навсегда — **нет**.
 Вход: email/пароль аккаунта Author.Today.
 Если у аккаунта включено подтверждение устройства — после пароля приложение запрашивает код из письма Author.Today.
 
-Покупки книг открывают официальный сайт author.today (WebView).
-
-This build has NO In-App Purchases and NO subscription purchase UI.
+This build has NO In-App Purchases, NO subscription purchase UI, and NO in-app book
+purchase WebView / Buy button (Guideline 3.1.1).
 Apple Developer Support (case 102980242033) confirmed Paid Apps / IAP are unavailable for this
-account due to RF entity / U.S. sanctions. The app is a complete free reader under Schedule 1.
+account due to RF entity / U.S. sanctions. The app is a complete free Schedule 1 reader.
 
-Previously rejected under 2.2 for incomplete subscription UI — removed. Client conveniences
-(themes, offline, bookmarks, local TXT/EPUB) are fully unlocked in this App Store build with
-no purchase flow. Book content is still purchased only on author.today (WebView).
+Books are purchased only on author.today outside the app (Safari/browser). After purchase,
+sign in with the same Author.Today account and tap Refresh — unlocked chapters appear here.
+There is no purchase CTA and no payment page inside the app.
+
+Previously rejected under 2.2 for incomplete subscription UI — removed.
+Previously rejected under 3.1.1 for in-app book purchase WebView — removed in this build.
 
 Демо-аккаунт: [вставить логин/пароль тестового AT-аккаунта для ревьюеров].
 ```
