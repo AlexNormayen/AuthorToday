@@ -18,7 +18,7 @@ struct LocalReaderView: View {
     @State private var plainText = ""
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showChrome = false
+    @State private var showChrome = true
     @State private var showSettings = false
     @State private var showTOC = false
     @State private var pageIndex = 0
@@ -33,6 +33,7 @@ struct LocalReaderView: View {
     @State private var restoreFraction: Double = 0
     @State private var restoreGeneration = 0
     @State private var persistScrollTask: Task<Void, Never>?
+    @State private var chromeAutoHideTask: Task<Void, Never>?
     @State private var chapterContentFits = false
 
     var body: some View {
@@ -141,6 +142,7 @@ struct LocalReaderView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             persistScrollTask?.cancel()
+            chromeAutoHideTask?.cancel()
             persistProgress()
         }
     }
@@ -462,8 +464,27 @@ struct LocalReaderView: View {
     }
 
     private func toggleChrome() {
+        chromeAutoHideTask?.cancel()
+        chromeAutoHideTask = nil
         withAnimation(.easeInOut(duration: 0.2)) {
             showChrome.toggle()
+        }
+    }
+
+    private func revealChromeTemporarily(autoHideAfter seconds: Double = 3.5) {
+        chromeAutoHideTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showChrome = true
+        }
+        chromeAutoHideTask = Task {
+            let ns = UInt64(seconds * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: ns)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showChrome = false
+                }
+            }
         }
     }
 
@@ -510,6 +531,7 @@ struct LocalReaderView: View {
         let start = min(max(book.lastChapterIndex, 0), chapters.count - 1)
         openChapter(at: start, restore: true, book: book)
         isLoading = false
+        revealChromeTemporarily()
     }
 
     private func openChapter(at index: Int, restore: Bool, book: LocalBook? = nil) {
@@ -545,6 +567,9 @@ struct LocalReaderView: View {
             restoreGeneration += 1
         }
         persistProgress()
+        if !restore {
+            revealChromeTemporarily()
+        }
     }
 
     private func handleScroll(offsetY: Double, fraction: Double, charOffset: Int) {

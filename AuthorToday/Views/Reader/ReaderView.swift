@@ -24,7 +24,8 @@ struct ReaderView: View {
     @State private var plainText = ""
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showChrome = false
+    /// Start visible like Apple Books so Back is discoverable; auto-hides after entry.
+    @State private var showChrome = true
     @State private var showSettings = false
     @State private var showTOC = false
     @State private var showPaywall = false
@@ -47,6 +48,7 @@ struct ReaderView: View {
     @State private var restoreGeneration = 0
     @State private var persistScrollTask: Task<Void, Never>?
     @State private var remoteSyncTask: Task<Void, Never>?
+    @State private var chromeAutoHideTask: Task<Void, Never>?
     @State private var didStartSession = false
     @State private var chapterContentFits = false
 
@@ -210,6 +212,7 @@ struct ReaderView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             persistScrollTask?.cancel()
             remoteSyncTask?.cancel()
+            chromeAutoHideTask?.cancel()
             persistProgress()
             syncProgressRemote()
             // Only clear "was reading" when user navigates away while app is active.
@@ -823,6 +826,7 @@ struct ReaderView: View {
             // Do not persistProgress() here: a wrong start chapter at offset 0 would
             // overwrite a further last-read position before the user scrolls.
             prefetchNeighborChapters()
+            revealChromeTemporarily()
         } catch {
             self.error = error.localizedDescription
             session.endReading()
@@ -906,6 +910,7 @@ struct ReaderView: View {
                     )
                 }
             }
+            revealChromeTemporarily()
         } catch {
             self.error = error.localizedDescription
         }
@@ -973,8 +978,28 @@ struct ReaderView: View {
     }
 
     private func toggleChrome() {
+        chromeAutoHideTask?.cancel()
+        chromeAutoHideTask = nil
         withAnimation(.easeInOut(duration: 0.2)) {
             showChrome.toggle()
+        }
+    }
+
+    /// Apple Books-style: show Back/controls on open, then immersive after a short delay.
+    private func revealChromeTemporarily(autoHideAfter seconds: Double = 3.5) {
+        chromeAutoHideTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showChrome = true
+        }
+        chromeAutoHideTask = Task {
+            let ns = UInt64(seconds * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: ns)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showChrome = false
+                }
+            }
         }
     }
 
